@@ -1,0 +1,128 @@
+Huzz
+Codebase snapshot (facts from source files in this repo)
+
+
+WHAT THE APP IS
+
+React Native dating app. Firebase Auth, Firestore, Storage, Cloud Functions client. Primary flows: sign up or log in, complete profile, swipe or like people, match requests that the other person approves, chat with read receipts and typing, unmatch from the matches list. Extra screens: wingman rooms, spin the bottle, date planning, verification, wali role, admin, staff, contacts block list, settings, profile.
+
+
+NAVIGATION (RootNavigator.native.js)
+
+Stack navigator. No React Navigation bottom tabs component. The home screen draws its own three buttons (Home, Matches, Profile) and calls onNavigate.
+
+Registered screens and components:
+  Welcome          WelcomeScreen.native.js
+  Onboarding       OnboardingFlow.native.js (mode signup or login, optional wali email param)
+  TabHome          HomeScreen.native.js
+  TabMatches       MatchListScreen.native.js
+  ChatThread       ChatScreen.native.js (matchId in route params)
+  DatePlanning     DatePlanningScreen.native.js (matchId)
+  TabProfile       MyProfileScreen.native.js
+  TabSettings      SettingsScreen.native.js
+  Admin            AdminScreen.native.js
+  Contacts         ContactsBlockScreen.native.js
+  Wingman          WingmanScreen.native.js
+  SpinBottle       SpinBottleScreen.native.js
+  Verification     VerificationScreen.native.js
+  Wali             WaliScreen.native.js
+  Staff            StaffScreen.native.js
+
+Route name constants live in src/app/navigation/routes.js.
+
+
+STARTUP ROUTING (same file)
+
+If Firebase has no user: initial route Welcome.
+
+If user exists:
+  checkUserRoleFromAdminCollection(uid)
+    isAdmin   → initial route Admin
+    isStaff   → initial route Staff
+  else userService.getUserById(uid)
+    role wali (users doc)     → initial route Wali
+    profileComplete true      → initial route TabHome
+    else                      → initial route Onboarding
+
+
+GLOBAL GATES (RootNavigator, run after login)
+
+LocationSyncGate
+  Throttled (about every 5 minutes). Skips admin and staff. Calls detectCountryCity, userService.updateMyLocation with country, city, permission. On success runs vpnDetectionService.trackIpAndDetectVpn for non admin users.
+
+PushTokenGate
+  registerForPushNotificationsAsync then userService.updateUser with expoPushToken and pushPermission.
+
+DeviceBanGate
+  getDeviceHash, optional store on profile, deviceBanService.isBanned. If banned, authService.signOutUser.
+
+ContactUploadGate
+  Returns null. Automatic contact upload was removed. Blocking uses Settings → Contacts flow.
+
+NotificationListener
+  Subscribes to push listeners when getNotificationListeners exists. Listens Firestore users/{uid}/notifications for badge. Tap handling: match_request or match_approved → TabMatches. message with matchId → ChatThread. verification → Verification. Else → TabMatches.
+
+
+HOME SCREEN (HomeScreen.native.js)
+
+USE_MOCK_DATA is false in source. Discovery uses real Firestore data when connected.
+
+Contains SwipeDeck, filters (country, intent, today status), pending match request handling, wingman code and room hooks, hot seat two player mode, tonight mode, location via expo-location, like and pass actions that create or update matches through firebaseService.
+
+Bottom bar: three pressables Home, Matches, Profile with shared navButton styling (green, blue, pink blocks in code).
+
+Header shows Urdu logo characters ح and ز with styles urduLogoFirst and urduLogoSecond.
+
+Welcome screen also renders Urdu ح (and related styles) in WelcomeScreen.native.js.
+
+
+MATCHES (MatchListScreen.native.js)
+
+matchService.listenMyMatches subscribes in real time. Rows show other user name, pending versus active state, Approve button when status pending and current user is requestedTo. Tap row opens chat when status active.
+
+Unmatch: only for rows where canChat is true (status active). Row wrapped in Swipeable from react-native-gesture-handler. Swipe right exposes Unmatch button. On confirm calls matchService.unmatch(match.id, uid).
+
+
+MATCH SERVICE (firebaseService.js)
+
+match documents use fields including uids, status pending or active, requestedTo, approvedBy, approvedAt.
+
+createMatchRequest path when like is not mutual: pending match, receiver gets notification to approve.
+
+approveMatch: only requestedTo can approve; sets active and notifies requester.
+
+unmatch: deletes match doc and calls likeService.removeLikeBetween so both users likesSent and likesReceived entries for the pair are removed so discovery can show the other person again.
+
+
+CHAT (ChatScreen.native.js)
+
+Inverted FlatList. Messages show read receipts using readAt (read versus delivered styling). Typing state read from match.typing for other user. Throttled typing writes on input. Scroll to bottom control scrollToBottomBtn with arrow. Keyboard avoids overlap; scrollToOffset when keyboard shows. Swipe on message row used for reply gesture (swipeReplyGesture).
+
+
+DATA LAYER (firebaseService.js COL object)
+
+Collections referenced in code include: users, matches, reports, bannedDevices, wingmanRooms, spinRooms, verifications, admin (separate admin and staff records), vulgarAttempts. Subcollection users/{uid}/notifications for in app notifications.
+
+Additional services wired in this file include: activityService, vpnDetectionService, userApprovalService, suspiciousAccountService, matchAnalyticsService, contentModerationService, auditLogService, exportService, moderationService.scanMessageText on send path where implemented.
+
+
+AUTH (firebaseService authService)
+
+Email password sign up and sign in, Google and Apple providers present in imports, password reset, email verification send on sign up, profile updates. User document writes include country, matchCountry, categoryIntent, images, bio, and related profile fields.
+
+
+WEB VERSUS NATIVE
+
+src/app has many .tsx and web UI primitives under components/ui. Native entry uses .native.js screens listed above. This progress file describes the native stack in RootNavigator.native.js.
+
+
+WHAT THIS FILE DOES NOT CLAIM
+
+It does not describe server side Firebase rules or Cloud Functions line by line. Those live in firestore.rules and functions outside this scan.
+
+It does not list every helper in every service file. Open src/services for full APIs.
+
+
+IDEAS TO EXTEND (not implemented unless you add them)
+
+Whatever you add next in code. This file only reflects what is present in the repository at scan time.

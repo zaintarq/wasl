@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Huzz",
+    "slug": "huzz",
+    "version": "1.0.0",
+    "icon": "./assets/images/appicon_launch.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/images/appicon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#c0c0c0"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.huzz.app",
+      "usesAppleSignIn": true,
+      "icon": "./assets/images/appicon_launch.png"
+    },
+    "android": {
+      "package": "com.huzz.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/appicon_foreground.png",
+        "backgroundColor": "#c0c0c0"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "scheme": "huzz",
+    "extra": {
+      "googleAuth": {
+        "iosClientId": "19254029866-oeiorhatafeooe1pphck4ftikl82ndb6.apps.googleusercontent.com",
+        "androidClientId": "19254029866-cc9eslb2sgrlelri0leqo1q0dje4qof5.apps.googleusercontent.com",
+        "webClientId": "19254029866-jiled6i3aoom1ih9jgdj1f3k39h04t7h.apps.googleusercontent.com"
+      },
+      "eas": {
+        "projectId": "3cfa4f1a-cc85-410d-9945-3c06b0d9a325"
+      }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you share them with your friends."
+        }
+      ],
+      "expo-web-browser",
+      "expo-font"
+    ]
+  }
+}

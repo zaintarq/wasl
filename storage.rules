@@ -1,0 +1,50 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Images uploaded per-user: images/{uid}/{filename}
+    match /images/{uid}/{fileName} {
+      // Allow read for signed-in users (disabled check handled in app/Firestore)
+      allow read: if isSignedIn();
+
+      // Allow write if user owns the path (during onboarding, user doc might not exist yet)
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Voice notes (chat): voice/{uid}/{filename}
+    match /voice/{uid}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*');
+    }
+
+    // Verification media: verify/{uid}/{fileName}
+    match /verify/{uid}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 15 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+

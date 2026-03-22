@@ -1,0 +1,22 @@
+/* Windows 98 Retro Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+* {
+  font-family: 'MS Sans Serif', 'Comic Sans MS', 'Arial', sans-serif;
+}
+
+body {
+  font-family: 'MS Sans Serif', 'Comic Sans MS', 'Arial', sans-serif;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: auto;
+}
+
+.retro-title {
+  font-family: 'Press Start 2P', 'MS Sans Serif', cursive;
+  font-size: 24px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.3);
+}
+
+

@@ -1,0 +1,553 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDocPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function isDisabled() {
+      // If user doc doesn't exist yet, they're not disabled (allow onboarding)
+      return isSignedIn()
+        && exists(userDocPath(request.auth.uid))
+        && get(userDocPath(request.auth.uid)).data.isDisabled == true;
+    }
+    
+    function userDocExists(uid) {
+      return exists(userDocPath(uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true
+        || request.auth.token.role == 'admin'
+        || (
+          exists(/databases/$(database)/documents/admin/$(request.auth.uid))
+          && get(/databases/$(database)/documents/admin/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid && !isDisabled();
+    }
+
+    function isMatchParticipant() {
+      return isSignedIn()
+        && !isDisabled()
+        && resource.data.uids is list
+        && resource.data.uids.hasAny([request.auth.uid]);
+    }
+
+    // Same as isMatchParticipant but allows requestedBy/requestedTo when uids missing (e.g. legacy)
+    function isMatchParticipantOrRequestParty() {
+      return isSignedIn()
+        && !isDisabled()
+        && (
+          (resource.data.uids is list && resource.data.uids.hasAny([request.auth.uid]))
+          || (resource.data.requestedBy == request.auth.uid || resource.data.requestedTo == request.auth.uid)
+        );
+    }
+
+    // Helper: can user send messages in this match? (match doc must exist and be active)
+    function canSendMessageInMatch(matchId) {
+      let path = /databases/$(database)/documents/matches/$(matchId);
+      return exists(path)
+        && get(path).data.get('status', '') == 'active'
+        && get(path).data.get('isBlocked', false) != true
+        && (
+          (get(path).data.uids is list && get(path).data.uids.hasAny([request.auth.uid]))
+          || (get(path).data.get('requestedBy', '') == request.auth.uid || get(path).data.get('requestedTo', '') == request.auth.uid)
+        );
+    }
+
+    // Helper function to check if wali has consent to access match
+    function isWaliWithConsent(matchId) {
+      return isSignedIn()
+        && !isDisabled()
+        && exists(/databases/$(database)/documents/matches/$(matchId))
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (
+          // Check if request.auth.uid matches wali userId for either participant
+          (
+            get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0] != null
+            && exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0]))
+            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0])).data.wali.userId == request.auth.uid
+            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0])).data.wali.consentLevel != 'never'
+          )
+          || (
+            get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1] != null
+            && exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1]))
+            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1])).data.wali.userId == request.auth.uid
+            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1])).data.wali.consentLevel != 'never'
+          )
+        );
+    }
+
+    // Helper function to check if wali can update match
+    function canWaliUpdate(matchId) {
+      // Wali can update wali involvement tracking fields
+      return request.resource.data.diff(resource.data).changedKeys().hasAny(['waliInvolvement'])
+        || request.resource.data.diff(resource.data).changedKeys().hasOnly(['waliInvolvement', 'lastMessageAt', 'status']);
+    }
+
+    // Users
+    match /users/{uid} {
+      // Allow users to create their own document (onboarding)
+      // Also allow wali user creation (they authenticate via hash first, then create account)
+      allow create: if isSignedIn() && request.auth.uid == uid
+        || (isSignedIn() && request.resource.data.role == 'wali');
+
+      // NOTE: This allows signed-in users to read profiles for discovery.
+      // Also allow unauthenticated list queries for wali hash lookup (necessary for wali login)
+      // This is a security trade-off: we allow limited unauthenticated reads for wali authentication
+      // The query will only return documents matching the wali.hash filter
+      // IMPORTANT: Unauthenticated queries are allowed for wali authentication flow
+      // Allow users to read their own document (for checking role, profile, etc.)
+      // Also allow reading if document doesn't exist (for onboarding)
+      allow get: if !isSignedIn() 
+        || (isSignedIn() && request.auth.uid == uid) 
+        || (isSignedIn() && !isDisabled());
+      allow list: if !isSignedIn() 
+        || (isSignedIn() && !isDisabled());
+
+      // Owners can update their profile
+      // Cannot self-promote to admin or disable themselves.
+      // Can update any field except isDisabled
+      // Note: role is no longer stored in users collection, so we don't need to check for it
+      // setDoc with merge: if doc exists, uses update rule; if doc doesn't exist, uses create rule
+      // SIMPLIFIED: Allow update if user owns the document and is signed in
+      // Only restriction: cannot change isDisabled field
+      allow update: if (
+        isSignedIn() 
+        && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).changedKeys().hasAny(['isDisabled'])
+      ) || isAdmin();
+      
+      // Allow setDoc with merge (used in setUser function)
+      // This is needed for onboarding when document might not exist yet
+      // setDoc with merge will use update rule if doc exists, create rule if it doesn't
+      allow create: if isSignedIn() && request.auth.uid == uid;
+
+      allow delete: if isAdmin();
+
+      // Per-user subcollections
+      match /likesSent/{otherUid} {
+        // Users can create/update their own likes/passes
+        allow create, update: if isSignedIn() && request.auth.uid == uid && !isDisabled();
+        allow read: if isOwner(uid);
+        // Owner can delete; other user can delete (for unmatch so both can see each other again)
+        allow delete: if isOwner(uid) || (isSignedIn() && request.auth.uid == otherUid && !isDisabled());
+      }
+      match /likesReceived/{otherUid} {
+        // Users can read their received likes
+        allow read: if isOwner(uid);
+        // Other users can create likesReceived when they like this user
+        // The document ID (otherUid) is the person who sent the like (fromUid)
+        // So when User A likes User B, they create users/{B}/likesReceived/{A}
+        // We need to allow User A to write to User B's likesReceived collection
+        allow create, update: if isSignedIn() 
+          && request.auth.uid == otherUid  // The authenticated user matches the document ID (the liker)
+          && request.resource.data.fromUid == request.auth.uid  // The fromUid in data matches the authenticated user
+          && !isDisabled();
+        // Owner can delete; other user (otherUid) can delete for unmatch
+        allow delete: if isOwner(uid) || (isSignedIn() && request.auth.uid == otherUid && !isDisabled());
+      }
+      match /blocks/{otherUid} {
+        allow read, write, delete: if isOwner(uid);
+      }
+      match /contactHashes/{hash} {
+        allow read, write, delete: if isOwner(uid);
+      }
+
+      // Per-user notifications bucket.
+      // - Any signed-in user can CREATE a notification for someone else, but only as themselves (fromUid).
+      // - Only the owner can read/mark read.
+      match /notifications/{notificationId} {
+        allow create: if isSignedIn()
+          && !isDisabled()
+          && request.resource.data.toUid == uid
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.type is string
+          && request.resource.data.title is string
+          && request.resource.data.body is string;
+
+        allow get, list, update, delete: if isOwner(uid);
+      }
+    }
+
+    // Matches
+    match /matches/{matchId} {
+      // Create: full match (uids list) or pending match request (requestedBy/requestedTo)
+      // Client writes: id, uids[], status, requestedBy, requestedTo, approvedBy, approvedAt, createdAt, lastMessageAt
+      allow create: if isSignedIn()
+        && !isDisabled()
+        && (
+          // Standard: uids list of 2, requester is participant
+          (
+            request.resource.data.uids is list
+            && request.resource.data.uids.size() == 2
+            && request.resource.data.uids.hasAny([request.auth.uid])
+          )
+          // Pending match: requester is the liker (requestedBy)
+          || (
+            request.resource.data.status == 'pending'
+            && request.resource.data.requestedBy is string
+            && request.resource.data.requestedBy == request.auth.uid
+          )
+        );
+
+      // Allow users to list matches where they are a participant
+      allow list: if isSignedIn() && !isDisabled();
+      // Allow get when doc doesn't exist (so client can check before create) or when user is participant/admin/wali
+      allow get: if !exists(/databases/$(database)/documents/matches/$(matchId))
+        || isMatchParticipant()
+        || isAdmin()
+        || isWaliWithConsent(matchId);
+      // Participants can update match docs (status, lastMessageAt, typing, etc.)
+      // Wali can update if consent allows (for wali involvement tracking)
+      allow update: if isMatchParticipantOrRequestParty() || isAdmin() || (isWaliWithConsent(matchId) && canWaliUpdate(matchId));
+      // Participants can delete (unmatch); admins can delete any match
+      allow delete: if isAdmin() || isMatchParticipantOrRequestParty();
+
+      // Messages within a match
+      match /messages/{messageId} {
+        allow get, list: if (isAdmin()) || (isSignedIn() && !isDisabled() && canSendMessageInMatch(matchId));
+
+        allow create: if isSignedIn()
+          && !isDisabled()
+          && canSendMessageInMatch(matchId)
+          && request.resource.data.fromUid == request.auth.uid
+          && (
+            // Text message
+            (
+              request.resource.data.text is string
+              && request.resource.data.text.size() > 0
+              && request.resource.data.text.size() <= 2000
+            )
+            // Voice note message
+            || (
+              request.resource.data.type == 'voice'
+              && request.resource.data.audioUrl is string
+              && request.resource.data.audioUrl.size() > 8
+              && request.resource.data.durationMs is int
+              && request.resource.data.durationMs >= 1000
+              && request.resource.data.durationMs <= 15000
+            )
+          );
+
+        // DM-level actions
+        // - Sender can edit/unsend their own message (soft-delete)
+        // - Any participant can add/update their reaction
+        // - Recipient can mark messages as read (readAt)
+        allow update: if isSignedIn()
+          && !isDisabled()
+          && (
+            // Sender can edit/delete their own messages
+            (resource.data.fromUid == request.auth.uid
+              && (
+                request.resource.data.diff(resource.data).changedKeys().hasOnly(['text', 'editedAt', 'deletedAt', 'audioUrl', 'durationMs'])
+                || request.resource.data.diff(resource.data).changedKeys().hasAny(['text', 'editedAt', 'deletedAt', 'audioUrl', 'durationMs'])
+              ))
+            // Recipient can mark messages as read (allow timestamp or serverTimestamp -> request.time)
+            || (resource.data.fromUid != request.auth.uid
+              && request.resource.data.diff(resource.data).changedKeys().hasOnly(['readAt'])
+              && (request.resource.data.readAt is timestamp || request.resource.data.readAt == request.time))
+            // Any participant can add reactions
+            || request.resource.data.diff(resource.data).changedKeys().hasOnly(['reactions'])
+          )
+          && exists(/databases/$(database)/documents/matches/$(matchId))
+          && (
+            (get(/databases/$(database)/documents/matches/$(matchId)).data.uids is list
+              && get(/databases/$(database)/documents/matches/$(matchId)).data.uids.hasAny([request.auth.uid]))
+            || get(/databases/$(database)/documents/matches/$(matchId)).data.get('requestedBy', '') == request.auth.uid
+            || get(/databases/$(database)/documents/matches/$(matchId)).data.get('requestedTo', '') == request.auth.uid
+          )
+          && get(/databases/$(database)/documents/matches/$(matchId)).data.get('status', '') == 'active'
+          && get(/databases/$(database)/documents/matches/$(matchId)).data.get('isBlocked', false) != true
+          && request.resource.data.fromUid == resource.data.fromUid
+          && (
+            // sender edits text (only for text messages)
+            (
+              request.auth.uid == resource.data.fromUid
+              && resource.data.type != 'voice'
+              && request.resource.data.text is string
+              && request.resource.data.text.size() <= 2000
+            )
+            // sender unsends (soft delete)
+            || (
+              request.auth.uid == resource.data.fromUid
+              && request.resource.data.deletedAt != null
+            )
+            // recipient marks as read (allow serverTimestamp)
+            || (
+              resource.data.fromUid != request.auth.uid
+              && request.resource.data.diff(resource.data).changedKeys().hasOnly(['readAt'])
+              && (request.resource.data.readAt is timestamp || request.resource.data.readAt == request.time)
+            )
+            // reactions: allow participants to update reactions map
+            || (
+              request.resource.data.reactions is map
+            )
+          );
+
+        allow delete: if false;
+      }
+    }
+
+    // Wingman co-op swipe rooms
+    match /wingmanRooms/{code} {
+      allow create: if isSignedIn()
+        && !isDisabled()
+        && request.resource.data.ownerUid == request.auth.uid;
+
+      allow get: if isSignedIn()
+        && !isDisabled()
+        && (resource.data.ownerUid == request.auth.uid || resource.data.memberUid == request.auth.uid);
+
+      allow list: if false;
+
+      allow update: if isSignedIn()
+        && !isDisabled()
+        && (resource.data.ownerUid == request.auth.uid || resource.data.memberUid == request.auth.uid)
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+
+      allow delete: if isAdmin();
+    }
+
+    // Spin-the-Bottle rooms (3–6 people, host spins a random pair for a 60s chat)
+    match /spinRooms/{code} {
+      allow create: if isSignedIn()
+        && !isDisabled()
+        && request.resource.data.ownerUid == request.auth.uid;
+
+      allow get: if isSignedIn()
+        && !isDisabled()
+        && (resource.data.participants is list)
+        && resource.data.participants.hasAny([request.auth.uid]);
+
+      allow list: if false;
+
+      // Participants can join/leave via controlled updates.
+      // OwnerUid is immutable.
+      allow update: if isSignedIn()
+        && !isDisabled()
+        && (resource.data.participants is list)
+        && resource.data.participants.hasAny([request.auth.uid])
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+
+      allow delete: if isAdmin();
+    }
+
+    // Reports
+    match /reports/{reportId} {
+      allow create: if isSignedIn() && !isDisabled();
+
+      allow get, list: if isAdmin()
+        || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+
+      // Only admins can resolve reports / take actions
+      allow update, delete: if isAdmin();
+    }
+
+    // Vulgar chat attempts (blocked by Cloud Function; only server writes, admins read)
+    match /vulgarAttempts/{attemptId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Verification requests (photo + video) reviewed by admins
+    match /verifications/{vid} {
+      allow create: if isSignedIn()
+        && !isDisabled()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status in ['submitted', 'approved', 'rejected']
+        && request.resource.data.language in ['en', 'ur'];
+
+      allow get, list: if isAdmin()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      // Only admins can change status / review fields
+      allow update, delete: if isAdmin();
+    }
+
+    // Soft device ban (client-side gate).
+    // Only admins can write. Signed-in users can check a specific doc id (no list).
+    match /bannedDevices/{deviceHash} {
+      allow get: if isSignedIn() && !isDisabled();
+      allow list: if false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Contact Upload (plaintext contacts backup)
+    // Document ID = userId, so contactId should equal userId
+    match /contact-upload/{contactId} {
+      // Allow any signed-in user to create/update their own contact upload document
+      // Document ID must match userId (which equals auth.uid)
+      allow create, update: if isSignedIn() 
+        && contactId == request.auth.uid
+        && request.resource.data.userId is string
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Users can read their own uploads, admins can read all
+      allow read: if isSignedIn() 
+        && (contactId == request.auth.uid || isAdmin());
+      
+      // Only admins can delete
+      allow delete: if isSignedIn() && isAdmin();
+    }
+
+    // Wali Access audit trail
+    match /waliAccess/{accessId} {
+      // Only admins can read wali access logs
+      allow read: if isAdmin();
+      // Users can create their own wali access logs (via waliService)
+      allow create: if isSignedIn() 
+        && !isDisabled()
+        && request.resource.data.userId == request.auth.uid;
+      // Only admins can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // Wali Access audit trail
+    match /waliAccess/{accessId} {
+      // Only admins can read wali access logs
+      allow read: if isAdmin();
+      // Users can create their own wali access logs (via waliService)
+      allow create: if isSignedIn() 
+        && !isDisabled()
+        && request.resource.data.userId == request.auth.uid;
+      // Only admins can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // Date Plans
+    match /datePlans/{planId} {
+      // Participants can read plans for their matches
+      allow read: if isSignedIn() 
+        && !isDisabled()
+        && (
+          resource.data.participants.hasAny([request.auth.uid])
+          || isAdmin()
+        );
+      
+      // Participants can create plans for their matches
+      allow create: if isSignedIn()
+        && !isDisabled()
+        && request.resource.data.participants.hasAny([request.auth.uid])
+        && request.resource.data.matchId is string;
+      
+      // Participants can update plans (accept/decline)
+      allow update: if isSignedIn()
+        && !isDisabled()
+        && (
+          resource.data.participants.hasAny([request.auth.uid])
+          || isAdmin()
+        );
+      
+      // Only admins can delete
+      allow delete: if isAdmin();
+    }
+
+    // User Activity Tracking
+    match /userActivity/{activityId} {
+      // Users can create their own activity records
+      allow create: if isSignedIn() 
+        && !isDisabled()
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Only admins/staff can read activity data
+      allow read: if isAdmin();
+      
+      // No updates or deletes (immutable log)
+      allow update, delete: if false;
+    }
+
+    // Activity Flags (hyper activity detection)
+    match /activityFlags/{flagId} {
+      // System can create flags (via activityService)
+      allow create: if isSignedIn() && !isDisabled();
+      
+      // Only admins/staff can read flags
+      allow read: if isAdmin();
+      
+      // Only admins can update/delete flags
+      allow update, delete: if isAdmin();
+    }
+
+    // User Approvals
+    match /userApprovals/{approvalId} {
+      // System can create approval records
+      allow create: if isSignedIn() && !isDisabled();
+      
+      // Users can read their own approvals, admins can read all
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+      
+      // Only admins can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // VPN Tracking
+    match /vpnTracking/{userId} {
+      // Users can create/update their own VPN tracking records
+      allow create, update: if isSignedIn() 
+        && !isDisabled()
+        && userId == request.auth.uid;
+      
+      // Users can read their own VPN tracking, admins can read all
+      allow read: if isAdmin()
+        || (isSignedIn() && userId == request.auth.uid);
+      
+      // Only admins can delete
+      allow delete: if isAdmin();
+    }
+
+    // Suspicious Accounts
+    match /suspiciousAccounts/{accountId} {
+      // System can create suspicious account records
+      allow create: if isSignedIn() && !isDisabled();
+      
+      // Only admins/staff can read
+      allow read: if isAdmin();
+      
+      // Only admins can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // Content Moderation (uses existing reports collection)
+    // Audit Logs
+    match /auditLogs/{logId} {
+      // Only admins/staff can create audit logs
+      allow create: if isAdmin();
+      
+      // Only admins/staff can read audit logs
+      allow read: if isAdmin();
+      
+      // Audit logs are immutable (no updates/deletes)
+      allow update, delete: if false;
+    }
+
+    // Admin collection (separate collection for admins and staff)
+    match /admin/{userId} {
+      // Users can read their own admin record to check their role
+      // This is critical for role checking during login
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      // Also allow reading if the user is checking their own role (for initial login)
+      // This ensures users can check if they're admin/staff even before their user document exists
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      // Only admins can create/update/delete admin records
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+
