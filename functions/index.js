@@ -1,6 +1,9 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const crypto = require('crypto');
 
 // Initialize Firebase Admin
@@ -42,95 +45,17 @@ function isValidEmailFormat(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
-// --- HUZZ branded HTML emails (same vibe as app: sky gradient, Kaushan “Huzz”, blue accents — no image logo) ---
+// NSFW threshold for profile image moderation (Gen1 storage trigger)
+const NSFW_THRESHOLD = 0.6;
 
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function buildOtpCodeBlock(code) {
-  const c = escapeHtml(code);
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;background:#ffffff;border-radius:16px;border:1.5px solid rgba(37,99,235,0.35);box-shadow:0 2px 12px rgba(37,99,235,0.08);">
-    <tr>
-      <td align="center" style="padding:28px 20px;">
-        <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;">Your code</p>
-        <p style="margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:14px;color:#1d4ed8;line-height:1.2;">${c}</p>
-        <p style="margin:14px 0 0;font-size:13px;color:#94a3b8;">Expires in 10 minutes</p>
-      </td>
-    </tr>
-  </table>`;
-}
-
-/**
- * @param {{ title: string, preheader?: string, innerHtml: string }} opts
- */
-function buildHuzzEmailWrapper(opts) {
-  const title = escapeHtml(opts.title);
-  const preheader = escapeHtml(opts.preheader || opts.title);
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>${title}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&display=swap" rel="stylesheet">
-</head>
-<body style="margin:0;padding:0;background-color:#f1f5f9;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:28px 14px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#ffffff;border-radius:22px;overflow:hidden;border:1px solid rgba(37,99,235,0.18);box-shadow:0 8px 30px rgba(15,23,42,0.08);">
-          <tr>
-            <td style="background:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 42%,#DBEAFE 100%);padding:40px 28px 34px;text-align:center;border-bottom:1px solid rgba(37,99,235,0.12);">
-              <p style="font-family:'Kaushan Script',Georgia,serif;font-size:48px;line-height:1.05;margin:0 0 12px;color:#1c1917;letter-spacing:0.5px;">Huzz</p>
-              <div style="height:3px;width:104px;margin:0 auto;background:linear-gradient(90deg,#1D4ED8,#2563EB,#3B82F6);border-radius:2px;"></div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px 28px 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#0f172a;font-size:16px;line-height:1.55;">
-              ${opts.innerHtml}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px 28px;text-align:center;font-size:12px;line-height:1.55;color:#64748b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
-              <strong style="color:#0f172a;">HUZZ</strong> · Dating with intention.<br/>
-              If you didn’t request this email, you can ignore it safely.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-
-// Configure email transporter using Gmail SMTP (set SMTP_USER / SMTP_PASSWORD in Firebase env)
+// Configure email transporter using Gmail SMTP
 const getEmailTransporter = () => {
+  // Use Gmail SMTP credentials
   const SMTP_SERVER = 'smtp.gmail.com';
   const SMTP_PORT = 587;
-  let cfg = {};
-  try {
-    cfg = typeof functions.config === 'function' ? functions.config() : {};
-  } catch (e) {
-    cfg = {};
-  }
-  const SMTP_USER = process.env.SMTP_USER || (cfg.smtp && cfg.smtp.user) || 'noreplyonlystream@gmail.com';
-  const SMTP_PASSWORD = process.env.SMTP_PASSWORD || (cfg.smtp && cfg.smtp.password) || '';
-
-  if (!SMTP_PASSWORD) {
-    console.error('[email] SMTP_PASSWORD missing: set env or firebase functions:config:set smtp.password');
-    return null;
-  }
-
+  const SMTP_USER = 'noreplyonlystream@gmail.com';
+  const SMTP_PASSWORD = 'yvyknzfblnphzhgk';
+  
   return nodemailer.createTransport({
     host: SMTP_SERVER,
     port: SMTP_PORT,
@@ -202,42 +127,71 @@ exports.sendWaliInvitation = functions.region('us-central1').https.onRequest(asy
       return;
     }
 
-    // Email content — branded like the app (sky gradient + banana / Huzz header)
+    // Email content
     const emailSubject = `${userName} wants to add you as a Wali (Guardian)`;
-    const emailHtml = buildHuzzEmailWrapper({
-      title: 'Wali invitation — Huzz',
-      preheader: `${finalSenderName} invited you to be their Wali on Huzz.`,
-      innerHtml: `
-        <p style="margin:0 0 6px;font-size:14px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;">Wali invitation</p>
-        <h2 style="margin:0 0 12px;font-size:22px;font-weight:800;color:#111827;letter-spacing:-0.02em;">Hello, ${escapeHtml(waliName)}</h2>
-        <p style="margin:0 0 8px;color:#475569;font-size:16px;"><strong style="color:#0f172a;">${escapeHtml(finalSenderName)}</strong>${finalSenderEmail ? ` <span style="color:#64748b;">(${escapeHtml(finalSenderEmail)})</span>` : ''} wants to add you as their <strong>Wali (Guardian)</strong> on <strong style="color:#0f172a;">Huzz</strong>.</p>
-        ${finalSenderEmail ? `<p style="margin:0 0 16px;font-size:13px;color:#94a3b8;">Invitation sent from: ${escapeHtml(finalSenderEmail)}</p>` : '<p style="margin:0 0 16px;"></p>'}
-        <p style="margin:0 0 20px;color:#475569;font-size:16px;">As a Wali, you can help oversee their matches and conversations with their consent.</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
-          <tr>
-            <td align="center">
-              <a href="${escapeHtml(appDownloadLink)}" style="display:inline-block;padding:16px 36px;background:linear-gradient(180deg,#2563EB,#1d4ed8);color:#ffffff !important;font-weight:700;font-size:17px;text-decoration:none;border-radius:22px;border:2px solid rgba(37,99,235,0.45);box-shadow:0 6px 20px rgba(37,99,235,0.25);">Download Huzz</a>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#0f172a;">Your login hash</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;background:#ffffff;border-radius:14px;border:1.5px solid rgba(37,99,235,0.35);">
-          <tr>
-            <td align="center" style="padding:28px 20px;">
-              <p style="margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px;font-weight:700;letter-spacing:4px;color:#1d4ed8;">${escapeHtml(waliHash)}</p>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:0 0 8px;font-size:14px;color:#64748b;"><strong style="color:#0f172a;">How to log in</strong></p>
-        <ol style="margin:0 0 20px;padding-left:18px;color:#475569;font-size:15px;line-height:1.6;">
-          <li>Open the Huzz app</li>
-          <li>Tap <strong>Log In</strong></li>
-          <li>Choose <strong>Wali-hash login</strong></li>
-          <li>Enter the hash above</li>
-        </ol>
-        <p style="margin:0;font-size:14px;color:#475569;"><strong style="color:#0f172a;">What is a Wali?</strong><br/>A trusted guardian who can help oversee matches and conversations — with a dedicated Wali dashboard.</p>
-      `,
-    });
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #800020; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .content { background-color: #f5f5dc; padding: 30px; border: 3px solid #8b4513; border-top: none; }
+          .button { display: inline-block; padding: 14px 28px; background-color: #800020; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 5px; border: 3px solid #654321; }
+          .button-secondary { background-color: #87ceeb; color: #000; border-color: #4682b4; }
+          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🛡️ Wali Invitation</h1>
+          </div>
+          <div class="content">
+            <p>Hello ${waliName},</p>
+            
+            <p><strong>${finalSenderName}</strong>${finalSenderEmail ? ` (${finalSenderEmail})` : ''} wants to add you as their Wali (Guardian) on HUZZ.</p>
+            
+            ${finalSenderEmail ? `<p style="font-size: 12px; color: #666; margin-top: 10px;"><em>This invitation was sent from: ${finalSenderEmail}</em></p>` : ''}
+            
+            <p>As a Wali, you can help oversee their matches and conversations with their consent.</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${appDownloadLink}" class="button">📱 Download HUZZ App</a>
+            </div>
+            
+            <p>After downloading, open the app and use this login hash:</p>
+            
+            <div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fff; border: 3px solid #654321; border-radius: 8px;">
+              <p style="font-size: 18px; font-weight: bold; color: #800020; margin: 0; letter-spacing: 2px; font-family: monospace;">
+                ${waliHash}
+              </p>
+            </div>
+            
+            <p style="margin-top: 20px; font-size: 14px;">
+              <strong>How to login:</strong><br>
+              1. Open the HUZZ app<br>
+              2. Click "Log In" button<br>
+              3. Scroll down and click "Wali-hash login"<br>
+              4. Enter the hash above: <strong>${waliHash}</strong>
+            </p>
+            
+            <p style="margin-top: 20px;">
+              <strong>What is a Wali?</strong><br>
+              A Wali is a trusted guardian who can help oversee matches and conversations. 
+              You'll have access to a special Wali dashboard where you can view your ward's information 
+              and help guide them with their consent.
+            </p>
+          </div>
+          <div class="footer">
+            <p>This invitation was sent from HUZZ. If you didn't expect this email, you can ignore it.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
 
     const emailText = `
 Hello ${waliName},
@@ -278,7 +232,7 @@ This invitation was sent from HUZZ. If you didn't expect this email, you can ign
     };
 
     await transporter.sendMail(mailOptions);
-
+    
     console.log(`[sendWaliInvitation] Email sent successfully to ${to}`);
     res.status(200).json({ success: true, message: 'Email sent successfully' });
   } catch (error) {
@@ -287,7 +241,89 @@ This invitation was sent from HUZZ. If you didn't expect this email, you can ign
   }
 });
 
-// Profile image moderation lives in ../functions-moderation (separate codebase — tfjs/nsfwjs).
+/**
+ * Profile image NSFW moderation (NSFWJS) — Cloud Functions Gen1 storage trigger.
+ */
+exports.moderateProfileImage = functions
+  .region('us-central1')
+  .runWith({ memory: '1GB', timeoutSeconds: 60 })
+  .storage.object()
+  .onFinalize(async (object) => {
+    const filePath = object.name;
+    const bucketName = object.bucket;
+
+    if (!filePath || !filePath.startsWith('images/')) {
+      return null;
+    }
+
+    const pathParts = filePath.split('/');
+    if (pathParts.length < 3) {
+      return null;
+    }
+
+    const userId = pathParts[1];
+    const bucket = admin.storage().bucket(bucketName);
+    const file = bucket.file(filePath);
+    const tempPath = path.join(os.tmpdir(), path.basename(filePath));
+
+    try {
+      await file.download({ destination: tempPath });
+      const imageBuffer = fs.readFileSync(tempPath);
+
+      const tf = require('@tensorflow/tfjs-node');
+      const nsfwjs = require('nsfwjs');
+
+      const model = await nsfwjs.load();
+      const decoded = tf.node.decodeImage(imageBuffer);
+      const resized = tf.image.resizeBilinear(decoded, [224, 224]);
+      decoded.dispose();
+
+      const predictions = await model.classify(resized);
+      resized.dispose();
+
+      const scores = {};
+      for (const p of predictions) {
+        scores[p.className] = p.probability;
+      }
+
+      const porn = scores.Porn || 0;
+      const hentai = scores.Hentai || 0;
+      const sexy = scores.Sexy || 0;
+      const isNsfw = porn >= NSFW_THRESHOLD || hentai >= NSFW_THRESHOLD || sexy >= NSFW_THRESHOLD;
+
+      if (isNsfw) {
+        console.log(
+          `[moderateProfileImage] NSFW detected: path=${filePath} Porn=${porn.toFixed(2)} Hentai=${hentai.toFixed(2)} Sexy=${sexy.toFixed(2)}`
+        );
+        await file.delete();
+
+        const pathEncoded = filePath.replace(/\//g, '%2F');
+        const userRef = db.collection(COL.users).doc(userId);
+        const userSnap = await userRef.get();
+        if (userSnap.exists) {
+          const data = userSnap.data();
+          const images = Array.isArray(data.images) ? data.images : [];
+          const filtered = images.filter((url) => typeof url === 'string' && !url.includes(pathEncoded));
+          if (filtered.length !== images.length) {
+            await userRef.update({ images: filtered });
+            console.log(`[moderateProfileImage] Removed NSFW image from user ${userId} profile.`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[moderateProfileImage] Error:', err.message);
+    } finally {
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    }
+
+    return null;
+  });
 
 // ---------------------------------------------------------------------------
 // Chat safety: toxicity check before send. Blocks vulgar messages and logs
@@ -388,22 +424,18 @@ exports.sendSignupEmailOtp = functions.region('us-central1').https.onCall(async 
   }
 
   const smtpSenderEmail = 'noreplyonlystream@gmail.com';
-  const html = buildHuzzEmailWrapper({
-    title: 'Your HUZZ verification code',
-    preheader: `Your Huzz code is ${code}. Expires in 10 minutes.`,
-    innerHtml: `
-      <h2 style="margin:0 0 10px;font-size:22px;font-weight:800;color:#111827;letter-spacing:-0.02em;">Verify it’s you</h2>
-      <p style="margin:0 0 6px;color:#475569;font-size:16px;">You’re signing up for <strong style="color:#0f172a;">Huzz</strong>. Enter this code in the app to continue.</p>
-      ${buildOtpCodeBlock(code)}
-      <p style="margin:0;font-size:14px;color:#64748b;">Never share this code. Huzz staff will never ask for it.</p>
-    `,
-  });
   const mailOptions = {
     from: `HUZZ <${smtpSenderEmail}>`,
     to: email,
     subject: 'Your HUZZ verification code',
-    text: `Huzz — Your verification code\n\n${code}\n\nEnter this code in the app. It expires in 10 minutes.\n\nIf you didn’t request this, ignore this email.`,
-    html,
+    text: `Your verification code is: ${code}\n\nIt expires in 10 minutes. If you didn't request this, ignore this email.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+        <p style="font-size: 18px;">Your verification code is:</p>
+        <p style="font-size: 32px; letter-spacing: 8px; font-weight: bold; color: #1d4ed8;">${code}</p>
+        <p style="color: #64748b; font-size: 14px;">This code expires in 10 minutes. If you didn't request it, you can ignore this email.</p>
+      </div>
+    `,
   };
 
   try {
@@ -445,7 +477,7 @@ exports.verifySignupEmailOtp = functions.region('us-central1').https.onCall(asyn
   }
   if (d.codeHash !== hashSignupOtp(code)) {
     await ref.update({ attempts });
-    throw new functions.https.HttpsError('invalid-argument', 'Incorrect code. Try again.');
+    throw new functions.https.HttpsError('permission-denied', 'Incorrect code. Try again.');
   }
 
   await ref.delete();
@@ -534,30 +566,12 @@ exports.finalizeSignupWithSession = functions.region('us-central1').https.onCall
     const transporter = getEmailTransporter();
     if (transporter) {
       const smtpSenderEmail = 'noreplyonlystream@gmail.com';
-      const safeName = escapeHtml(name);
-      const safeLink = escapeHtml(link);
-      const verifyHtml = buildHuzzEmailWrapper({
-        title: 'Verify your Huzz email',
-        preheader: `${name}, confirm your email for Huzz.`,
-        innerHtml: `
-          <h2 style="margin:0 0 10px;font-size:22px;font-weight:800;color:#111827;letter-spacing:-0.02em;">Almost there, ${safeName}!</h2>
-          <p style="margin:0 0 8px;color:#475569;font-size:16px;">Tap the button below to confirm your email — we’ll keep your account safe.</p>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0;">
-            <tr>
-              <td align="center">
-                <a href="${safeLink}" style="display:inline-block;padding:16px 40px;background:linear-gradient(180deg,#BE123C,#9f1239);color:#ffffff !important;font-weight:700;font-size:17px;text-decoration:none;border-radius:22px;border:2px solid rgba(190,18,60,0.45);box-shadow:0 6px 20px rgba(190,18,60,0.28);">Verify my email</a>
-              </td>
-            </tr>
-          </table>
-          <p style="margin:0 0 8px;font-size:13px;color:#94a3b8;">Or paste this link: <a href="${safeLink}" style="color:#2563eb;text-decoration:underline;word-break:break-all;">${safeLink}</a></p>
-        `,
-      });
       await transporter.sendMail({
         from: `HUZZ <${smtpSenderEmail}>`,
         to: email,
         subject: 'Verify your HUZZ email',
-        text: `Hi ${name},\n\nVerify your email for Huzz:\n${link}\n\n`,
-        html: verifyHtml,
+        text: `Hi ${name},\n\nVerify your email: ${link}\n\n`,
+        html: `<p>Hi ${name},</p><p><a href="${link}">Verify your email</a></p>`,
       });
     } else {
       verificationEmailSent = false;
@@ -632,22 +646,18 @@ exports.sendPasswordResetEmailOtp = functions.region('us-central1').https.onCall
   }
 
   const smtpSenderEmail = 'noreplyonlystream@gmail.com';
-  const html = buildHuzzEmailWrapper({
-    title: 'Reset your Huzz password',
-    preheader: `Your password reset code is ${code}.`,
-    innerHtml: `
-      <h2 style="margin:0 0 10px;font-size:22px;font-weight:800;color:#111827;letter-spacing:-0.02em;">Reset your password</h2>
-      <p style="margin:0 0 6px;color:#475569;font-size:16px;">We received a request to reset your <strong style="color:#0f172a;">Huzz</strong> password. Enter this code in the app:</p>
-      ${buildOtpCodeBlock(code)}
-      <p style="margin:0;font-size:14px;color:#64748b;">If you didn’t ask for this, you can ignore this email — your password won’t change.</p>
-    `,
-  });
   const mailOptions = {
     from: `HUZZ <${smtpSenderEmail}>`,
     to: email,
     subject: 'Your HUZZ password reset code',
-    text: `Huzz — Password reset\n\nYour code: ${code}\n\nIt expires in 10 minutes. If you didn’t request this, ignore this email.`,
-    html,
+    text: `Your password reset code is: ${code}\n\nIt expires in 10 minutes. If you didn't request this, ignore this email.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+        <p style="font-size: 18px;">Your password reset code is:</p>
+        <p style="font-size: 32px; letter-spacing: 8px; font-weight: bold; color: #1d4ed8;">${code}</p>
+        <p style="color: #64748b; font-size: 14px;">This code expires in 10 minutes. If you didn't request a reset, ignore this email.</p>
+      </div>
+    `,
   };
 
   try {
@@ -689,7 +699,7 @@ exports.verifyPasswordResetEmailOtp = functions.region('us-central1').https.onCa
   }
   if (d.codeHash !== hashPasswordResetOtp(code)) {
     await ref.update({ attempts });
-    throw new functions.https.HttpsError('invalid-argument', 'Incorrect code. Try again.');
+    throw new functions.https.HttpsError('permission-denied', 'Incorrect code. Try again.');
   }
 
   await ref.delete();

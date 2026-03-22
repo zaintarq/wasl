@@ -187,7 +187,6 @@ export const authService = {
     if (code.includes('resource-exhausted')) return msg || 'Too many requests. Wait a moment and try again.';
     if (code.includes('deadline-exceeded')) return msg || 'This code expired. Request a new one.';
     if (code.includes('permission-denied')) return msg || 'Incorrect code.';
-    if (code.includes('invalid-argument') && /code/i.test(msg)) return msg || 'Incorrect code.';
     if (code.includes('not-found')) return msg || 'Request not found.';
     if (code.includes('invalid-argument')) return msg || 'Check your input and try again.';
     if (code.includes('failed-precondition')) return msg || 'Service unavailable.';
@@ -255,29 +254,20 @@ export const authService = {
       await fn({ email: normalizedEmail });
       return { error: null, usedEmailLinkFallback: false };
     } catch (error) {
-      const code = String(error?.code || '');
-      const msg = String(error?.message || '').toLowerCase();
-      const callableMissing =
-        code === 'functions/not-found' ||
-        code.includes('not-found') ||
-        msg.includes('not-found');
-
-      if (callableMissing) {
-        try {
-          await sendPasswordResetEmail(auth, normalizedEmail);
-          console.warn(
-            '[auth] sendPasswordResetEmailOtp: Cloud Function not deployed; used Firebase reset link email.',
-            code
-          );
-          return { error: null, usedEmailLinkFallback: true };
-        } catch (e) {
-          console.warn('sendPasswordResetEmail (fallback)', e?.code, e?.message);
-          return { error: this._friendlyAuthError(e), usedEmailLinkFallback: false };
-        }
+      // Cloud OTP callable often fails when logged out (e.g. functions/permission-denied) or if
+      // the function is misconfigured. Always fall back to Firebase Auth's password reset email.
+      try {
+        await sendPasswordResetEmail(auth, normalizedEmail);
+        console.warn(
+          '[auth] sendPasswordResetEmailOtp: callable failed; sent Firebase reset link instead.',
+          error?.code,
+          error?.message
+        );
+        return { error: null, usedEmailLinkFallback: true };
+      } catch (e) {
+        console.warn('sendPasswordResetEmail (fallback)', e?.code, e?.message);
+        return { error: this._friendlyAuthError(e), usedEmailLinkFallback: false };
       }
-
-      console.warn('sendPasswordResetEmailOtp', error?.code, error?.message);
-      return { error: this._callableErrorMessage(error), usedEmailLinkFallback: false };
     }
   },
 
