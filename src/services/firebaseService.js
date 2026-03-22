@@ -187,6 +187,7 @@ export const authService = {
     if (code.includes('resource-exhausted')) return msg || 'Too many requests. Wait a moment and try again.';
     if (code.includes('deadline-exceeded')) return msg || 'This code expired. Request a new one.';
     if (code.includes('permission-denied')) return msg || 'Incorrect code.';
+    if (code.includes('invalid-argument') && /code/i.test(msg)) return msg || 'Incorrect code.';
     if (code.includes('not-found')) return msg || 'Request not found.';
     if (code.includes('invalid-argument')) return msg || 'Check your input and try again.';
     if (code.includes('failed-precondition')) return msg || 'Service unavailable.';

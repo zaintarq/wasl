@@ -1,10 +1,6 @@
 const functions = require('firebase-functions');
-const { onObjectFinalized } = require('firebase-functions/v2/storage');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
 const crypto = require('crypto');
 
 // Initialize Firebase Admin
@@ -117,17 +113,24 @@ function buildHuzzEmailWrapper(opts) {
 </html>`;
 }
 
-// NSFW threshold: block if Porn, Hentai, or Sexy score exceeds this (0–1)
-const NSFW_THRESHOLD = 0.6;
-
-// Configure email transporter using Gmail SMTP
+// Configure email transporter using Gmail SMTP (set SMTP_USER / SMTP_PASSWORD in Firebase env)
 const getEmailTransporter = () => {
-  // Use Gmail SMTP credentials
   const SMTP_SERVER = 'smtp.gmail.com';
   const SMTP_PORT = 587;
-  const SMTP_USER = 'noreplyonlystream@gmail.com';
-  const SMTP_PASSWORD = 'yvyknzfblnphzhgk';
-  
+  let cfg = {};
+  try {
+    cfg = typeof functions.config === 'function' ? functions.config() : {};
+  } catch (e) {
+    cfg = {};
+  }
+  const SMTP_USER = process.env.SMTP_USER || (cfg.smtp && cfg.smtp.user) || 'noreplyonlystream@gmail.com';
+  const SMTP_PASSWORD = process.env.SMTP_PASSWORD || (cfg.smtp && cfg.smtp.password) || '';
+
+  if (!SMTP_PASSWORD) {
+    console.error('[email] SMTP_PASSWORD missing: set env or firebase functions:config:set smtp.password');
+    return null;
+  }
+
   return nodemailer.createTransport({
     host: SMTP_SERVER,
     port: SMTP_PORT,
@@ -284,97 +287,7 @@ This invitation was sent from HUZZ. If you didn't expect this email, you can ign
   }
 });
 
-/**
- * Profile image NSFW moderation (NSFWJS)
- * v2 Storage trigger (Eventarc) — Gen1 .storage.object().onFinalize often fails to configure.
- * Triggers when a file is finalized under images/{userId}/ in the default bucket.
- */
-const DEFAULT_STORAGE_BUCKET = 'huzz-10264.firebasestorage.app';
-
-exports.moderateProfileImage = onObjectFinalized(
-  {
-    bucket: DEFAULT_STORAGE_BUCKET,
-    region: 'us-central1',
-    memory: '1GiB',
-    timeoutSeconds: 60,
-  },
-  async (event) => {
-    const object = event.data;
-    const filePath = object.name;
-    const bucketName = object.bucket;
-
-    // Only process profile images: images/{userId}/...
-    if (!filePath || !filePath.startsWith('images/')) {
-      return null;
-    }
-
-    const pathParts = filePath.split('/');
-    if (pathParts.length < 3) {
-      return null;
-    }
-
-    const userId = pathParts[1];
-    const bucket = admin.storage().bucket(bucketName);
-    const file = bucket.file(filePath);
-    const tempPath = path.join(os.tmpdir(), path.basename(filePath));
-
-    try {
-      await file.download({ destination: tempPath });
-      const imageBuffer = fs.readFileSync(tempPath);
-
-      const tf = require('@tensorflow/tfjs-node');
-      const nsfwjs = require('nsfwjs');
-
-      const model = await nsfwjs.load();
-      const decoded = tf.node.decodeImage(imageBuffer);
-      const resized = tf.image.resizeBilinear(decoded, [224, 224]);
-      decoded.dispose();
-
-      const predictions = await model.classify(resized);
-      resized.dispose();
-
-      const scores = {};
-      for (const p of predictions) {
-        scores[p.className] = p.probability;
-      }
-
-      const porn = scores.Porn || 0;
-      const hentai = scores.Hentai || 0;
-      const sexy = scores.Sexy || 0;
-      const isNsfw = porn >= NSFW_THRESHOLD || hentai >= NSFW_THRESHOLD || sexy >= NSFW_THRESHOLD;
-
-      if (isNsfw) {
-        console.log(`[moderateProfileImage] NSFW detected: path=${filePath} Porn=${porn.toFixed(2)} Hentai=${hentai.toFixed(2)} Sexy=${sexy.toFixed(2)}`);
-        await file.delete();
-
-        const pathEncoded = filePath.replace(/\//g, '%2F');
-        const userRef = db.collection(COL.users).doc(userId);
-        const userSnap = await userRef.get();
-        if (userSnap.exists) {
-          const data = userSnap.data();
-          const images = Array.isArray(data.images) ? data.images : [];
-          const filtered = images.filter((url) => typeof url === 'string' && !url.includes(pathEncoded));
-          if (filtered.length !== images.length) {
-            await userRef.update({ images: filtered });
-            console.log(`[moderateProfileImage] Removed NSFW image from user ${userId} profile.`);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('[moderateProfileImage] Error:', err.message);
-    } finally {
-      try {
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath);
-        }
-      } catch (e) {
-        // ignore cleanup errors
-      }
-    }
-
-    return null;
-  }
-);
+// Profile image moderation lives in ../functions-moderation (separate codebase — tfjs/nsfwjs).
 
 // ---------------------------------------------------------------------------
 // Chat safety: toxicity check before send. Blocks vulgar messages and logs
@@ -532,7 +445,7 @@ exports.verifySignupEmailOtp = functions.region('us-central1').https.onCall(asyn
   }
   if (d.codeHash !== hashSignupOtp(code)) {
     await ref.update({ attempts });
-    throw new functions.https.HttpsError('permission-denied', 'Incorrect code. Try again.');
+    throw new functions.https.HttpsError('invalid-argument', 'Incorrect code. Try again.');
   }
 
   await ref.delete();
@@ -776,7 +689,7 @@ exports.verifyPasswordResetEmailOtp = functions.region('us-central1').https.onCa
   }
   if (d.codeHash !== hashPasswordResetOtp(code)) {
     await ref.update({ attempts });
-    throw new functions.https.HttpsError('permission-denied', 'Incorrect code. Try again.');
+    throw new functions.https.HttpsError('invalid-argument', 'Incorrect code. Try again.');
   }
 
   await ref.delete();

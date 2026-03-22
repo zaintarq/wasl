@@ -4,5 +4,14 @@
     "indexes": "firestore.indexes.json"
   },
   "storage": { "rules": "storage.rules" },
-  "functions": { "source": "functions" }
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default"
+    },
+    {
+      "source": "functions-moderation",
+      "codebase": "moderation"
+    }
+  ]
 }
