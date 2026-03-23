@@ -791,6 +791,24 @@ export function HomeScreen({ onNavigate }) {
       }
       console.log('[Swipe] Authenticated user:', authUser.uid);
 
+      if (!loading) {
+        const imgs = Array.isArray(me?.images) ? me.images : [];
+        const validProfileImages = imgs.filter(
+          (img) => img && typeof img === 'string' && img.trim().length > 0
+        );
+        if (validProfileImages.length === 0) {
+          Alert.alert(
+            'Add photos',
+            'Upload at least one photo in your profile to start swiping.',
+            [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Go to profile', onPress: () => onNavigate('myProfile') },
+            ]
+          );
+          return;
+        }
+      }
+
       if (!target) {
         console.error('[Swipe] ❌ No target user available:', {
           currentIndex,

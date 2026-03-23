@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, Image, Modal, Platform, Animated, Dimensions } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { authService, storageService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, Modal, Platform, Animated, Dimensions } from 'react-native';
+import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { detectCountryCity } from '../../services/locationService.native.js';
-import { sha256 } from '../../utils/hash';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 import { ArrowLeft } from 'lucide-react-native';
@@ -19,6 +17,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
+import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -26,16 +25,21 @@ const WELCOME_BG = ['#F8FAFC', '#EFF6FF', '#DBEAFE'];
 const WELCOME_BG_LOCATIONS = [0, 0.45, 1];
 const WELCOME_BG_FALLBACK = '#EFF6FF';
 
-export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
+/** Titles match Welcome / step 2 — Kaushan + soft blue card */
+const ONBOARDING_STEP_COPY = {
+  3: {
+    title: 'Set your preferences',
+    subtitle: 'Then you can browse profiles — add a photo in Profile to swipe',
+  },
+};
+
+export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initialStepProp }) {
   const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
   const [step, setStep] = useState(2); 
-  const [selectedInterests, setSelectedInterests] = useState([]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [bio, setBio] = useState('');
   const [countryOfResidence, setCountryOfResidence] = useState('');
   const [city, setCity] = useState('');
   const [gender, setGender] = useState(''); // 'Male', 'Female', 'Other'
@@ -50,8 +54,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
   const [forgotPasswordActive, setForgotPasswordActive] = useState(false);
   const [resetSessionId, setResetSessionId] = useState('');
   const [loading, setLoading] = useState(false);
-  const [userPhotos, setUserPhotos] = useState([]);
-  const [postVerifyTarget, setPostVerifyTarget] = useState('home'); // 'home' | 'photos'
   const [countryModalOpen, setCountryModalOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
   const [manualLocationOpen, setManualLocationOpen] = useState(false);
@@ -91,28 +93,56 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
     };
   }, []);
 
-  // If user tapped "Log In" from Welcome screen, start in login mode.
+  // Welcome / navigation: mode + optional initialStep (3–6 = resume after auth, skip login card)
   useEffect(() => {
     setIsLogin(mode === 'login');
-    setStep(2);
     setLoading(false);
     authInFlightRef.current = false;
-    setPostVerifyTarget(mode === 'login' ? 'home' : 'photos');
-    // Clear form fields when mode changes
-    setEmail('');
-    setPassword('');
-    setName('');
-    setShowPassword(false);
-    setAuthSubStep('email');
-    setSignupSessionId('');
-    setOtpCode('');
-    setForgotPasswordActive(false);
-    setResetSessionId('');
-  }, [mode]);
+    const resumeStep =
+      typeof initialStepProp === 'number' && initialStepProp === 3 ? 3 : 2;
+    setStep(resumeStep);
+    if (resumeStep === 2) {
+      setEmail('');
+      setPassword('');
+      setName('');
+      setShowPassword(false);
+      setAuthSubStep('email');
+      setSignupSessionId('');
+      setOtpCode('');
+      setForgotPasswordActive(false);
+      setResetSessionId('');
+    }
+  }, [mode, initialStepProp]);
 
-  // Auto-redirect admins/staff from verification step
+  // Prefill profile when opening at step 3 (returning user)
   useEffect(() => {
-    if (step === 7) {
+    if (initialStepProp !== 3) return;
+    const uid = authService.getCurrentUser()?.uid;
+    if (!uid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await userService.getUserById(uid);
+        const p = res?.data;
+        if (!p || cancelled) return;
+        if (p.name) setName(String(p.name));
+        if (p.gender) setGender(String(p.gender));
+        if (p.religion) setReligion(String(p.religion));
+        if (Array.isArray(p.genderPreferences)) setGenderPreferences(p.genderPreferences);
+        if (p.countryOfResidence) setCountryOfResidence(String(p.countryOfResidence));
+        if (p.city) setCity(String(p.city));
+      } catch (e) {
+        console.warn('[OnboardingFlow] Prefill profile:', e?.message || e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialStepProp]);
+
+  // Auto-redirect admins/staff/wali when on preferences step (after auth)
+  useEffect(() => {
+    if (step === 3) {
       const checkRoleAndRedirect = async () => {
         try {
           const user = authService.getCurrentUser();
@@ -163,72 +193,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
     return msg.toLowerCase().includes('timed out');
   };
 
-  const pickImage = async () => {
-    try {
-      // Request media library permissions first
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow access to your photos to upload images.');
-        return;
-      }
-
-      // Handle different expo-image-picker API versions
-      // Try to use MediaType.Images (array format), fallback to omitting if not available
-      const pickerOptions = {
-        allowsEditing: true,
-        aspect: [4, 5],
-        quality: 0.5,
-      };
-
-      // Only add mediaTypes if MediaType is available (don't use deprecated MediaTypeOptions)
-      try {
-        if (ImagePicker.MediaType && ImagePicker.MediaType.Images) {
-          pickerOptions.mediaTypes = [ImagePicker.MediaType.Images];
-        }
-        // If MediaType is not available, omit mediaTypes (defaults to images)
-      } catch (e) {
-        // MediaType not available - omit it (will default to images)
-      }
-
-      let result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
-
-      if (!result.canceled) {
-        const uri = result.assets[0].uri;
-        setLoading(true);
-        try {
-          const user = authService.getCurrentUser();
-          
-          if (user) {
-            const { url, error } = await storageService.uploadImage(user.uid, uri);
-            if (url) {
-              setUserPhotos(prev => [...prev, url]);
-              Alert.alert('Success', 'Photo uploaded to storage!');
-            } else {
-              Alert.alert('Upload Error', error);
-            }
-          } else {
-            // If not logged in yet, just show locally
-            setUserPhotos(prev => [...prev, uri]);
-          }
-        } catch (err) {
-          console.error('Upload error:', err);
-          Alert.alert('Error', 'Failed to upload image to storage.');
-        } finally {
-          setLoading(false);
-        }
-      }
-    } catch (err) {
-      console.error('Image picker error:', err);
-      Alert.alert('Error', 'Failed to open photo gallery. Please check permissions.');
-    }
-  };
-
-  const interests = [
-    'Coffee', 'Travel', 'Music', 'Art', 'Fitness', 'Food',
-    'Photography', 'Yoga', 'Gaming', 'Reading', 'Movies', 'Hiking',
-    'Tech', 'Dancing', 'Cooking', 'Pets'
-  ];
-
   const filteredCountries = useMemo(() => {
     const q = String(countrySearch || '').trim().toLowerCase();
     if (!q) return COUNTRIES;
@@ -277,14 +241,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
       console.error('[OnboardingFlow] Location sync error:', err);
       Alert.alert('Location Error', `Failed to detect location: ${err.message || err}`);
     }
-  };
-
-  const toggleInterest = (interest) => {
-    setSelectedInterests(prev =>
-      prev.includes(interest)
-        ? prev.filter(i => i !== interest)
-        : [...prev, interest]
-    );
   };
 
   const handleAuth = async (authType) => {
@@ -442,13 +398,14 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
     }
 
     await authService.refreshCurrentUser();
-    const u = authService.getCurrentUser();
-    if (u?.emailVerified) {
-      onNavigate('home');
-    } else {
-      setPostVerifyTarget('home');
-      setStep(7);
+    const profileRes2 = await userService.getUserById(user.uid);
+    const p2 = profileRes2?.data || {};
+    if (!hasPreferencesComplete(p2)) {
+      const initialStep = getOnboardingInitialStep(p2);
+      onNavigate('onboarding', { mode: 'login', initialStep });
+      return;
     }
+    onNavigate('home');
   };
 
   const performEmailLogin = async (normalizedEmail) => {
@@ -554,11 +511,10 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
       Alert.alert(
         'Success',
         verificationEmailSent
-          ? 'Account created! Check your email to verify (spam/promotions).'
-          : 'Account created! You can resend verification from the next screen.'
+          ? 'Account created! Next, set your preferences.'
+          : 'Account created! Next, set your preferences.'
       );
-      setPostVerifyTarget('photos');
-      setStep(7);
+      setStep(3);
     } catch (error) {
       console.warn('Signup finalize error:', error?.message || error);
       if (isTimeoutError(error)) {
@@ -589,15 +545,14 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
   const finishSocialAuth = async (user) => {
     try {
       if (!user?.uid) return;
-      // best-effort location sync
       syncLocationAfterAuth();
       const res = await userService.getUserById(user.uid);
       const p = res?.data || null;
-      if (p?.profileComplete) {
+      if (hasPreferencesComplete(p || {})) {
         onNavigate('home');
-      } else {
-        setStep(3);
+        return;
       }
+      setStep(getOnboardingInitialStep(p || {}));
     } catch {
       onNavigate('home');
     }
@@ -654,94 +609,46 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
   };
 
   const nextStep = async () => {
-    const FLOW_LAST_STEP = 6; // Updated: interests is now step 6
-    const VERIFY_STEP = 7; // Updated: verification is now step 7
+    if (step !== 3) return;
 
-    // Verification step has its own buttons.
-    if (step === VERIFY_STEP) return;
-
-    // Validate step 5 (gender/religion preferences) before proceeding
-    if (step === 5) {
-      if (!religion) {
-        Alert.alert('Required', 'Please select your religion.');
-        return;
-      }
-      if (!gender) {
-        Alert.alert('Required', 'Please select your gender.');
-        return;
-      }
-      if (religion !== 'Muslim' && genderPreferences.length === 0) {
-        Alert.alert('Required', 'Please select at least one preference.');
-        return;
-      }
+    if (!religion) {
+      Alert.alert('Required', 'Please select your religion.');
+      return;
     }
-
-    // Country is auto-detected after auth; do not block progress here.
-
-    if (step < FLOW_LAST_STEP) {
-      setStep(step + 1);
-    } else {
-      setLoading(true);
-      try {
-        const user = authService.getCurrentUser();
-        if (!user?.uid) {
-          Alert.alert('Error', 'You must be signed in to save your profile.');
-          setLoading(false);
-          return;
-        }
-
-        // Store raw email (same as auth email) + hash for blocking
-        const rawEmail = String(user.email || '').trim().toLowerCase();
-        const emailHash = await sha256(rawEmail);
-        const { error: saveError } = await userService.setUser(user.uid, {
-          name,
-          age: age ? parseInt(age) : null,
-          bio,
-          interests: selectedInterests,
-          images: userPhotos,
-          // Location is stored separately via location sync; keep any previously chosen matchCountry unchanged.
-          country: String(countryOfResidence || '').trim(),
-          countryOfResidence: String(countryOfResidence || '').trim(),
-          city: String(city || '').trim(),
-          email: rawEmail, // Store raw email (same as auth)
-          emailHash, // Keep hash for contact blocking
-          gender: String(gender || '').trim(),
-          religion: String(religion || '').trim(),
-          genderPreferences: Array.isArray(genderPreferences) ? genderPreferences : [],
-          genderPreferencesSet: true,
-          profileComplete: true
-        });
-
-        if (saveError) {
-          console.error('Save profile error:', saveError);
-          Alert.alert('Save Failed', `Could not save your profile: ${saveError}\n\nMake sure Firestore rules are deployed.`);
-          setLoading(false);
-          return;
-        }
-
-        console.log('✅ Profile saved successfully');
-        
-        // Gate matching/chat behind verified email
-        await authService.refreshCurrentUser();
-        const u = authService.getCurrentUser();
-        if (u?.emailVerified) {
-          onNavigate('home');
-        } else {
-          setPostVerifyTarget('home');
-          setStep(VERIFY_STEP);
-        }
-      } catch (e) {
-        console.error('Final Save Error:', e);
-        Alert.alert('Error', `Failed to save profile: ${e?.message || 'Unknown error'}\n\nCheck console for details.`);
-      } finally {
-        setLoading(false);
+    if (!gender) {
+      Alert.alert('Required', 'Please select your gender.');
+      return;
+    }
+    if (religion !== 'Muslim' && genderPreferences.length === 0) {
+      Alert.alert('Required', 'Please select at least one preference.');
+      return;
+    }
+    const user = authService.getCurrentUser();
+    if (!user?.uid) {
+      Alert.alert('Required', 'Sign in first to save your preferences.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error: saveErr } = await userService.updateUser(user.uid, {
+        gender: String(gender || '').trim(),
+        religion: String(religion || '').trim(),
+        genderPreferences: Array.isArray(genderPreferences) ? genderPreferences : [],
+        genderPreferencesSet: true,
+      });
+      if (saveErr) {
+        Alert.alert('Could not save', saveErr);
+        return;
       }
+      await authService.refreshCurrentUser();
+      onNavigate('home');
+    } finally {
+      if (mountedRef.current) setLoading(false);
     }
   };
 
-  // Steps: 2=Email, 3=Photos, 4=Basic Info, 5=Gender/Religion, 6=Interests, 7=Verification
-  const FLOW_LAST_STEP = 6; // Interests is the last step before verification
-  const VERIFY_STEP = 7; // Verification is step 7
+  // Steps: 2 = auth, 3 = preferences → home (photos & rest of profile from Profile tab)
+  const FLOW_LAST_STEP = 3;
   const progress = ((Math.min(step, FLOW_LAST_STEP) - 2) / (FLOW_LAST_STEP - 2)) * 100;
 
   const kFont = fontsLoaded ? { fontFamily: 'KaushanScript_400Regular' } : { fontWeight: '700' };
@@ -758,7 +665,11 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
 
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, step === 2 && styles.scrollContentStep2]}
+          contentContainerStyle={[
+            styles.scrollContent,
+            step === 2 && styles.scrollContentStep2,
+            step !== 2 && styles.scrollContentOnboard,
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {/* Step 2: matches Welcome — mascot, Huzz, light blue, Kaushan, back */}
@@ -995,71 +906,53 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
           )}
 
           {step !== 2 && (
-        <View style={styles.window}>
+        <View style={styles.step2Outer}>
+          <View style={styles.step2Header}>
+            <HuzzPressable
+              onPress={() => {
+                if (step === 3) setStep(2);
+              }}
+              style={styles.step2BackHit}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <ArrowLeft size={26} color={tokens.colors.text} strokeWidth={2.25} />
+            </HuzzPressable>
+          </View>
 
-          {/* Step 3: Profile Photo */}
+          <WelcomeMascotBlock maxWidth={200} />
+
+          <View style={styles.step2BrandBlock}>
+            <Text style={[styles.step2Huzz, fontsLoaded && { fontFamily: 'KaushanScript_400Regular' }]}>Huzz</Text>
+            <View style={styles.step2UnderlineTrack}>
+              <LinearGradient
+                colors={['#1D4ED8', '#2563EB', '#3B82F6']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFill}
+              />
+            </View>
+          </View>
+
+          {step === 3 && (
+            <>
+              <Text style={[styles.step2ScreenTitle, kFont, { fontSize: 28, marginBottom: 6 }]}>
+                {ONBOARDING_STEP_COPY[3].title}
+              </Text>
+              <Text style={[styles.step2ScreenSub, kFont, { fontSize: 17 }]}>
+                {ONBOARDING_STEP_COPY[3].subtitle}
+              </Text>
+            </>
+          )}
+
+          <View style={styles.step2Card}>
+          {/* Step 3: Gender/Religion/Sexuality Preferences */}
           {step === 3 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.title}>Add your photos</Text>
-              <Text style={styles.subtitle}>Upload at least 2 photos to continue</Text>
-
-              <View style={styles.photoGrid}>
-                {[0, 1, 2, 3, 4, 5].map((i) => (
-                  <TouchableOpacity
-                    key={i}
-                    onPress={pickImage}
-                    style={[
-                      styles.photoPlaceholder,
-                      { backgroundColor: i % 2 === 0 ? '#ffc0cb' : '#87ceeb' }
-                    ]}
-                  >
-                    {userPhotos[i] ? (
-                      <Image source={{ uri: userPhotos[i] }} style={styles.photoImage} />
-                    ) : (
-                      <Text style={styles.photoIcon}>📷</Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Step 4: Basic Info */}
-          {step === 4 && (
-            <View style={styles.stepContainer}>
-              <Text style={styles.title}>About you</Text>
-              <Text style={styles.subtitle}>Tell us a bit about yourself</Text>
-
-              <View style={styles.form}>
-                <Text style={styles.label}>First Name</Text>
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="Enter your name" 
-                  value={name}
-                  onChangeText={setName}
-                />
-
-                <Text style={styles.label}>Age</Text>
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="18" 
-                  keyboardType="numeric"
-                  value={age}
-                  onChangeText={setAge}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* Step 5: Gender/Religion/Sexuality Preferences */}
-          {step === 5 && (
-            <View style={styles.stepContainer}>
-              <Text style={styles.title}>Set Your Preferences</Text>
-              <Text style={styles.subtitle}>Tell us about yourself</Text>
-
               <View style={styles.form}>
                 {/* Religion Selection */}
-                <Text style={styles.label}>Religion *</Text>
+                <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Religion *</Text>
                 <View style={styles.radioGroup}>
                   <TouchableOpacity
                     style={[styles.radioOption, religion === 'Muslim' && styles.radioOptionSelected]}
@@ -1084,7 +977,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
                 </View>
 
                 {/* Gender Selection */}
-                <Text style={styles.label}>Gender *</Text>
+                <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Gender *</Text>
                 <View style={styles.radioGroup}>
                   <TouchableOpacity
                     style={[styles.radioOption, gender === 'Male' && styles.radioOptionSelected]}
@@ -1130,7 +1023,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
                         In accordance with Islamic teachings, Muslims are matched with the opposite gender only.
                       </Text>
                     </View>
-                    <Text style={styles.label}>Interested in (Auto-set for Muslims)</Text>
+                    <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Interested in (auto-set for Muslims)</Text>
                     <View style={styles.preferencesGroup}>
                       <View style={[styles.preferenceOption, styles.preferenceOptionSelected]}>
                         <Text style={styles.preferenceTextSelected}>
@@ -1141,7 +1034,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
                   </View>
                 ) : (
                   <View>
-                    <Text style={styles.label}>Interested in *</Text>
+                    <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Interested in *</Text>
                     <View style={styles.preferencesGroup}>
                       <TouchableOpacity
                         style={[styles.preferenceOption, genderPreferences.includes('boys') && styles.preferenceOptionSelected]}
@@ -1169,153 +1062,14 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
                       </TouchableOpacity>
                     </View>
                     {genderPreferences.length === 0 && (
-                      <Text style={styles.hintText}>Please select at least one preference</Text>
+                      <Text style={[styles.hintText, kFont]}>Please select at least one preference</Text>
                     )}
                   </View>
                 )}
               </View>
             </View>
           )}
-
-          {/* Step 6: Interests */}
-          {step === 6 && (
-            <View style={styles.stepContainer}>
-              <Text style={styles.title}>Your interests</Text>
-              <Text style={styles.subtitle}>Select at least 5 interests</Text>
-
-              <View style={styles.interestsGrid}>
-                {interests.map((interest, index) => {
-                  const colors = ['#00ff00', '#ffc0cb', '#0080ff', '#87ceeb', '#ffff00', '#800020'];
-                  const color = colors[index % colors.length];
-                  const isSelected = selectedInterests.includes(interest);
-                  return (
-                    <TouchableOpacity
-                      key={interest}
-                      onPress={() => toggleInterest(interest)}
-                      style={[
-                        styles.interestButton,
-                        {
-                          backgroundColor: isSelected ? color : '#c0c0c0',
-                        }
-                      ]}
-                    >
-                      <Text style={[
-                        styles.interestText,
-                        { color: isSelected && color === '#800020' ? '#ffffff' : '#000000' }
-                      ]}>
-                        {interest} {isSelected ? '✓' : ''}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={styles.label}>Bio (optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Tell people about yourself..."
-                multiline
-                numberOfLines={4}
-                value={bio}
-                onChangeText={setBio}
-              />
-            </View>
-          )}
-
-          {/* Step 7: Verify Email */}
-          {step === 7 && (
-            <View style={styles.stepContainer}>
-              <Text style={styles.title}>Verify your email</Text>
-              <Text style={styles.subtitle}>
-                We sent a verification link to your email. Please verify to continue.
-              </Text>
-
-              <View style={styles.windowInner}>
-                <Text style={styles.label}>Signed in as</Text>
-                <Text style={styles.verifyEmailText}>
-                  {authService.getCurrentUser()?.email || '(unknown)'}
-                </Text>
-              </View>
-
-              <View style={styles.buttonList}>
-                <TouchableOpacity
-                  style={[styles.authButton, { backgroundColor: '#87ceeb' }]}
-                  disabled={loading}
-                  onPress={async () => {
-                    if (loading) return;
-                    setLoading(true);
-                    try {
-                      const { error } = await authService.resendVerificationEmail();
-                      if (error) Alert.alert('Error', error);
-                      else Alert.alert('Sent', 'Verification email resent.');
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                >
-                  <Text style={styles.authButtonText}>
-                    {loading ? 'Loading...' : 'Resend verification email'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.authButton, { backgroundColor: '#90ee90', borderColor: '#228b22' }]}
-                  disabled={loading}
-                  onPress={async () => {
-                    if (loading) return;
-                    setLoading(true);
-                    try {
-                      // Check role from admin collection FIRST - admins/staff skip verification
-                      const user = authService.getCurrentUser();
-                      if (user?.uid) {
-                        const roleCheck = await checkUserRoleFromAdminCollection(user.uid);
-                        if (roleCheck.isAdmin) {
-                          onNavigate('admin');
-                          return;
-                        } else if (roleCheck.isStaff) {
-                          onNavigate('staff');
-                          return;
-                        }
-                        
-                        // Check if wali (still in users collection)
-                        const profileRes = await userService.getUserById(user.uid);
-                        const profile = profileRes?.data || {};
-                        const waliRole = String(profile?.role || '').toLowerCase().trim();
-                        if (waliRole === 'wali') {
-                          onNavigate('wali');
-                          return;
-                        }
-                      }
-                      
-                      // Normal users - check email verification
-                      await authService.refreshCurrentUser();
-                      const u = authService.getCurrentUser();
-                      if (u?.emailVerified) {
-                        if (postVerifyTarget === 'photos') setStep(3);
-                        else onNavigate('home');
-                      } else {
-                        Alert.alert('Not verified yet', 'Please verify via the email link, then tap "I verified".');
-                      }
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                >
-                  <Text style={styles.authButtonText}>
-                    {loading ? 'Loading...' : 'I verified'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.authButton, { backgroundColor: '#c0c0c0' }]}
-                  disabled={loading}
-                  onPress={() => setStep(2)}
-                >
-                  <Text style={styles.authButtonText}>Back</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+          </View>
         </View>
           )}
       </ScrollView>
@@ -1399,18 +1153,19 @@ export function OnboardingFlow({ onNavigate, mode = 'signup' }) {
         </View>
       </Modal>
 
-      {/* Next Button - Hide on step 2 (sign-up/login) and step 7 (verification) */}
-      {step !== 2 && step !== 7 && (
+      {/* Next — same Retro primary as sign-up step */}
+      {step !== 2 && (
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.nextButton, { backgroundColor: '#800020' }]}
+          <RetroButton
+            variant="primary"
             onPress={nextStep}
             disabled={loading}
-          >
-            <Text style={styles.nextButtonText}>
-              {step === 5 ? (loading ? 'Saving...' : 'Complete Profile') : (loading ? 'Loading...' : 'Continue')} →
-            </Text>
-          </TouchableOpacity>
+            title={
+              loading ? 'Saving...' : 'Discover people'
+            }
+            style={[styles.step2BtnShape, styles.step2PrimaryShadow]}
+            textStyle={[styles.step2BtnLabel, kFont, { fontSize: 19 }]}
+          />
         </View>
       )}
     </SafeAreaView>
@@ -1579,24 +1334,30 @@ const styles = StyleSheet.create({
     letterSpacing: 0.35,
   },
   progressBarContainer: {
-    height: 20,
-    backgroundColor: '#ffffff',
-    borderWidth: 3,
-    borderColor: '#8b4513',
-    borderRadius: 10,
-    margin: 16,
+    height: 12,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.28)',
+    borderRadius: 999,
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#90ee90',
-    borderRadius: 7,
+    backgroundColor: '#2563EB',
+    borderRadius: 999,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
+  },
+  scrollContentOnboard: {
+    paddingHorizontal: 4,
+    paddingBottom: 28,
   },
   window: {
     backgroundColor: '#ffffff',
@@ -1665,16 +1426,20 @@ const styles = StyleSheet.create({
   photoPlaceholder: {
     width: '30%',
     aspectRatio: 1,
-    borderRadius: 12,
-    borderWidth: 3,
-    borderColor: '#8b4513',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#654321',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+      },
+      android: { elevation: 3 },
+    }),
   },
   photoIcon: {
     fontSize: 32,
@@ -1695,12 +1460,12 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#8b4513',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.35)',
     padding: 12,
-    fontSize: 14,
-    color: '#000000',
+    fontSize: 15,
+    color: '#0f172a',
   },
   selectText: {
     fontSize: 14,
@@ -1719,14 +1484,18 @@ const styles = StyleSheet.create({
   interestButton: {
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#654321',
-    shadowColor: '#654321',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.3)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+      },
+      android: { elevation: 2 },
+    }),
   },
   interestText: {
     fontSize: 12,
@@ -1736,6 +1505,9 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 20,
     backgroundColor: 'transparent',
+    width: '100%',
+    alignSelf: 'stretch',
+    alignItems: 'stretch',
   },
   row: {
     flexDirection: 'row',
@@ -1759,16 +1531,16 @@ const styles = StyleSheet.create({
   radioOption: {
     flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#8b4513',
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.35)',
     backgroundColor: '#ffffff',
     alignItems: 'center',
   },
   radioOptionSelected: {
-    backgroundColor: '#800020',
-    borderColor: '#654321',
+    backgroundColor: '#BE123C',
+    borderColor: '#9F1239',
   },
   radioText: {
     fontSize: 14,
@@ -1779,10 +1551,10 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   islamicNote: {
-    backgroundColor: '#fffef0',
-    borderWidth: 3,
-    borderColor: '#8b4513',
-    borderRadius: 8,
+    backgroundColor: 'rgba(239, 246, 255, 0.9)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.22)',
+    borderRadius: 14,
     padding: 16,
     marginTop: 8,
     marginBottom: 16,
@@ -1790,7 +1562,7 @@ const styles = StyleSheet.create({
   islamicNoteTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#800020',
+    color: '#1D4ED8',
     marginBottom: 8,
   },
   islamicNoteText: {
@@ -1807,16 +1579,16 @@ const styles = StyleSheet.create({
   preferenceOption: {
     flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#8b4513',
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.35)',
     backgroundColor: '#ffffff',
     alignItems: 'center',
   },
   preferenceOptionSelected: {
-    backgroundColor: '#800020',
-    borderColor: '#654321',
+    backgroundColor: '#BE123C',
+    borderColor: '#9F1239',
   },
   preferenceText: {
     fontSize: 14,
@@ -1827,8 +1599,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   hintText: {
-    fontSize: 11,
-    color: '#800020',
+    fontSize: 13,
+    color: '#DC2626',
     fontStyle: 'italic',
     marginTop: 4,
   },

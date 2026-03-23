@@ -136,24 +136,22 @@ service cloud.firestore {
 
       // Per-user subcollections
       match /likesSent/{otherUid} {
-        // Users can create/update their own likes/passes
-        allow create, update: if isSignedIn() && request.auth.uid == uid && !isDisabled();
+        // users/{likerUid}/likesSent/{targetUid} — only the liker (uid) writes; toUid must match doc id segment
+        allow create, update: if isSignedIn()
+          && request.auth.uid == uid
+          && request.resource.data.toUid == otherUid
+          && request.resource.data.action == 'like';
         allow read: if isOwner(uid);
-        // Owner can delete; other user can delete (for unmatch so both can see each other again)
         allow delete: if isOwner(uid) || (isSignedIn() && request.auth.uid == otherUid && !isDisabled());
       }
       match /likesReceived/{otherUid} {
-        // Users can read their received likes
+        // users/{targetUid}/likesReceived/{likerUid} — liker writes to recipient's subcollection (auth == liker doc id)
         allow read: if isOwner(uid);
-        // Other users can create likesReceived when they like this user
-        // The document ID (otherUid) is the person who sent the like (fromUid)
-        // So when User A likes User B, they create users/{B}/likesReceived/{A}
-        // We need to allow User A to write to User B's likesReceived collection
-        allow create, update: if isSignedIn() 
-          && request.auth.uid == otherUid  // The authenticated user matches the document ID (the liker)
-          && request.resource.data.fromUid == request.auth.uid  // The fromUid in data matches the authenticated user
-          && !isDisabled();
-        // Owner can delete; other user (otherUid) can delete for unmatch
+        allow create, update: if isSignedIn()
+          && request.auth.uid == otherUid
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.fromUid == otherUid
+          && request.resource.data.action == 'like';
         allow delete: if isOwner(uid) || (isSignedIn() && request.auth.uid == otherUid && !isDisabled());
       }
       match /blocks/{otherUid} {
@@ -186,17 +184,20 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && !isDisabled()
         && (
-          // Standard: uids list of 2, requester is participant
           (
             request.resource.data.uids is list
             && request.resource.data.uids.size() == 2
-            && request.resource.data.uids.hasAny([request.auth.uid])
+            && (
+              request.resource.data.uids[0] == request.auth.uid
+              || request.resource.data.uids[1] == request.auth.uid
+            )
           )
-          // Pending match: requester is the liker (requestedBy)
           || (
             request.resource.data.status == 'pending'
             && request.resource.data.requestedBy is string
             && request.resource.data.requestedBy == request.auth.uid
+            && request.resource.data.requestedTo is string
+            && request.resource.data.requestedTo != request.auth.uid
           )
         );
 

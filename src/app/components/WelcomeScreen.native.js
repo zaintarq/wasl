@@ -7,6 +7,7 @@ import { tokens } from '../../ui/tokens';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
 
 /** Soft light-blue sky — calm, easy on the eyes. */
 const WELCOME_BG = ['#F8FAFC', '#EFF6FF', '#DBEAFE'];
@@ -41,10 +42,14 @@ export function WelcomeScreen({ onNavigate }) {
                       onNavigate('wali');
                       return;
                     }
-                    if (profile?.profileComplete) {
+                    const prefsOk = profile && hasPreferencesComplete(profile);
+                    if (prefsOk) {
                       onNavigate('home');
                     } else {
-                      onNavigate('onboarding', { mode: 'signup' });
+                      onNavigate('onboarding', {
+                        mode: 'signup',
+                        initialStep: getOnboardingInitialStep(profile || {}),
+                      });
                     }
                   })
                   .catch(() => {
@@ -55,8 +60,13 @@ export function WelcomeScreen({ onNavigate }) {
                 userService.getUserById(user.uid)
                   .then((res) => {
                     const profile = res?.data;
-                    if (profile?.profileComplete) onNavigate('home');
-                    else onNavigate('onboarding', { mode: 'signup' });
+                    const prefsOk = profile && hasPreferencesComplete(profile);
+                    if (prefsOk) onNavigate('home');
+                    else
+                      onNavigate('onboarding', {
+                        mode: 'signup',
+                        initialStep: getOnboardingInitialStep(profile || {}),
+                      });
                   })
                   .catch(() => {
                     onNavigate('home');

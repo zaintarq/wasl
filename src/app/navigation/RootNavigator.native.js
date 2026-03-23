@@ -28,6 +28,7 @@ import { registerForPushNotificationsAsync, getNotificationListeners, setBadgeCo
 import { getDeviceHash } from '../../services/deviceService';
 import * as Contacts from 'expo-contacts';
 import { vpnDetectionService } from '../../services/vpnDetectionService';
+import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
 
 const RootStack = createNativeStackNavigator();
 
@@ -353,9 +354,23 @@ function useLegacyOnNavigate(navigation) {
             })
           );
           return;
-        case 'onboarding':
-          navigation.navigate(Routes.Onboarding, { mode: mode === 'login' ? 'login' : 'signup' });
+        case 'onboarding': {
+          const isLogin = mode === 'login';
+          // Never pass initialStep on Log in — only email/password (step 2). Prefs (step 3) come after name in signup.
+          const initialStep =
+            !isLogin && arg && typeof arg === 'object' && typeof arg.initialStep === 'number'
+              ? arg.initialStep
+              : undefined;
+          const params = { mode: isLogin ? 'login' : 'signup' };
+          if (initialStep != null) params.initialStep = initialStep;
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: Routes.Onboarding, params }],
+            })
+          );
           return;
+        }
         case 'home':
           navigation.dispatch(
             CommonActions.reset({
@@ -444,6 +459,7 @@ function screenOptionsBase() {
 export function RootNavigator() {
   const navRef = React.useRef(null);
   const [initialRoute, setInitialRoute] = React.useState(Routes.Welcome);
+  const [onboardingParams, setOnboardingParams] = React.useState({});
   const [isReady, setIsReady] = React.useState(false);
 
   // Check auth state on mount for persistent login
@@ -486,27 +502,29 @@ export function RootNavigator() {
                     
                     const profile = res?.data;
                     if (!profile) {
-                      // No profile data - go to onboarding
+                      setOnboardingParams({ mode: 'signup', initialStep: 3 });
                       setInitialRoute(Routes.Onboarding);
                       setIsReady(true);
                       return;
                     }
                     
                     const waliRole = String(profile?.role || '').toLowerCase().trim();
-                    // profileComplete can be undefined for new users - treat undefined as false
-                    const profileComplete = profile?.profileComplete === true;
+                    const prefsOk = hasPreferencesComplete(profile);
+                    const needsOnboarding = !prefsOk;
                     
-                    // Only log if wali or profile incomplete (for debugging)
-                    if (waliRole === 'wali' || !profileComplete) {
-                      console.log('[RootNavigator] User profile:', { uid: user.uid, waliRole, profileComplete });
+                    if (waliRole === 'wali' || needsOnboarding) {
+                      console.log('[RootNavigator] User profile:', { uid: user.uid, waliRole, prefsOk });
                     }
                     
                     if (waliRole === 'wali') {
-                      // Check if user is a wali - always show wali screen
                       setInitialRoute(Routes.Wali);
-                    } else if (profileComplete) {
+                    } else if (!needsOnboarding) {
                       setInitialRoute(Routes.TabHome);
                     } else {
+                      setOnboardingParams({
+                        mode: 'signup',
+                        initialStep: getOnboardingInitialStep(profile),
+                      });
                       setInitialRoute(Routes.Onboarding);
                     }
                     setIsReady(true);
@@ -518,13 +536,17 @@ export function RootNavigator() {
                   });
               })
               .catch(() => {
-                // If admin check fails, fall back to normal user flow
                 userService.getUserById(user.uid)
                   .then((res) => {
                     const profile = res?.data;
-                    if (profile?.profileComplete) {
+                    const prefsOk = profile && hasPreferencesComplete(profile);
+                    if (prefsOk) {
                       setInitialRoute(Routes.TabHome);
                     } else {
+                      setOnboardingParams({
+                        mode: 'signup',
+                        initialStep: getOnboardingInitialStep(profile || {}),
+                      });
                       setInitialRoute(Routes.Onboarding);
                     }
                     setIsReady(true);
@@ -535,12 +557,14 @@ export function RootNavigator() {
                   });
               });
           } else {
-            // No user logged in
+            // No user logged in — clear stale onboarding params so "Log in" is not merged with initialStep: 3
+            setOnboardingParams({});
             setInitialRoute(Routes.Welcome);
             setIsReady(true);
           }
         } catch (e) {
           console.warn('[RootNavigator] Auth check error:', e);
+          setOnboardingParams({});
           setInitialRoute(Routes.Welcome);
           setIsReady(true);
         }
@@ -561,23 +585,41 @@ export function RootNavigator() {
     return null;
   }
 
+  /** Cold-open straight to preferences — params only from this state, not Screen.initialParams (avoids merge bugs). */
+  const rootInitialState =
+    initialRoute === Routes.Onboarding
+      ? {
+          routes: [
+            {
+              name: Routes.Onboarding,
+              params: onboardingParams,
+            },
+          ],
+          index: 0,
+        }
+      : undefined;
+
   return (
-    <NavigationContainer ref={navRef}>
+    <NavigationContainer ref={navRef} initialState={rootInitialState}>
       <LocationSyncGate />
       <PushTokenGate />
       <DeviceBanGate />
       <ContactUploadGate />
       <NotificationListener />
-      <RootStack.Navigator screenOptions={screenOptionsBase()} initialRouteName={initialRoute}>
+      <RootStack.Navigator
+        screenOptions={screenOptionsBase()}
+        initialRouteName={rootInitialState ? undefined : initialRoute}
+      >
         <RootStack.Screen name={Routes.Welcome}>
           {({ navigation }) => <WelcomeScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.Onboarding}>
           {({ navigation, route }) => (
             <OnboardingFlow
-              key={`onboarding-${route?.params?.mode || 'signup'}`}
+              key={`onboarding-${route?.params?.mode || 'signup'}-${String(route?.params?.initialStep ?? '')}`}
               onNavigate={useLegacyOnNavigate(navigation)}
               mode={route?.params?.mode === 'login' ? 'login' : 'signup'}
+              initialStep={typeof route?.params?.initialStep === 'number' ? route.params.initialStep : undefined}
               waliEmail={route?.params?.email || null}
             />
           )}
