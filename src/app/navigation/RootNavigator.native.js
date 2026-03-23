@@ -12,6 +12,7 @@ import { ChatScreen } from '../components/ChatScreen.native.js';
 import { SettingsScreen } from '../components/SettingsScreen.native.js';
 import { AdminScreen } from '../components/AdminScreen.native.js';
 import { ContactsBlockScreen } from '../components/ContactsBlockScreen.native.js';
+import { BlockedUsersScreen } from '../components/BlockedUsersScreen.native.js';
 import { MyProfileScreen } from '../components/MyProfileScreen.native.js';
 import { WingmanScreen } from '../components/WingmanScreen.native.js';
 import { SpinBottleScreen } from '../components/SpinBottleScreen.native.js';
@@ -251,7 +252,12 @@ function handleNotificationTap(data) {
   const { type, matchId } = data || {};
 
   try {
-    if (type === 'match_request' || type === 'match_approved') {
+    if (
+      type === 'match_request' ||
+      type === 'match_approved' ||
+      type === 'match_pending' ||
+      type === 'match_mutual'
+    ) {
       navigationRef.navigate(Routes.TabMatches);
     } else if (type === 'message' && matchId) {
       navigationRef.navigate(Routes.ChatThread, { matchId });
@@ -403,6 +409,9 @@ function useLegacyOnNavigate(navigation) {
           return;
         case 'contacts':
           navigation.navigate(Routes.Contacts);
+          return;
+        case 'blockedUsers':
+          navigation.navigate(Routes.BlockedUsers);
           return;
         case 'wingman':
           navigation.navigate(Routes.Wingman);
@@ -655,6 +664,9 @@ export function RootNavigator() {
         </RootStack.Screen>
         <RootStack.Screen name={Routes.Contacts}>
           {({ navigation }) => <ContactsBlockScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.BlockedUsers}>
+          {({ navigation }) => <BlockedUsersScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.Wingman}>
           {({ navigation }) => <WingmanScreen onNavigate={useLegacyOnNavigate(navigation)} />}

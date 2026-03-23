@@ -19,6 +19,7 @@ export const Routes = {
   DatePlanning: 'DatePlanning',
   Admin: 'Admin',
   Contacts: 'Contacts',
+  BlockedUsers: 'BlockedUsers',
   Wingman: 'Wingman',
   SpinBottle: 'SpinBottle',
   Verification: 'Verification',

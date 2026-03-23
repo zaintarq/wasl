@@ -1,5 +1,18 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, Modal, Platform, Animated, Dimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  Alert,
+  Modal,
+  Platform,
+  Animated,
+  Dimensions,
+  Image,
+} from 'react-native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { detectCountryCity } from '../../services/locationService.native.js';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,8 +31,13 @@ import Constants from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 
 WebBrowser.maybeCompleteAuthSession();
+
+const WRONG_PASSWORD_IMG = require('../../../assets/images/wrong-password.png');
+/** Same stop-touching art as Home header press (transparent BG — not .bak) */
+const STOP_TOUCHING_WRONGPW_IMG = require('../../../assets/images/stop-touching.png');
 
 const WELCOME_BG = ['#F8FAFC', '#EFF6FF', '#DBEAFE'];
 const WELCOME_BG_LOCATIONS = [0, 0.45, 1];
@@ -59,6 +77,15 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
   const [manualLocationOpen, setManualLocationOpen] = useState(false);
   const mountedRef = useRef(true);
   const authInFlightRef = useRef(false);
+  /** Same pattern as Home: two opacity values + parallel timing (readable crossfade) */
+  const wrongPasswordShake = useRef(new Animated.Value(0)).current;
+  const wrongPwOpacityWrong = useRef(new Animated.Value(1)).current;
+  const wrongPwOpacityStop = useRef(new Animated.Value(0)).current;
+  const wrongPwAutoReturnTimerRef = useRef(null);
+  /** Full-screen wrong-password art (login only) */
+  const [showWrongPasswordScreen, setShowWrongPasswordScreen] = useState(false);
+  /** Mirrors Home `headerLogoVariant`: wrong → stop-touching (same 220ms + shake + auto-return) */
+  const [wrongPwLogoVariant, setWrongPwLogoVariant] = useState('wrong'); // 'wrong' | 'stopTouching'
 
   const googleAuthCfg = Constants?.expoConfig?.extra?.googleAuth || Constants?.manifest?.extra?.googleAuth || {};
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
@@ -93,6 +120,79 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
     };
   }, []);
 
+  // Reset wrong-password hero only when this screen is shown (deps: show flag only — avoids fighting tap)
+  useEffect(() => {
+    if (!showWrongPasswordScreen) return;
+    if (wrongPwAutoReturnTimerRef.current) {
+      clearTimeout(wrongPwAutoReturnTimerRef.current);
+      wrongPwAutoReturnTimerRef.current = null;
+    }
+    setWrongPwLogoVariant('wrong');
+    wrongPwOpacityWrong.setValue(1);
+    wrongPwOpacityStop.setValue(0);
+    wrongPasswordShake.setValue(0);
+  }, [showWrongPasswordScreen]);
+
+  // Crossfade wrong ↔ stop-touching (HomeScreen header uses identical timing)
+  useEffect(() => {
+    const anim = Animated.parallel([
+      Animated.timing(wrongPwOpacityWrong, {
+        toValue: wrongPwLogoVariant === 'wrong' ? 1 : 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(wrongPwOpacityStop, {
+        toValue: wrongPwLogoVariant === 'stopTouching' ? 1 : 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [wrongPwLogoVariant, wrongPwOpacityWrong, wrongPwOpacityStop]);
+
+  // Shake only the stop-touching layer (Home: 200ms delay + sequence)
+  useEffect(() => {
+    if (wrongPwLogoVariant !== 'stopTouching') {
+      wrongPasswordShake.setValue(0);
+      return;
+    }
+    const id = setTimeout(() => {
+      wrongPasswordShake.setValue(0);
+      Animated.sequence([
+        Animated.timing(wrongPasswordShake, { toValue: 9, duration: 42, useNativeDriver: true }),
+        Animated.timing(wrongPasswordShake, { toValue: -9, duration: 42, useNativeDriver: true }),
+        Animated.timing(wrongPasswordShake, { toValue: 7, duration: 38, useNativeDriver: true }),
+        Animated.timing(wrongPasswordShake, { toValue: -7, duration: 38, useNativeDriver: true }),
+        Animated.timing(wrongPasswordShake, { toValue: 4, duration: 34, useNativeDriver: true }),
+        Animated.timing(wrongPasswordShake, { toValue: -4, duration: 34, useNativeDriver: true }),
+        Animated.timing(wrongPasswordShake, { toValue: 0, duration: 36, useNativeDriver: true }),
+      ]).start();
+    }, 200);
+    return () => clearTimeout(id);
+  }, [wrongPwLogoVariant, wrongPasswordShake]);
+
+  const onWrongPasswordArtPress = useCallback(() => {
+    if (wrongPwLogoVariant === 'stopTouching') {
+      if (wrongPwAutoReturnTimerRef.current) {
+        clearTimeout(wrongPwAutoReturnTimerRef.current);
+        wrongPwAutoReturnTimerRef.current = null;
+      }
+      setWrongPwLogoVariant('wrong');
+      return;
+    }
+    if (wrongPwAutoReturnTimerRef.current) {
+      clearTimeout(wrongPwAutoReturnTimerRef.current);
+      wrongPwAutoReturnTimerRef.current = null;
+    }
+    setWrongPwLogoVariant('stopTouching');
+    // Same beat as Home after refresh: ~550ms pause then back to default (total ~1.1s from tap)
+    wrongPwAutoReturnTimerRef.current = setTimeout(() => {
+      setWrongPwLogoVariant('wrong');
+      wrongPwAutoReturnTimerRef.current = null;
+    }, 1100);
+  }, [wrongPwLogoVariant]);
+
   // Welcome / navigation: mode + optional initialStep (3–6 = resume after auth, skip login card)
   useEffect(() => {
     setIsLogin(mode === 'login');
@@ -111,6 +211,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
       setOtpCode('');
       setForgotPasswordActive(false);
       setResetSessionId('');
+      setShowWrongPasswordScreen(false);
     }
   }, [mode, initialStepProp]);
 
@@ -409,12 +510,31 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
   };
 
   const performEmailLogin = async (normalizedEmail) => {
-    const { error } = await withTimeout(authService.signIn(normalizedEmail, password), 30000);
+    const { error, errorCode } = await withTimeout(authService.signIn(normalizedEmail, password), 30000);
     if (error) {
+      const code = String(errorCode || '');
+      const isWrongPw = code === 'auth/wrong-password' || code === 'auth/invalid-credential';
+      if (isWrongPw) {
+        setShowWrongPasswordScreen(true);
+        return;
+      }
       Alert.alert('Login Failed', error);
       return;
     }
     await routeAfterEmailAuthSuccess();
+  };
+
+  const leaveWrongPasswordScreen = () => {
+    if (wrongPwAutoReturnTimerRef.current) {
+      clearTimeout(wrongPwAutoReturnTimerRef.current);
+      wrongPwAutoReturnTimerRef.current = null;
+    }
+    setWrongPwLogoVariant('wrong');
+    wrongPwOpacityWrong.setValue(1);
+    wrongPwOpacityStop.setValue(0);
+    setShowWrongPasswordScreen(false);
+    setPassword('');
+    setAuthSubStep('email');
   };
 
   const handleFinalizePasswordReset = async () => {
@@ -663,17 +783,110 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
           </View>
         )}
 
-        <ScrollView
+        <HuzzKeyboardAwareScrollView
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContent,
             step === 2 && styles.scrollContentStep2,
             step !== 2 && styles.scrollContentOnboard,
           ]}
-          keyboardShouldPersistTaps="handled"
         >
           {/* Step 2: matches Welcome — mascot, Huzz, light blue, Kaushan, back */}
           {step === 2 && (
+            showWrongPasswordScreen ? (
+              <View style={styles.step2Outer}>
+                <View style={styles.step2Header}>
+                  <HuzzPressable
+                    onPress={leaveWrongPasswordScreen}
+                    style={styles.step2BackHit}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel="Back to login"
+                  >
+                    <ArrowLeft size={26} color={tokens.colors.text} strokeWidth={2.25} />
+                  </HuzzPressable>
+                </View>
+
+                {/* Single hero — same stack as Home header: parallel opacity + shake on stop layer only */}
+                <View style={styles.wrongPasswordImageFloat}>
+                  <HuzzPressable
+                    onPress={onWrongPasswordArtPress}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      wrongPwLogoVariant === 'wrong'
+                        ? 'Wrong password mascot — tap for stop touching art'
+                        : 'Stop touching art — tap to go back early'
+                    }
+                    style={styles.wrongPasswordImageShadowWrap}
+                  >
+                    {/* Home pattern: opacity on Animated.View (not Animated.Image) — avoids blank second layer on some RN/Android builds */}
+                    <View style={styles.wrongPasswordImageStack} collapsable={false}>
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[styles.wrongPasswordImageLayer, styles.wrongPasswordImageLayerZ0, { opacity: wrongPwOpacityWrong }]}
+                      >
+                        <Image
+                          source={WRONG_PASSWORD_IMG}
+                          style={styles.wrongPasswordImageFill}
+                          resizeMode="contain"
+                          accessibilityIgnoresInvertColors
+                        />
+                      </Animated.View>
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.wrongPasswordImageLayer,
+                          styles.wrongPasswordImageLayerZ1,
+                          {
+                            opacity: wrongPwOpacityStop,
+                            transform: [{ translateX: wrongPasswordShake }],
+                          },
+                        ]}
+                      >
+                        <Image
+                          source={STOP_TOUCHING_WRONGPW_IMG}
+                          style={styles.wrongPasswordImageFill}
+                          resizeMode="contain"
+                          accessibilityIgnoresInvertColors
+                        />
+                      </Animated.View>
+                    </View>
+                  </HuzzPressable>
+                </View>
+
+                <View style={styles.step2BrandBlock}>
+                  <Text style={[styles.step2Huzz, fontsLoaded && { fontFamily: 'KaushanScript_400Regular' }]}>
+                    Huzz
+                  </Text>
+                  <View style={styles.step2UnderlineTrack}>
+                    <LinearGradient
+                      colors={['#1D4ED8', '#2563EB', '#3B82F6']}
+                      start={{ x: 0, y: 0.5 }}
+                      end={{ x: 1, y: 0.5 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </View>
+                </View>
+
+                <Text style={[styles.step2ScreenTitle, kFont, { fontSize: 28, marginBottom: 6 }]}>
+                  Wrong password
+                </Text>
+                <Text style={[styles.step2ScreenSub, kFont, { fontSize: 17 }]}>
+                  That didn’t match — try again from the login screen.
+                </Text>
+
+                <View style={styles.step2ButtonList}>
+                  <RetroButton
+                    variant="primary"
+                    title="Back to login"
+                    onPress={leaveWrongPasswordScreen}
+                    style={[styles.step2BtnShape, styles.step2PrimaryShadow]}
+                    textStyle={[styles.step2BtnLabel, kFont, { fontSize: 19 }]}
+                  />
+                </View>
+              </View>
+            ) : (
             <View style={styles.step2Outer}>
               <View style={styles.step2Header}>
                 <HuzzPressable
@@ -903,6 +1116,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                 )}
               </View>
             </View>
+            )
           )}
 
           {step !== 2 && (
@@ -1072,7 +1286,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
           </View>
         </View>
           )}
-      </ScrollView>
+      </HuzzKeyboardAwareScrollView>
 
       {/* Country dropdown modal */}
       <Modal visible={countryModalOpen} animationType="slide" transparent onRequestClose={() => setCountryModalOpen(false)}>
@@ -1184,6 +1398,59 @@ const styles = StyleSheet.create({
   },
   scrollContentStep2: {
     paddingBottom: 32,
+  },
+  /** Wrong-password art: not inside step2Card — centered, soft shadow “float” */
+  wrongPasswordImageFloat: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  wrongPasswordImageShadowWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: 'transparent',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.08,
+        shadowRadius: 14,
+      },
+      android: { elevation: 3 },
+    }),
+  },
+  wrongPasswordImageStack: {
+    width: Math.min(Dimensions.get('window').width - 24, 320),
+    height: 260,
+    alignSelf: 'center',
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /** Both hero layers: identical bounds (matches Home headerLogoImage) */
+  wrongPasswordImageLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  wrongPasswordImageLayerZ0: {
+    zIndex: 0,
+  },
+  wrongPasswordImageLayerZ1: {
+    zIndex: 1,
+  },
+  wrongPasswordImageFill: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   step2Outer: {
     width: '100%',

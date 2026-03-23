@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Alert, TextInput } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { authService, userService } from '../../services/firebaseService';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
@@ -179,7 +180,7 @@ export function StaffScreen({ onNavigate }) {
         </HuzzPressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <HuzzKeyboardAwareScrollView contentContainerStyle={styles.scrollContent}>
         {showPasswordChange && user?.mustChangePassword && (
           <View style={styles.passwordChangeBox}>
             <Text style={styles.boxTitle}>⚠️ Change Password Required</Text>
@@ -235,7 +236,7 @@ export function StaffScreen({ onNavigate }) {
             </HuzzPressable>
           </View>
         )}
-      </ScrollView>
+      </HuzzKeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

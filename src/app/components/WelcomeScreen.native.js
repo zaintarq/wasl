@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
@@ -89,7 +90,7 @@ export function WelcomeScreen({ onNavigate }) {
     <View style={styles.root}>
       <LinearGradient colors={WELCOME_BG} locations={WELCOME_BG_LOCATIONS} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.safe} edges={[]} />
-      <ScrollView
+      <HuzzKeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollInner,
@@ -99,7 +100,6 @@ export function WelcomeScreen({ onNavigate }) {
             paddingHorizontal: paddingH,
           },
         ]}
-        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
@@ -171,7 +171,7 @@ export function WelcomeScreen({ onNavigate }) {
         <Text style={styles.footerText}>
           By continuing, you agree to our Terms & Privacy Policy
         </Text>
-      </ScrollView>
+      </HuzzKeyboardAwareScrollView>
     </View>
   );
 }

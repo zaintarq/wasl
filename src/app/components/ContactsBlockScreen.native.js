@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import * as Contacts from 'expo-contacts';
 import { authService, contactBlockService, contactUploadService } from '../../services/firebaseService';
 import { sha256 } from '../../utils/hash';
@@ -202,7 +203,7 @@ export function ContactsBlockScreen({ onNavigate }) {
         <View style={{ width: 70 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+      <HuzzKeyboardAwareScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <View style={styles.box}>
           <Text style={styles.boxTitle}>What this does</Text>
           <Text style={styles.boxText}>
@@ -269,7 +270,7 @@ export function ContactsBlockScreen({ onNavigate }) {
             <ActivityIndicator />
           </View>
         )}
-      </ScrollView>
+      </HuzzKeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

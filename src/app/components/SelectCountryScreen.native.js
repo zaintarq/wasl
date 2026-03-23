@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, KeyboardAvoidingView } from 'react-native';
+import { HuzzKeyboardAwareFlatList } from '../../ui/components/HuzzKeyboardAwareFlatList.native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -80,6 +81,11 @@ export function SelectCountryScreen() {
           </View>
         </View>
 
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 8 : 0}
+        >
         <View style={styles.body}>
           <View style={[styles.searchSection, cardShadow]}>
             <View style={styles.sectionHead}>
@@ -100,10 +106,9 @@ export function SelectCountryScreen() {
             />
           </View>
 
-          <FlatList
+          <HuzzKeyboardAwareFlatList
             data={filtered}
             keyExtractor={(item) => item}
-            keyboardShouldPersistTaps="handled"
             style={styles.list}
             contentContainerStyle={{ paddingBottom: tokens.spacing.xl + insets.bottom }}
             renderItem={({ item: c }) => (
@@ -120,6 +125,7 @@ export function SelectCountryScreen() {
             )}
           />
         </View>
+        </KeyboardAvoidingView>
       </View>
     </View>
   );

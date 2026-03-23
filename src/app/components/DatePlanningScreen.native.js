@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { authService, datePlanService, userService } from '../../services/firebaseService';
 import { RetroButton } from '../../ui/components/RetroButton.native';
@@ -151,7 +152,7 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
         <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView style={styles.content}>
+      <HuzzKeyboardAwareScrollView style={styles.content}>
         <View style={styles.actions}>
           <RetroButton
             variant="blue"
@@ -257,7 +258,7 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
             ))
           )}
         </View>
-      </ScrollView>
+      </HuzzKeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

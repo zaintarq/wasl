@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Modal, Image } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { authService, userService, storageService } from '../../services/firebaseService';
@@ -220,7 +221,7 @@ export function MyProfileScreen({ onNavigate }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+      <HuzzKeyboardAwareScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <View style={styles.box}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <Text style={styles.boxTitle}>Photos</Text>
@@ -493,7 +494,7 @@ export function MyProfileScreen({ onNavigate }) {
         >
           <Text style={[styles.btnText, { color: '#ffffff' }]}>{saving ? 'Saving...' : 'Save'}</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </HuzzKeyboardAwareScrollView>
 
       {/* Country dropdown modal */}
       <Modal visible={countryModalOpen} animationType="slide" transparent onRequestClose={() => setCountryModalOpen(false)}>

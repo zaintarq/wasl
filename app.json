@@ -22,6 +22,7 @@
     },
     "android": {
       "package": "com.huzz.app",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/appicon_foreground.png",
         "backgroundColor": "#c0c0c0"

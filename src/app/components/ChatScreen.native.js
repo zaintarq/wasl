@@ -1,17 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, Image, Platform, Alert, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, Platform, Alert, Keyboard, Image } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withRepeat,
-  withSequence,
-  withTiming,
   FadeInUp,
-  FadeIn,
-  Easing,
 } from 'react-native-reanimated';
 import { authService, matchService, messageService, reportService, blockService, userService, waliService } from '../../services/firebaseService';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +18,8 @@ import * as Haptics from 'expo-haptics';
 import { useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import * as Clipboard from 'expo-clipboard';
 import Svg, { Rect } from 'react-native-svg';
+
+const TYPING_INDICATOR_IMG = require('../../../assets/images/typinggg.png');
 
 // Minimal waveform voice icon — clean sound bars, no emoji
 function VoiceIcon({ size = 22, color }) {
@@ -98,88 +95,6 @@ function formatLastSeen(d) {
 // Swipe right to reply (WhatsApp style) with animated "Reply" strip
 const SWIPE_REPLY_THRESHOLD = 56;
 const SWIPE_REPLY_MAX = 80;
-
-const FLOAT_EASING = Easing.inOut(Easing.ease);
-const FLOAT_DURATION = 520;
-const FLOAT_DISTANCE = 3;
-const FLOAT_SCALE = 0.02;
-const TYPING_ROW_HEIGHT = 56;
-const EXIT_DURATION = 280;
-
-// Typing indicator: sits on top of brown line, slides under when disappearing
-function TypingIndicator({ name, gender, isVisible, onExitComplete, style }) {
-  const headY = useSharedValue(0);
-  const scale = useSharedValue(1);
-  const slideY = useSharedValue(0);
-  const prevVisible = useRef(isVisible);
-
-  useEffect(() => {
-    if (isVisible) {
-      slideY.value = 0;
-    }
-    if (!isVisible) return;
-    headY.value = withRepeat(
-      withSequence(
-        withTiming(FLOAT_DISTANCE, { duration: FLOAT_DURATION, easing: FLOAT_EASING }),
-        withTiming(0, { duration: FLOAT_DURATION, easing: FLOAT_EASING })
-      ),
-      -1,
-      true
-    );
-    scale.value = withRepeat(
-      withSequence(
-        withTiming(1 + FLOAT_SCALE, { duration: FLOAT_DURATION, easing: FLOAT_EASING }),
-        withTiming(1, { duration: FLOAT_DURATION, easing: FLOAT_EASING })
-      ),
-      -1,
-      true
-    );
-  }, [isVisible]);
-
-  useEffect(() => {
-    if (prevVisible.current && !isVisible) {
-      slideY.value = withTiming(
-        TYPING_ROW_HEIGHT,
-        { duration: EXIT_DURATION, easing: Easing.in(Easing.cubic) },
-        (finished) => {
-          'worklet';
-          if (finished) runOnJS(onExitComplete)();
-        }
-      );
-    }
-    prevVisible.current = isVisible;
-  }, [isVisible, onExitComplete]);
-
-  const floatStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: headY.value },
-      { scale: scale.value },
-    ],
-  }));
-
-  const rowStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: slideY.value }],
-  }));
-
-  const g = String(gender || '').trim().toLowerCase();
-  const source = g === 'female' ? require('../../../assets/girl.png') : require('../../../assets/boys.png');
-
-  return (
-    <Animated.View
-      entering={FadeIn.duration(200).easing(Easing.out(Easing.cubic))}
-      style={[styles.typingRow, styles.typingRowOnBar, rowStyle, style]}
-    >
-      <Animated.View style={floatStyle}>
-        <Image
-          source={source}
-          style={styles.typingAvatarImage}
-          resizeMode="contain"
-        />
-      </Animated.View>
-      <Text style={styles.typingText}>{name || 'Someone'} typing…</Text>
-    </Animated.View>
-  );
-}
 
 function MessageBubbleRow({
   item,
@@ -295,9 +210,7 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
   const [replyTo, setReplyTo] = useState(null);
   const [editing, setEditing] = useState(null); // { id, text }
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [typingExiting, setTypingExiting] = useState(false);
   const listRef = useRef(null);
-  const prevTypingRef = useRef(false);
   const typingTimerRef = useRef(null);
   const lastTypingSentRef = useRef(0);
   
@@ -409,11 +322,6 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
     const t = match?.typing?.[otherUid];
     return !!t;
   }, [match?.typing, otherUid]);
-
-  useEffect(() => {
-    if (prevTypingRef.current && !otherIsTyping) setTypingExiting(true);
-    prevTypingRef.current = otherIsTyping;
-  }, [otherIsTyping]);
 
   const fmtSec = (ms) => `${Math.max(0, Math.round(ms / 1000))}s`;
 
@@ -720,11 +628,9 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
               )}
             </View>
             <Text style={styles.subtitle}>
-              {otherIsTyping
-                ? 'typing...'
-                : otherUser?.lastSeen
-                  ? `Last seen ${formatLastSeen(toDate(otherUser.lastSeen))}`
-                  : otherUser?.categoryIntent || ''}
+              {otherUser?.lastSeen
+                ? `Last seen ${formatLastSeen(toDate(otherUser.lastSeen))}`
+                : otherUser?.categoryIntent || ''}
             </Text>
             {waliViewMode && (
               <Text style={[styles.subtitle, { color: tokens.colors.accent, marginTop: 2 }]}>
@@ -823,6 +729,19 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
           data={chatData}
           keyExtractor={(item) => String(item?.id)}
           inverted
+          extraData={otherIsTyping}
+          ListHeaderComponent={
+            isActive && otherIsTyping ? (
+              <View style={styles.typingInline} pointerEvents="none" accessibilityLabel="Typing">
+                <Image
+                  source={TYPING_INDICATOR_IMG}
+                  style={styles.typingIndicatorImage}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                />
+              </View>
+            ) : undefined
+          }
           onScroll={(e) => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
             setShowScrollToBottom(y > 80);
@@ -832,8 +751,13 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
           windowSize={10}
           maxToRenderPerBatch={12}
           updateCellsBatchingPeriod={16}
-          removeClippedSubviews
-          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+          removeClippedSubviews={false}
+          // Index 0 = newest row in inverted list. Using 1 skipped the latest bubble and caused
+          // the other person's view to clip new messages under the composer / last row.
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 100,
+          }}
           renderItem={({ item }) => {
             if (item?._type === 'day') {
               return (
@@ -902,15 +826,6 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
           }}
         />
         </View>
-
-        {isActive && (otherIsTyping || typingExiting) ? (
-          <TypingIndicator
-            name={otherUser?.name}
-            gender={otherUser?.gender}
-            isVisible={otherIsTyping}
-            onExitComplete={() => setTypingExiting(false)}
-          />
-        ) : null}
 
         {showEmoji ? (
           <View style={styles.emojiPanel}>
@@ -1077,7 +992,10 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: tokens.colors.bg },
   list: { flex: 1, minHeight: 0 },
-  listContent: { padding: tokens.spacing.screenHorizontal, paddingBottom: 12 },
+  listContent: {
+    padding: tokens.spacing.screenHorizontal,
+    paddingBottom: 20,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1105,21 +1023,27 @@ const styles = StyleSheet.create({
   bubbleAnimatedWrapMine: { alignSelf: 'flex-end' },
   bubble: {
     maxWidth: '80%',
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 16,
     borderWidth: 0,
   },
   bubbleMine: { alignSelf: 'flex-end', backgroundColor: '#8B5CF6' },
   bubbleTheirs: { alignSelf: 'flex-start', backgroundColor: tokens.colors.surfaceOverlay },
-  bubbleText: { ...tokens.typography.bodySmall, lineHeight: 20 },
+  bubbleText: {
+    ...tokens.typography.bodySmall,
+    lineHeight: 22,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
+  },
   bubbleTextMine: { color: '#FFFFFF' },
   bubbleTextTheirs: { color: tokens.colors.text },
   timeInline: {
     fontSize: 9,
+    lineHeight: 14,
     fontWeight: '400',
     opacity: 0.7,
     letterSpacing: 0.5,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
   },
   timeInlineTheirs: {
     color: tokens.colors.textMuted,
@@ -1211,18 +1135,19 @@ const styles = StyleSheet.create({
     borderTopColor: tokens.colors.border,
     backgroundColor: tokens.colors.surface,
   },
-  typingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: 'transparent',
-    borderTopWidth: 0,
+  /** Inverted list: header sits at the visual bottom — sticker stays in scroll flow */
+  typingInline: {
+    paddingHorizontal: 4,
+    paddingTop: 2,
+    paddingBottom: 8,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
-  typingRowOnBar: { backgroundColor: tokens.colors.surface, marginBottom: 0 },
-  typingAvatarImage: { width: 40, height: 48, backgroundColor: 'transparent' },
-  typingText: { ...tokens.typography.bodySmall, color: tokens.colors.textSecondary, flex: 1 },
+  typingIndicatorImage: {
+    width: 168,
+    height: 48,
+    alignSelf: 'flex-start',
+  },
   iconBtn: {
     width: 44,
     height: 44,

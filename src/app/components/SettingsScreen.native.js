@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Shield, Sparkles, LogOut } from 'lucide-react-native';
@@ -97,11 +98,10 @@ export function SettingsScreen({ onNavigate }) {
   }
 
   return shell(
-    <ScrollView
+    <HuzzKeyboardAwareScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.scrollContent, { paddingBottom: tokens.spacing.xl + insets.bottom }]}
       showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
     >
       {!isAdmin && !isStaff && (
         <>
@@ -112,10 +112,13 @@ export function SettingsScreen({ onNavigate }) {
               </View>
               <View style={styles.sectionHeadText}>
                 <Text style={styles.sectionTitle}>Privacy</Text>
-                <Text style={styles.sectionHint}>Manage who can reach you from contacts</Text>
+                <Text style={styles.sectionHint}>Contacts, blocked people, and who can reach you</Text>
               </View>
             </View>
-            <RetroButton variant="green" title="Block Contacts" onPress={() => onNavigate('contacts')} style={styles.fullBtn} />
+            <View style={styles.btnStack}>
+              <RetroButton variant="green" title="Block Contacts" onPress={() => onNavigate('contacts')} style={styles.fullBtn} />
+              <RetroButton variant="gray" title="Blocked users" onPress={() => onNavigate('blockedUsers')} style={styles.fullBtn} />
+            </View>
           </View>
 
           <View style={[styles.card, styles.sectionViolet, cardShadow]}>
@@ -166,7 +169,7 @@ export function SettingsScreen({ onNavigate }) {
           style={styles.fullBtn}
         />
       </View>
-    </ScrollView>
+    </HuzzKeyboardAwareScrollView>
   );
 }
 

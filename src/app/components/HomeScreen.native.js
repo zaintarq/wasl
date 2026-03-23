@@ -1,5 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Dimensions, Animated as RNAnimated } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Platform,
+  Image,
+  Animated as RNAnimated,
+} from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { authService, blockService, contactBlockService, likeService, userService, matchService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,11 +18,14 @@ import { tokens } from '../../ui/tokens';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
 import { loadLocalFilters } from '../../utils/localFilterStorage';
+import { hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
 import { SwipeDeck } from './SwipeDeck.native';
 import { FadeInImage } from '../../ui/components/FadeInImage.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Settings, SlidersHorizontal, UserRound } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 
 // Suppress Reanimated strict mode warning
 if (__DEV__) {
@@ -26,9 +40,12 @@ if (__DEV__) {
 }
 import * as Haptics from 'expo-haptics';
 
+/** Banana mascot beside “Huzz” (same asset as Welcome / mascot treatment) */
+const HEADER_APP_LOGO = require('../../../assets/images/app-logo.png');
+
 const { height: SCREEN_H } = Dimensions.get('window');
 const CARD_MAX_W = 440;
-const HEADER_FALLBACK_H = 74; // header + border/shadow
+const HEADER_FALLBACK_H = 64; // wordmark + underline + padding
 const BOTTOM_NAV_FALLBACK_H = 112; // nav buttons + padding
 
 export function HomeScreen({ onNavigate }) {
@@ -41,6 +58,9 @@ export function HomeScreen({ onNavigate }) {
   const bottomNavPad = Math.max(10, insets.bottom);
   const [headerH, setHeaderH] = useState(0);
   const [bottomNavH, setBottomNavH] = useState(0);
+  /** Increment to re-run discovery load (header “Huzz” tap refresh). */
+  const [deckRefreshKey, setDeckRefreshKey] = useState(0);
+  const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
 
   // Max-tall card: fill as much as possible between header and pinned bottom nav.
   const cardHeight = useMemo(() => {
@@ -205,6 +225,10 @@ export function HomeScreen({ onNavigate }) {
     const t = setTimeout(() => setTonightMode(false), Math.max(500, ms));
     return () => clearTimeout(t);
   }, [tonightMode]);
+
+  const onHeaderHuzzPress = useCallback(() => {
+    setDeckRefreshKey((k) => k + 1);
+  }, []);
 
   const isStatusActive = (u) => {
     const status = String(u?.todayStatus || '').trim();
@@ -616,7 +640,7 @@ export function HomeScreen({ onNavigate }) {
     return () => {
       cancelled = true;
     };
-  }, [onNavigate, matchCountry, matchIntent, todayStatus, tonightMode, myCity]);
+  }, [onNavigate, matchCountry, matchIntent, todayStatus, tonightMode, myCity, deckRefreshKey]);
 
   // Real-time listener for pending match requests
   useEffect(() => {
@@ -791,15 +815,25 @@ export function HomeScreen({ onNavigate }) {
       }
       console.log('[Swipe] Authenticated user:', authUser.uid);
 
+      // Your profile must have ≥1 photo to swipe (others optional). Refresh from server if local `me` looks empty (stale after upload).
       if (!loading) {
-        const imgs = Array.isArray(me?.images) ? me.images : [];
-        const validProfileImages = imgs.filter(
-          (img) => img && typeof img === 'string' && img.trim().length > 0
-        );
-        if (validProfileImages.length === 0) {
+        let canSwipe = hasAtLeastOneProfilePhoto(me);
+        if (!canSwipe) {
+          try {
+            const snap = await userService.getUserById(authUser.uid);
+            const fresh = snap?.data || null;
+            if (fresh) {
+              setMe((prev) => ({ ...(prev || {}), ...fresh }));
+              canSwipe = hasAtLeastOneProfilePhoto(fresh);
+            }
+          } catch (e) {
+            console.warn('[Swipe] Profile refresh for photo gate:', e?.message || e);
+          }
+        }
+        if (!canSwipe) {
           Alert.alert(
-            'Add photos',
-            'Upload at least one photo in your profile to start swiping.',
+            'Add a photo to your profile',
+            'You need at least one photo on your profile to like or pass. You can add more anytime in Profile.',
             [
               { text: 'Not now', style: 'cancel' },
               { text: 'Go to profile', onPress: () => onNavigate('myProfile') },
@@ -1200,10 +1234,43 @@ export function HomeScreen({ onNavigate }) {
         <HuzzPressable style={styles.headerButton} onPress={() => onNavigate('settings')} haptic="light">
           <Settings size={22} color={tokens.colors.text} strokeWidth={2} />
         </HuzzPressable>
-        <View style={styles.headerTitleContainer}>
-          <Text style={[styles.urduLogo, styles.urduLogoFirst]}>ح</Text>
-          <Text style={[styles.urduLogo, styles.urduLogoSecond]}> ز</Text>
-        </View>
+        <HuzzPressable
+          style={styles.headerWordmarkWrap}
+          onPress={onHeaderHuzzPress}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel="Huzz — refresh people"
+        >
+          <View style={styles.headerBrandRow}>
+            <Image
+              source={HEADER_APP_LOGO}
+              style={styles.headerAppLogo}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+            <View style={styles.headerBrandBlock}>
+              <Text
+                style={[
+                  styles.headerHuzzWord,
+                  fontsLoaded && styles.headerHuzzWordFont,
+                ]}
+                accessibilityRole="header"
+              >
+                Huzz
+              </Text>
+              <View style={styles.headerUnderlineTrack}>
+                <LinearGradient
+                  colors={['#1D4ED8', '#2563EB', '#3B82F6']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </View>
+            </View>
+          </View>
+        </HuzzPressable>
         <HuzzPressable style={styles.headerButton} onPress={() => onNavigate('myProfile')} haptic="light">
           <UserRound size={22} color={tokens.colors.text} strokeWidth={2} />
         </HuzzPressable>
@@ -1527,12 +1594,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: tokens.spacing.screenHorizontal,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
     backgroundColor: tokens.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
-    minHeight: 56,
+    minHeight: 60,
     zIndex: 10,
   },
   headerButton: {
@@ -1543,24 +1610,55 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
     backgroundColor: tokens.colors.surfaceElevated,
   },
-  headerTitleContainer: {
-    flexDirection: 'row-reverse',
+  /** Same vibe as Welcome intro: Kaushan “Huzz” + blue gradient underline */
+  headerWordmarkWrap: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
-  urduLogo: {
-    fontSize: 36,
-    fontWeight: '900',
-    textShadowColor: 'rgba(0,0,0,0.12)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+  headerBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  urduLogoFirst: {
-    color: '#2563EB',
+  headerAppLogo: {
+    width: 42,
+    height: 42,
   },
-  urduLogoSecond: {
-    color: '#EAB308',
+  headerBrandBlock: {
+    alignItems: 'center',
+  },
+  headerHuzzWord: {
+    fontSize: 40,
+    letterSpacing: 0.5,
+    color: '#1c1917',
+    fontWeight: '700',
+    fontStyle: 'italic',
+    ...Platform.select({
+      ios: {
+        textShadowColor: 'rgba(28, 25, 23, 0.12)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
+      },
+      android: {},
+    }),
+  },
+  headerHuzzWordFont: {
+    fontFamily: 'KaushanScript_400Regular',
+    fontWeight: '400',
+    fontStyle: 'normal',
+  },
+  headerUnderlineTrack: {
+    marginTop: 4,
+    width: 100,
+    height: 3,
+    borderRadius: 2,
+    overflow: 'hidden',
+    opacity: 0.85,
   },
   cardContainer: {
     flex: 1,

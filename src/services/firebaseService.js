@@ -173,10 +173,14 @@ export const authService = {
     try {
       const normalizedEmail = this._normalizeEmail(email);
       const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-      return { user: userCredential.user, error: null };
+      return { user: userCredential.user, error: null, errorCode: null };
     } catch (error) {
       console.warn('Sign in error:', error?.code || error);
-      return { user: null, error: this._friendlyAuthError(error) };
+      return {
+        user: null,
+        error: this._friendlyAuthError(error),
+        errorCode: error?.code ? String(error.code) : null,
+      };
     }
   },
 
@@ -779,17 +783,8 @@ export const matchService = {
         lastMessageAt: null,
       });
 
-      // Best-effort notification to receiver to approve.
-      try {
-        await notificationService.createNotification(String(requestedToUid), {
-          type: 'match_pending',
-          fromUid: String(requestedByUid),
-          matchId,
-          title: 'New match request',
-          body: 'Someone matched with you. Approve to start chatting.',
-          status: 'unread',
-        });
-      } catch {}
+      // Notifications are sent from likeUser / approveMatch so we never duplicate
+      // or miss a push when match creation fails or doc already existed.
 
       return { matchId, status: 'pending', error: null };
     } catch (error) {
@@ -1246,8 +1241,9 @@ export const likeService = {
         console.log('⚠️ Partial success - one write succeeded, one failed');
       }
 
-      // Get sender's profile for notification
+      // Get sender + receiver names for notifications
       let senderName = 'Someone';
+      let receiverName = 'Someone';
       try {
         const senderSnap = await getDoc(doc(db, COL.users, from));
         if (senderSnap.exists()) {
@@ -1255,6 +1251,14 @@ export const likeService = {
         }
       } catch (nameError) {
         console.warn('[LikeService] Failed to get sender name:', nameError);
+      }
+      try {
+        const receiverSnap = await getDoc(doc(db, COL.users, to));
+        if (receiverSnap.exists()) {
+          receiverName = String(receiverSnap.data()?.name || 'Someone');
+        }
+      } catch (nameError) {
+        console.warn('[LikeService] Failed to get receiver name:', nameError);
       }
 
       // Mutual?
@@ -1272,9 +1276,32 @@ export const likeService = {
           // Create pending match (best-effort)
           try {
             const matchResult = await matchService.createPendingMatch(to, from);
+            const mid =
+              matchResult?.matchId || getMatchId(from, to);
+            // Mutual like: notify approver (requestedTo = from) + first liker (to) — same as approve flow
+            try {
+              // fromUid must be request.auth.uid (liker = from) per Firestore rules
+              await notificationService.createNotification(from, {
+                type: 'match_pending',
+                fromUid: from,
+                matchId: mid,
+                title: 'New match request',
+                body: `You and ${receiverName} liked each other. Open Matches to approve and chat.`,
+                status: 'unread',
+              });
+              await notificationService.createNotification(to, {
+                type: 'match_mutual',
+                fromUid: from,
+                matchId: mid,
+                title: "It's mutual!",
+                body: `${senderName} liked you back. Open Matches to continue.`,
+                status: 'unread',
+              });
+            } catch (mutualNotifErr) {
+              console.warn('[LikeService] Mutual notification (non-critical):', mutualNotifErr);
+            }
             if (matchResult?.error) {
               console.error('[LikeService] Failed to create pending match:', matchResult.error);
-              // Still return matched=true even if match creation fails
               return { matched: true, matchId: null, status: 'pending', error: matchResult.error };
             }
             matchId = matchResult?.matchId || null;
@@ -1283,7 +1310,25 @@ export const likeService = {
             return { matched: true, matchId, status: matchStatus, error: null };
           } catch (matchError) {
             console.error('[LikeService] Match creation exception:', matchError);
-            // Still return matched=true even if match creation fails
+            const mid = getMatchId(from, to);
+            try {
+              await notificationService.createNotification(from, {
+                type: 'match_pending',
+                fromUid: from,
+                matchId: mid,
+                title: 'New match request',
+                body: `You and ${receiverName} liked each other. Open Matches to approve and chat.`,
+                status: 'unread',
+              });
+              await notificationService.createNotification(to, {
+                type: 'match_mutual',
+                fromUid: from,
+                matchId: mid,
+                title: "It's mutual!",
+                body: `${senderName} liked you back. Open Matches to continue.`,
+                status: 'unread',
+              });
+            } catch (_) {}
             return { matched: true, matchId: null, status: 'pending', error: matchError?.message || String(matchError) };
           }
         } else {
@@ -1298,35 +1343,44 @@ export const likeService = {
       if (!isMutual) {
         try {
           console.log(`[LikeService] Creating match request: ${from} -> ${to}...`);
-          // Create a pending match request (the other person needs to approve)
           const matchResult = await matchService.createPendingMatch(from, to);
+          const mid = matchResult?.matchId || getMatchId(from, to);
           if (matchResult?.error) {
             console.warn('[LikeService] Match request creation error (non-critical):', matchResult.error);
           } else {
             console.log(`[LikeService] ✅ Match request created: ${matchResult?.matchId}`);
-            
-            // Send notification to the person who was liked
-            try {
-              const notifResult = await notificationService.createNotification(to, {
-                type: 'match_request',
-                fromUid: from,
-                matchId: matchResult?.matchId || null,
-                title: 'New like!',
-                body: `${senderName} liked you. Open Matches to approve and chat.`,
-                status: 'unread',
-              });
-              if (notifResult?.error) {
-                console.warn('[LikeService] Notification creation error (non-critical):', notifResult.error);
-              } else {
-                console.log('[LikeService] ✅ Notification sent successfully');
-              }
-            } catch (notifError) {
-              console.warn('[LikeService] Notification exception (non-critical):', notifError);
+          }
+          // Always notify the person who was liked (even if match doc write failed) so they can open Matches
+          try {
+            const notifResult = await notificationService.createNotification(to, {
+              type: 'match_request',
+              fromUid: from,
+              matchId: mid,
+              title: 'New like!',
+              body: `${senderName} liked you. Open Matches to review and respond.`,
+              status: 'unread',
+            });
+            if (notifResult?.error) {
+              console.warn('[LikeService] Notification creation error (non-critical):', notifResult.error);
+            } else {
+              console.log('[LikeService] ✅ Like notification sent to recipient');
             }
+          } catch (notifError) {
+            console.warn('[LikeService] Notification exception (non-critical):', notifError);
           }
         } catch (requestError) {
           console.warn('[LikeService] Match request exception (non-critical):', requestError);
-          // Don't fail the like if request creation fails
+          const mid = getMatchId(from, to);
+          try {
+            await notificationService.createNotification(to, {
+              type: 'match_request',
+              fromUid: from,
+              matchId: mid,
+              title: 'New like!',
+              body: `${senderName} liked you. Open Matches to review and respond.`,
+              status: 'unread',
+            });
+          } catch (_) {}
         }
       }
       console.log('✅ Like recorded successfully (not mutual yet)');
@@ -1844,10 +1898,54 @@ export const blockService = {
   async unblockUser(uid, blockedUid) {
     try {
       await deleteDoc(this._blockRef(uid, blockedUid));
+      // Restore match thread so chat can work again (blockUser had set status: blocked).
+      try {
+        const matchId = getMatchId(uid, blockedUid);
+        const ref = doc(db, COL.matches, matchId);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const m = snap.data() || {};
+          if (m.status === 'blocked' || m.isBlocked === true) {
+            await updateDoc(ref, {
+              status: 'active',
+              isBlocked: deleteField(),
+              blockedBy: deleteField(),
+              blockedAt: deleteField(),
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[blockService] unblock match restore:', e?.message || e);
+      }
       return { error: null };
     } catch (error) {
       console.error('Unblock user error:', error);
       return { error: error.message };
+    }
+  },
+
+  /** Profiles for Settings → Blocked users (names + optional photo URL). */
+  async listBlockedUsers(uid) {
+    try {
+      const snap = await getDocs(collection(db, COL.users, String(uid), 'blocks'));
+      const ids = snap.docs.map((d) => d.id);
+      const rows = await Promise.all(
+        ids.map(async (blockedUid) => {
+          const ures = await userService.getUserById(blockedUid);
+          const u = ures?.data || {};
+          const images = Array.isArray(u.images) ? u.images : [];
+          const firstImg = images.find((x) => typeof x === 'string' && x.length > 0) || u.photoURL || null;
+          return {
+            id: blockedUid,
+            name: String(u.name || 'User'),
+            photoUrl: firstImg ? String(firstImg) : null,
+          };
+        })
+      );
+      return { data: rows, error: null };
+    } catch (error) {
+      console.error('List blocked users error:', error);
+      return { data: [], error: error.message };
     }
   },
 

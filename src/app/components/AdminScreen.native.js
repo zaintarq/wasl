@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { adminService, authService, deviceBanService, userService, verificationService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Linking } from 'react-native';
@@ -169,7 +170,7 @@ export function AdminScreen({ onNavigate }) {
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <HuzzKeyboardAwareScrollView contentContainerStyle={{ padding: 16 }}>
           <View style={styles.tabs}>
             <TouchableOpacity
               style={[styles.tabBtn, tab === 'reports' ? styles.tabBtnOn : null]}
@@ -556,7 +557,7 @@ export function AdminScreen({ onNavigate }) {
               </View>
             ))
           )}
-        </ScrollView>
+        </HuzzKeyboardAwareScrollView>
       )}
     </SafeAreaView>
   );

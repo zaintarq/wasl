@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
+import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -266,11 +267,10 @@ export function FiltersScreen({ onNavigate }) {
           </View>
         </View>
 
-      <ScrollView
+      <HuzzKeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tokens.spacing.xl + insets.bottom }]}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.filterSection, styles.sectionHotSeat]}>
           <View style={styles.sectionHead}>
@@ -458,7 +458,7 @@ export function FiltersScreen({ onNavigate }) {
             <RetroButton variant="blue" onPress={updateMyCountryFromGPS} title="Update my country from GPS" />
           </View>
         )}
-      </ScrollView>
+      </HuzzKeyboardAwareScrollView>
       </View>
     </View>
   );
