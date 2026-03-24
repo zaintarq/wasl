@@ -70,16 +70,16 @@ export function SwipeDeck({
     translateY.value = withTiming(translateY.value + 10, { duration: 170 });
   };
 
-  // Prefer horizontal intent to avoid fighting with inner vertical scroll.
-  const activeOffsetX = useMemo(() => [-14, 14], []);
-  const activeOffsetY = useMemo(() => [-16, 16], []);
+  // Scroll vs swipe: inner GHScrollView must win on vertical drags. Require clear horizontal
+  // movement before the deck pan activates; vertical-first drags fail the pan.
+  const activeOffsetX = useMemo(() => [-40, 40], []);
+  const failOffsetY = useMemo(() => [-14, 14], []);
 
   const pan = useMemo(() => {
     return Gesture.Pan()
       .enabled(!disabled && !!top)
-      .minDistance(2)
       .activeOffsetX(activeOffsetX)
-      .activeOffsetY(activeOffsetY)
+      .failOffsetY(failOffsetY)
       .onUpdate((e) => {
         translateX.value = e.translationX;
         translateY.value = e.translationY;
@@ -87,11 +87,12 @@ export function SwipeDeck({
       .onEnd((e) => {
         const vx = e.velocityX;
         const vy = e.velocityY;
-        const shouldRight = translateX.value > threshold || vx > 850;
-        const shouldLeft = translateX.value < -threshold || vx < -850;
-        const verticalDominates = Math.abs(translateY.value) > Math.abs(translateX.value) * 1.15;
-        const shouldUp = verticalDominates && (translateY.value < -thresholdY || vy < -950);
-        const shouldDown = verticalDominates && (translateY.value > thresholdY || vy > 950);
+        const shouldRight = translateX.value > threshold || vx > 1200;
+        const shouldLeft = translateX.value < -threshold || vx < -1200;
+        const verticalDominates =
+          Math.abs(translateY.value) > Math.abs(translateX.value) * 1.25;
+        const shouldUp = verticalDominates && (translateY.value < -thresholdY || vy < -1100);
+        const shouldDown = verticalDominates && (translateY.value > thresholdY || vy > 1100);
 
         if (shouldRight) {
           if (hasSwiped.value) return;
@@ -134,7 +135,7 @@ export function SwipeDeck({
       });
   }, [
     activeOffsetX,
-    activeOffsetY,
+    failOffsetY,
     disabled,
     safeOnSwipe,
     reset,
