@@ -8,9 +8,9 @@ import {
   Alert,
   Dimensions,
   Platform,
-  Image,
   Animated as RNAnimated,
 } from 'react-native';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { authService, blockService, contactBlockService, likeService, userService, matchService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,9 +19,12 @@ import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
 import { loadLocalFilters } from '../../utils/localFilterStorage';
 import { hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
+import { getPresenceDisplay } from '../../utils/presence';
 import { SwipeDeck } from './SwipeDeck.native';
 import { FadeInImage } from '../../ui/components/FadeInImage.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
+import { ProfileVoicePlayer } from '../../ui/components/ProfileVoicePlayer.native';
+import { ProfilePhotoGalleryModal } from '../../ui/components/ProfilePhotoGalleryModal.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Settings, SlidersHorizontal, UserRound } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,9 +42,6 @@ if (__DEV__) {
   };
 }
 import * as Haptics from 'expo-haptics';
-
-/** Banana mascot beside “Huzz” (same asset as Welcome / mascot treatment) */
-const HEADER_APP_LOGO = require('../../../assets/images/app-logo.png');
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const CARD_MAX_W = 440;
@@ -98,6 +98,15 @@ export function HomeScreen({ onNavigate }) {
   const gestureX = useSharedValue(0);
   const gestureY = useSharedValue(0);
   
+  /** Tap card photo → full-screen gallery (swipe between uploads). */
+  const [photoGallery, setPhotoGallery] = useState({ open: false, uris: [], start: 0 });
+  const openPhotoGallery = useCallback((u) => {
+    const raw = Array.isArray(u?.images) ? u.images : [];
+    const uris = raw.filter((x) => typeof x === 'string' && String(x).trim().length > 0);
+    if (!uris.length) return;
+    setPhotoGallery({ open: true, uris, start: 0 });
+  }, []);
+
   // Cute in-app alerts (matching LIKE/NOPE design)
   const [cuteAlert, setCuteAlert] = useState(null); // { type: 'success'|'error'|'match'|'info', message: string, subMessage?: string }
   const cuteAlertAnim = React.useRef(new RNAnimated.Value(0)).current;
@@ -1241,33 +1250,23 @@ export function HomeScreen({ onNavigate }) {
           accessibilityRole="button"
           accessibilityLabel="Huzz — refresh people"
         >
-          <View style={styles.headerBrandRow}>
-            <Image
-              source={HEADER_APP_LOGO}
-              style={styles.headerAppLogo}
-              resizeMode="contain"
-              accessibilityIgnoresInvertColors
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-            />
-            <View style={styles.headerBrandBlock}>
-              <Text
-                style={[
-                  styles.headerHuzzWord,
-                  fontsLoaded && styles.headerHuzzWordFont,
-                ]}
-                accessibilityRole="header"
-              >
-                Huzz
-              </Text>
-              <View style={styles.headerUnderlineTrack}>
-                <LinearGradient
-                  colors={['#1D4ED8', '#2563EB', '#3B82F6']}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={StyleSheet.absoluteFill}
-                />
-              </View>
+          <View style={styles.headerBrandBlock}>
+            <Text
+              style={[
+                styles.headerHuzzWord,
+                fontsLoaded && styles.headerHuzzWordFont,
+              ]}
+              accessibilityRole="header"
+            >
+              Huzz
+            </Text>
+            <View style={styles.headerUnderlineTrack}>
+              <LinearGradient
+                colors={['#1D4ED8', '#2563EB', '#3B82F6']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFill}
+              />
             </View>
           </View>
         </HuzzPressable>
@@ -1308,13 +1307,6 @@ export function HomeScreen({ onNavigate }) {
                 </Text>
               </View>
             ) : null}
-
-            {/* Daily status badge (expires daily) */}
-            <View pointerEvents="none" style={styles.statusBadge}>
-              <Text style={styles.statusText}>
-                Status: <Text style={styles.statusValue}>{todayStatus || 'Off'}</Text>
-              </Text>
-            </View>
 
             {/* Hot seat turn badge */}
             {hotSeatEnabled ? (
@@ -1413,39 +1405,69 @@ export function HomeScreen({ onNavigate }) {
                 data={allCandidates}
                 index={currentIndex}
                 onSwipe={handleSwipe}
-                renderCard={(u) => (
+                renderCard={(u) => {
+                  const hasAbout =
+                    !!String(u?.bio || '').trim() ||
+                    !!String(u?.addMe || '').trim() ||
+                    (Array.isArray(u?.interests) && u.interests.length > 0) ||
+                    !!String(u?.aboutVoiceUrl || '').trim();
+
+                  return (
                   <View style={styles.card}>
-                    {/* Image */}
-                    <View style={styles.imageContainer}>
-                      <FadeInImage
-                        source={{ uri: String(u?.images?.[0] || '') }}
-                        style={styles.image}
-                        resizeMode="cover"
-                        contentPosition="top"
-                      />
+                    {/* Photo — tap for full-screen gallery; fills card when no about section */}
+                    <View
+                      style={[
+                        styles.imageContainer,
+                        hasAbout ? styles.imageContainerSplit : styles.imageContainerFull,
+                      ]}
+                    >
+                      <HuzzPressable
+                        style={styles.imagePressable}
+                        onPress={() => openPhotoGallery(u)}
+                        haptic="light"
+                        disabled={!Array.isArray(u?.images) || !u.images.filter((x) => typeof x === 'string' && String(x).trim()).length}
+                      >
+                        <FadeInImage
+                          source={{ uri: String(u?.images?.[0] || '') }}
+                          style={styles.image}
+                          resizeMode="cover"
+                          contentPosition="top"
+                        />
+                      </HuzzPressable>
 
-                      {/* Pending match request badge */}
-                      {u?._isPendingRequest && (
-                        <View style={[styles.candidateStatusPill, { backgroundColor: tokens.colors.accentDim }]}>
-                          <Text style={[styles.candidateStatusText, { color: tokens.colors.accent, fontWeight: '600' }]}>
-                            ⚡ Match Request
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* Candidate intent pill */}
-                      {!!String(u?.categoryIntent || '').trim() && (
-                        <View style={styles.candidateIntentPill}>
-                          <Text style={styles.candidateIntentText}>{String(u?.categoryIntent || '').trim()}</Text>
-                        </View>
-                      )}
-
-                      {/* Candidate status ring/pill (only if active) */}
-                      {isStatusActive(u) && (
-                        <View style={styles.candidateStatusPill}>
-                          <Text style={styles.candidateStatusText}>{String(u?.todayStatus || '').trim()}</Text>
-                        </View>
-                      )}
+                      {/* Top-left stack: keeps pills clear of the filter button (top-right) */}
+                      <View style={styles.candidateTopLeftPills} pointerEvents="box-none">
+                        {u?._isPendingRequest ? (
+                          <View style={[styles.candidatePill, { backgroundColor: tokens.colors.accentDim }]}>
+                            <Text style={[styles.candidatePillText, { color: tokens.colors.accent, fontWeight: '600' }]}>
+                              ⚡ Match Request
+                            </Text>
+                          </View>
+                        ) : null}
+                        {!u?._isPendingRequest &&
+                          (() => {
+                            const p = getPresenceDisplay(u?.lastSeen);
+                            if (!p) return null;
+                            return (
+                              <View style={styles.candidatePill}>
+                                <Text
+                                  style={[
+                                    styles.candidatePillText,
+                                    p.kind === 'online' ? styles.candidatePresenceOnline : null,
+                                  ]}
+                                >
+                                  {p.kind === 'online' ? '● ' : ''}
+                                  {p.label}
+                                </Text>
+                              </View>
+                            );
+                          })()}
+                        {!!String(u?.categoryIntent || '').trim() && (
+                          <View style={styles.candidatePill}>
+                            <Text style={styles.candidatePillText}>{String(u?.categoryIntent || '').trim()}</Text>
+                          </View>
+                        )}
+                      </View>
 
                       {/* Overlay */}
                       <View style={styles.overlay}>
@@ -1462,25 +1484,59 @@ export function HomeScreen({ onNavigate }) {
                       </View>
                     </View>
 
-                    {/* Bio & Interests */}
-                    <ScrollView style={styles.bioContainer} contentContainerStyle={{ paddingBottom: 120 }}>
-                      <Text style={styles.bio}>{String(u?.bio || '')}</Text>
-                      <View style={styles.interestsContainer}>
-                        {(u?.interests || []).slice(0, 4).map((interest, idx) => {
-                          const colors = ['#98fb98', '#b0e0e6', '#fffacd', '#f0e68c'];
-                          return (
-                            <View
-                              key={`${interest}-${idx}`}
-                              style={[styles.interestTag, { backgroundColor: colors[idx % colors.length] }]}
-                            >
-                              <Text style={styles.interestTagText}>{interest}</Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </ScrollView>
+                    {/* About me — only when there’s content; otherwise photo uses full card height */}
+                    {hasAbout ? (
+                    <GHScrollView
+                      style={styles.bioContainer}
+                      contentContainerStyle={styles.bioScrollContent}
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator
+                    >
+                      {!!String(u?.bio || '').trim() && (
+                        <>
+                          <Text style={styles.bioSectionLabel}>About</Text>
+                          <Text style={styles.bio}>{String(u?.bio || '')}</Text>
+                        </>
+                      )}
+                      {!!String(u?.addMe || '').trim() && (
+                        <>
+                          <Text style={styles.bioSectionLabel}>Add me</Text>
+                          <Text style={styles.addMeText}>{String(u?.addMe || '').trim()}</Text>
+                        </>
+                      )}
+                      {(u?.interests || []).length > 0 ? (
+                        <>
+                          <Text style={styles.bioSectionLabel}>Interests</Text>
+                          <View style={styles.interestsContainer}>
+                            {(u?.interests || []).slice(0, 12).map((interest, idx) => {
+                              const colors = ['#98fb98', '#b0e0e6', '#fffacd', '#f0e68c'];
+                              return (
+                                <View
+                                  key={`${interest}-${idx}`}
+                                  style={[styles.interestTag, { backgroundColor: colors[idx % colors.length] }]}
+                                >
+                                  <Text style={styles.interestTagText}>{interest}</Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </>
+                      ) : null}
+                      {!!String(u?.aboutVoiceUrl || '').trim() && (
+                        <>
+                          <Text style={styles.bioSectionLabel}>Voice</Text>
+                          <ProfileVoicePlayer
+                            audioUrl={String(u.aboutVoiceUrl).trim()}
+                            durationMs={u?.aboutVoiceDurationMs}
+                          />
+                        </>
+                      )}
+                    </GHScrollView>
+                    ) : null}
                   </View>
-                )}
+                  );
+                }}
               />
 
               {/* Floating Action Buttons (float bar near bottom edge, not covering content) */}
@@ -1575,6 +1631,13 @@ export function HomeScreen({ onNavigate }) {
       </View>
       </View>
 
+      <ProfilePhotoGalleryModal
+        visible={photoGallery.open}
+        uris={photoGallery.uris}
+        initialIndex={photoGallery.start}
+        onClose={() => setPhotoGallery((s) => ({ ...s, open: false }))}
+      />
+
     </SafeAreaView>
   );
 }
@@ -1618,16 +1681,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
     paddingVertical: 4,
-  },
-  headerBrandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  headerAppLogo: {
-    width: 42,
-    height: 42,
   },
   headerBrandBlock: {
     alignItems: 'center',
@@ -1710,24 +1763,6 @@ const styles = StyleSheet.create({
   lookingForValue: {
     color: tokens.colors.accent,
   },
-  statusBadge: {
-    position: 'absolute',
-    top: 62,
-    left: 16,
-    zIndex: 10,
-    backgroundColor: tokens.colors.surfaceOverlay,
-    borderRadius: tokens.radius.full,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: tokens.colors.textSecondary,
-  },
-  statusValue: {
-    color: tokens.colors.blue,
-  },
   hotSeatBadge: {
     position: 'absolute',
     top: 106,
@@ -1740,39 +1775,46 @@ const styles = StyleSheet.create({
   },
   hotSeatText: { fontSize: 12, fontWeight: '600', color: tokens.colors.textSecondary },
   hotSeatValue: { color: tokens.colors.accent },
-  candidateIntentPill: {
+  /** Stacked under top-left so they never sit under the filter button (top-right). */
+  candidateTopLeftPills: {
     position: 'absolute',
     top: 14,
     left: 14,
     zIndex: 5,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    gap: 8,
+    alignItems: 'flex-start',
+    maxWidth: '78%',
+  },
+  candidatePill: {
+    backgroundColor: 'rgba(0,0,0,0.68)',
     borderRadius: tokens.radius.full,
     paddingVertical: 8,
     paddingHorizontal: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.22)',
   },
-  candidateIntentText: {
+  /** Always light-on-dark: pills sit on photos + dark scrim */
+  candidatePillText: {
     fontSize: 12,
     fontWeight: '600',
-    color: tokens.colors.text,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
-  candidateStatusPill: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 5,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: tokens.radius.full,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  candidateStatusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: tokens.colors.text,
+  candidatePresenceOnline: {
+    color: '#D1FAE5',
+    fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   card: {
+    flex: 1,
     width: '100%',
     height: '100%',
+    minHeight: 0,
+    flexDirection: 'column',
     backgroundColor: tokens.colors.surface,
     borderRadius: 24,
     borderWidth: 1,
@@ -1786,13 +1828,25 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   imageContainer: {
-    // Slightly shorter image area so we get more room in the lower part
-    // of the card for the floating action buttons.
-    height: '74%',
     position: 'relative',
+    minHeight: 0,
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
     overflow: 'hidden',
+  },
+  /** ~62% of card when about section is visible */
+  imageContainerSplit: {
+    flex: 62,
+  },
+  /** Full card height when there’s no about / add me / interests / voice */
+  imageContainerFull: {
+    flex: 1,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  imagePressable: {
+    width: '100%',
+    height: '100%',
   },
   image: {
     width: '100%',
@@ -1842,17 +1896,38 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   bioContainer: {
-    height: '26%',
+    flex: 38,
+    minHeight: 0,
     backgroundColor: tokens.colors.surfaceElevated,
     padding: 14,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
+  bioScrollContent: {
+    paddingBottom: 24,
+    flexGrow: 1,
+  },
+  bioSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: tokens.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    marginTop: 8,
+  },
   bio: {
     fontSize: 13,
     color: tokens.colors.text,
     fontWeight: '500',
-    marginBottom: 12,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  addMeText: {
+    fontSize: 13,
+    color: tokens.colors.accent,
+    fontWeight: '600',
+    marginBottom: 8,
     lineHeight: 18,
   },
   interestsContainer: {

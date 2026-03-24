@@ -1,7 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Modal, Image } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  TextInput,
+  ScrollView,
+  Alert,
+  Modal,
+  Image,
+  Platform,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ArrowLeft, Settings, Images, Sparkles, ShieldCheck, SlidersHorizontal, Users } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authService, userService, storageService } from '../../services/firebaseService';
 import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
@@ -12,6 +26,21 @@ import { COUNTRIES } from '../../utils/countries';
 import { sha256 } from '../../utils/hash';
 import { INTENTS } from '../../utils/intents';
 import { FadeInImage } from '../../ui/components/FadeInImage.native';
+import { ProfileAboutSection } from '../../ui/components/ProfileAboutSection.native';
+import { ProfileVoicePlayer } from '../../ui/components/ProfileVoicePlayer.native';
+import { tokens } from '../../ui/tokens';
+import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
+import { RetroButton } from '../../ui/components/RetroButton.native';
+
+const cardShadow =
+  Platform.OS === 'ios'
+    ? {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.07,
+        shadowRadius: 12,
+      }
+    : { elevation: 3 };
 
 function normalizePhone(p) {
   return String(p || '').replace(/[^\d+]/g, '');
@@ -41,9 +70,16 @@ export function MyProfileScreen({ onNavigate }) {
   const [waliConsentLevel, setWaliConsentLevel] = useState('ask');
   const [waliInviteSent, setWaliInviteSent] = useState(false);
 
+  const [bio, setBio] = useState('');
+  const [interestsText, setInterestsText] = useState('');
+  const [addMe, setAddMe] = useState('');
+  const [aboutVoiceUrl, setAboutVoiceUrl] = useState('');
+  const [aboutVoiceDurationMs, setAboutVoiceDurationMs] = useState(0);
+
   const uid = authService.getCurrentUser()?.uid || null;
   const email = authService.getCurrentUser()?.email || '';
   const emailVerified = !!authService.getCurrentUser()?.emailVerified;
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +104,14 @@ export function MyProfileScreen({ onNavigate }) {
             ? p.images.filter((img) => img && typeof img === 'string' && img.trim().length > 0)
             : [];
           setImages(validImages);
+
+          setBio(p?.bio || '');
+          setInterestsText(
+            Array.isArray(p?.interests) ? p.interests.map((x) => String(x || '').trim()).filter(Boolean).join(', ') : ''
+          );
+          setAddMe(p?.addMe || '');
+          setAboutVoiceUrl(p?.aboutVoiceUrl || '');
+          setAboutVoiceDurationMs(typeof p?.aboutVoiceDurationMs === 'number' ? p.aboutVoiceDurationMs : 0);
           
           // Load wali settings
           if (p?.wali) {
@@ -117,6 +161,19 @@ export function MyProfileScreen({ onNavigate }) {
       }
       // Update images array
       updates.images = images;
+
+      updates.bio = String(bio || '').trim().slice(0, 2000);
+      updates.interests = String(interestsText || '')
+        .split(/[,\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 20);
+      updates.addMe = String(addMe || '').trim().slice(0, 500);
+      updates.aboutVoiceUrl = aboutVoiceUrl && String(aboutVoiceUrl).trim() ? String(aboutVoiceUrl).trim() : null;
+      updates.aboutVoiceDurationMs =
+        updates.aboutVoiceUrl && typeof aboutVoiceDurationMs === 'number' && aboutVoiceDurationMs > 0
+          ? Math.min(aboutVoiceDurationMs, 120000)
+          : null;
 
       // Update wali settings if provided
       if (waliName.trim() || waliEmail.trim()) {
@@ -210,30 +267,53 @@ export function MyProfileScreen({ onNavigate }) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => onNavigate('home')}>
-          <Text style={styles.headerBtnText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>My Profile</Text>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => onNavigate('settings')}>
-          <Text style={styles.headerBtnText}>⚙️</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={styles.root}>
+      <LinearGradient
+        colors={['#FFF5F7', '#EFF6FF', '#F0FDFA']}
+        locations={[0, 0.45, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.safe}>
+        <View style={[styles.screenHeader, { paddingTop: insets.top }]}>
+          <View style={styles.headerRow}>
+            <HuzzPressable style={styles.headerSideBtn} onPress={() => onNavigate('home')} haptic="light">
+              <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.25} />
+            </HuzzPressable>
+            <View style={styles.headerTitleWrap}>
+              <Text style={styles.headerTitle}>My Profile</Text>
+            </View>
+            <HuzzPressable style={styles.headerSideBtn} onPress={() => onNavigate('settings')} haptic="light">
+              <Settings size={22} color={tokens.colors.text} strokeWidth={2.25} />
+            </HuzzPressable>
+          </View>
+        </View>
 
-      <HuzzKeyboardAwareScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <View style={styles.box}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={styles.boxTitle}>Photos</Text>
-            <TouchableOpacity
-              style={styles.previewBtn}
-              onPress={() => {
-                setPreviewImageIndex(0);
-                setPreviewOpen(true);
-              }}
-            >
-              <Text style={styles.previewBtnText}>👁️ Preview</Text>
-            </TouchableOpacity>
+        <HuzzKeyboardAwareScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: tokens.spacing.xl + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+        >
+        <View style={[styles.card, styles.sectionViolet, cardShadow]}>
+          <View style={styles.sectionHead}>
+            <View style={[styles.sectionIconWrap, styles.iconWrapViolet]}>
+              <Images size={20} color="#6D28D9" strokeWidth={2.2} />
+            </View>
+            <View style={styles.sectionHeadText}>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.sectionTitle}>Photos</Text>
+                <HuzzPressable
+                  style={styles.previewPill}
+                  onPress={() => {
+                    setPreviewImageIndex(0);
+                    setPreviewOpen(true);
+                  }}
+                  haptic="light"
+                >
+                  <Text style={styles.previewPillText}>Preview</Text>
+                </HuzzPressable>
+              </View>
+              <Text style={styles.sectionHint}>Up to 6 photos — your card shows them in discovery</Text>
+            </View>
           </View>
           <View style={styles.photoGrid}>
             {images
@@ -322,149 +402,187 @@ export function MyProfileScreen({ onNavigate }) {
           <Text style={styles.photoHint}>{images.length}/6 photos</Text>
         </View>
 
-        <View style={styles.box}>
-          <Text style={styles.boxTitle}>Account</Text>
-          <Text style={styles.boxText}>Email: {email || '-'}</Text>
-          <Text style={styles.boxText}>Verified: {emailVerified ? 'Yes' : 'No'}</Text>
-          <Text style={styles.boxText}>HUZZ badge: {profile?.isVerified ? '✅ Verified' : 'Not verified'}</Text>
-          <TouchableOpacity
-            style={[styles.btn, { backgroundColor: '#ffd700' }]}
-            onPress={() => onNavigate('verification')}
-          >
-            <Text style={styles.btnText}>Get verified badge</Text>
-          </TouchableOpacity>
-          {!emailVerified && (
-            <TouchableOpacity
-              style={[styles.btn, { backgroundColor: '#87ceeb', borderColor: '#4682b4' }]}
-              onPress={async () => {
-                const { error } = await authService.resendVerificationEmail();
-                if (error) Alert.alert('Error', error);
-                else Alert.alert('Sent', 'Verification email resent.');
-              }}
-            >
-              <Text style={styles.btnText}>Resend verification</Text>
-            </TouchableOpacity>
-          )}
+        <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+          <View style={styles.sectionHead}>
+            <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
+              <Sparkles size={20} color="#047857" strokeWidth={2.2} />
+            </View>
+            <View style={styles.sectionHeadText}>
+              <Text style={styles.sectionTitle}>About you</Text>
+              <Text style={styles.sectionHint}>
+                Bio, interests, socials, voice — all optional. Free AI tools can help you write your bio.
+              </Text>
+            </View>
+          </View>
+          <ProfileAboutSection
+            showHeading={false}
+            bio={bio}
+            onChangeBio={setBio}
+            interestsText={interestsText}
+            onChangeInterestsText={setInterestsText}
+            addMe={addMe}
+            onChangeAddMe={setAddMe}
+            aboutVoiceUrl={aboutVoiceUrl}
+            onChangeAboutVoiceUrl={setAboutVoiceUrl}
+            aboutVoiceDurationMs={aboutVoiceDurationMs}
+            onChangeAboutVoiceDurationMs={setAboutVoiceDurationMs}
+            uid={uid}
+          />
         </View>
 
-        <View style={styles.box}>
-          <Text style={styles.boxTitle}>Preferences</Text>
+        <View style={[styles.card, styles.sectionRose, cardShadow]}>
+          <View style={styles.sectionHead}>
+            <View style={[styles.sectionIconWrap, styles.iconWrapRose]}>
+              <ShieldCheck size={20} color="#E11D48" strokeWidth={2.2} />
+            </View>
+            <View style={styles.sectionHeadText}>
+              <Text style={styles.sectionTitle}>Account</Text>
+              <Text style={styles.sectionHint}>Email, verification, HUZZ badge</Text>
+            </View>
+          </View>
+          <Text style={styles.mutedLine}>Email: {email || '—'}</Text>
+          <Text style={styles.mutedLine}>Email verified: {emailVerified ? 'Yes' : 'No'}</Text>
+          <Text style={styles.mutedLine}>HUZZ badge: {profile?.isVerified ? 'Verified' : 'Not verified'}</Text>
+          <View style={styles.btnStack}>
+            <RetroButton variant="green" title="Get verified badge" onPress={() => onNavigate('verification')} style={styles.fullBtn} />
+            {!emailVerified && (
+              <RetroButton
+                variant="primary"
+                title="Resend verification email"
+                onPress={async () => {
+                  const { error } = await authService.resendVerificationEmail();
+                  if (error) Alert.alert('Error', error);
+                  else Alert.alert('Sent', 'Verification email resent.');
+                }}
+                style={styles.fullBtn}
+              />
+            )}
+          </View>
+        </View>
 
-          <Text style={styles.label}>Name</Text>
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" />
+        <View style={[styles.card, styles.sectionSky, cardShadow]}>
+          <View style={styles.sectionHead}>
+            <View style={[styles.sectionIconWrap, styles.iconWrapSky]}>
+              <SlidersHorizontal size={20} color="#0369A1" strokeWidth={2.2} />
+            </View>
+            <View style={styles.sectionHeadText}>
+              <Text style={styles.sectionTitle}>Preferences</Text>
+              <Text style={styles.sectionHint}>Name, phone, intent, country</Text>
+            </View>
+          </View>
 
-          <Text style={styles.label}>Phone (optional for contacts blocking)</Text>
+          <Text style={styles.fieldLabel}>Name</Text>
+          <TextInput style={styles.fieldInput} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={tokens.colors.textMuted} />
+
+          <Text style={styles.fieldLabel}>Phone (optional for contacts blocking)</Text>
           <TextInput
-            style={styles.input}
+            style={styles.fieldInput}
             value={phone}
             onChangeText={setPhone}
             placeholder="+1 555 123 4567"
             keyboardType="phone-pad"
+            placeholderTextColor={tokens.colors.textMuted}
           />
 
-          <Text style={styles.label}>My intent</Text>
-          <TouchableOpacity style={[styles.input, { justifyContent: 'center' }]} onPress={() => setIntentModalOpen(true)}>
-            <Text style={{ fontWeight: '800', color: '#000000' }}>{categoryIntent || 'Select intent'}</Text>
-          </TouchableOpacity>
+          <Text style={styles.fieldLabel}>My intent</Text>
+          <HuzzPressable style={styles.fieldInputTouchable} onPress={() => setIntentModalOpen(true)} haptic="light">
+            <Text style={styles.fieldInputTouchableText}>{categoryIntent || 'Select intent'}</Text>
+          </HuzzPressable>
 
-          <Text style={styles.label}>Your country</Text>
-          <TouchableOpacity
-            style={[styles.input, { justifyContent: 'center' }]}
-            onPress={() => setCountryModalOpen(true)}
-          >
-            <Text style={{ fontWeight: '800', color: '#000000' }}>
+          <Text style={styles.fieldLabel}>Your country</Text>
+          <HuzzPressable style={styles.fieldInputTouchable} onPress={() => setCountryModalOpen(true)} haptic="light">
+            <Text style={styles.fieldInputTouchableText}>
               {countryOfResidence ? countryOfResidence : 'Select country'}
             </Text>
-          </TouchableOpacity>
+          </HuzzPressable>
         </View>
 
         {/* Wali/Guardian Settings */}
-        <View style={styles.box}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <Text style={styles.boxTitle}>Wali/Guardian Settings</Text>
-            <Text style={styles.infoIcon}>ℹ️</Text>
+        <View style={[styles.card, styles.sectionAmber, cardShadow]}>
+          <View style={styles.sectionHead}>
+            <View style={[styles.sectionIconWrap, styles.iconWrapAmber]}>
+              <Users size={20} color="#B45309" strokeWidth={2.2} />
+            </View>
+            <View style={styles.sectionHeadText}>
+              <Text style={styles.sectionTitle}>Wali / guardian</Text>
+              <Text style={styles.sectionHint}>Optional — someone who can help oversee matches with your consent</Text>
+            </View>
           </View>
-          <Text style={styles.boxText}>
-            Add a guardian (wali) who can help oversee your matches and conversations with your consent.
-          </Text>
 
-          <Text style={styles.label}>Wali Name</Text>
+          <Text style={styles.fieldLabel}>Wali name</Text>
           <TextInput
-            style={styles.input}
+            style={styles.fieldInput}
             value={waliName}
             onChangeText={setWaliName}
             placeholder="Guardian's name"
+            placeholderTextColor={tokens.colors.textMuted}
           />
 
-          <Text style={styles.label}>Wali Email</Text>
+          <Text style={styles.fieldLabel}>Wali email</Text>
           <TextInput
-            style={styles.input}
+            style={styles.fieldInput}
             value={waliEmail}
             onChangeText={setWaliEmail}
             placeholder="guardian@example.com"
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            placeholderTextColor={tokens.colors.textMuted}
           />
 
-          <Text style={styles.label}>Show on Profile</Text>
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-            <TouchableOpacity
-              style={[
-                styles.radioOption,
-                waliVisibility === 'visible' && styles.radioOptionSelected,
-              ]}
+          <Text style={styles.fieldLabel}>Show on profile</Text>
+          <View style={styles.radioRow}>
+            <HuzzPressable
+              style={[styles.radioChip, waliVisibility === 'visible' && styles.radioChipOn]}
               onPress={() => setWaliVisibility('visible')}
+              haptic="light"
             >
-              <Text style={[styles.radioText, waliVisibility === 'visible' && styles.radioTextSelected]}>
-                Show
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.radioOption,
-                waliVisibility === 'hidden' && styles.radioOptionSelected,
-              ]}
+              <Text style={[styles.radioChipText, waliVisibility === 'visible' && styles.radioChipTextOn]}>Show</Text>
+            </HuzzPressable>
+            <HuzzPressable
+              style={[styles.radioChip, waliVisibility === 'hidden' && styles.radioChipOn]}
               onPress={() => setWaliVisibility('hidden')}
+              haptic="light"
             >
-              <Text style={[styles.radioText, waliVisibility === 'hidden' && styles.radioTextSelected]}>
-                Hide
-              </Text>
-            </TouchableOpacity>
+              <Text style={[styles.radioChipText, waliVisibility === 'hidden' && styles.radioChipTextOn]}>Hide</Text>
+            </HuzzPressable>
           </View>
 
-          <Text style={styles.label}>When Can Wali Step In?</Text>
-          <TouchableOpacity
-            style={[styles.input, { justifyContent: 'center' }]}
+          <Text style={styles.fieldLabel}>When can wali step in?</Text>
+          <HuzzPressable
+            style={styles.fieldInputTouchable}
             onPress={() => {
               Alert.alert(
-                'Consent Level',
+                'Consent level',
                 'Choose when your wali can access your matches:',
                 [
                   { text: 'Always', onPress: () => setWaliConsentLevel('always') },
-                  { text: 'Ask Me Each Time', onPress: () => setWaliConsentLevel('ask') },
+                  { text: 'Ask me each time', onPress: () => setWaliConsentLevel('ask') },
                   { text: 'Never', onPress: () => setWaliConsentLevel('never') },
                   { text: 'Cancel', style: 'cancel' },
                 ]
               );
             }}
+            haptic="light"
           >
-            <Text style={{ fontWeight: '800', color: '#000000' }}>
-              {waliConsentLevel === 'always' ? 'Always' : waliConsentLevel === 'ask' ? 'Ask Me Each Time' : 'Never'}
+            <Text style={styles.fieldInputTouchableText}>
+              {waliConsentLevel === 'always' ? 'Always' : waliConsentLevel === 'ask' ? 'Ask me each time' : 'Never'}
             </Text>
-          </TouchableOpacity>
+          </HuzzPressable>
 
           {waliInviteSent && (
-            <View style={{ marginTop: 8, padding: 8, backgroundColor: '#90ee90', borderRadius: 8, borderWidth: 2, borderColor: '#228b22' }}>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#000000' }}>✓ Invitation Email Sent</Text>
+            <View style={styles.inviteBanner}>
+              <Text style={styles.inviteBannerText}>Invitation email sent</Text>
             </View>
           )}
 
           {profile?.wali?.name && (
-            <TouchableOpacity
-              style={[styles.btn, { backgroundColor: '#ff6b6b', marginTop: 12 }]}
+            <RetroButton
+              variant="danger"
+              title="Remove wali"
+              style={[styles.fullBtn, { marginTop: 12 }]}
               onPress={async () => {
-                Alert.alert('Remove Wali?', 'Are you sure you want to remove your wali?', [
+                Alert.alert('Remove wali?', 'Are you sure you want to remove your wali?', [
                   { text: 'Cancel', style: 'cancel' },
                   {
                     text: 'Remove',
@@ -481,19 +599,17 @@ export function MyProfileScreen({ onNavigate }) {
                   },
                 ]);
               }}
-            >
-              <Text style={[styles.btnText, { color: '#ffffff' }]}>Remove Wali</Text>
-            </TouchableOpacity>
+            />
           )}
         </View>
 
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: '#800020' }]}
+        <RetroButton
+          variant="primary"
+          title={saving ? 'Saving…' : 'Save profile'}
           onPress={save}
           disabled={loading || saving}
-        >
-          <Text style={[styles.btnText, { color: '#ffffff' }]}>{saving ? 'Saving...' : 'Save'}</Text>
-        </TouchableOpacity>
+          style={styles.fullBtn}
+        />
       </HuzzKeyboardAwareScrollView>
 
       {/* Country dropdown modal */}
@@ -523,9 +639,7 @@ export function MyProfileScreen({ onNavigate }) {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={[styles.btn, { backgroundColor: '#c0c0c0' }]} onPress={() => setCountryModalOpen(false)}>
-              <Text style={styles.btnText}>Close</Text>
-            </TouchableOpacity>
+            <RetroButton variant="gray" title="Close" onPress={() => setCountryModalOpen(false)} style={styles.fullBtn} />
           </View>
         </View>
       </Modal>
@@ -539,10 +653,7 @@ export function MyProfileScreen({ onNavigate }) {
               {INTENTS.map((it) => (
                 <TouchableOpacity
                   key={it}
-                  style={[
-                    styles.modalRow,
-                    categoryIntent === it ? { backgroundColor: '#90ee90', borderColor: '#228b22' } : null,
-                  ]}
+                  style={[styles.modalRow, categoryIntent === it ? styles.modalRowSelected : null]}
                   onPress={() => {
                     setCategoryIntent(it);
                     setIntentModalOpen(false);
@@ -564,9 +675,7 @@ export function MyProfileScreen({ onNavigate }) {
                 <Text style={styles.modalRowText}>No preference</Text>
               </TouchableOpacity>
             </ScrollView>
-            <TouchableOpacity style={[styles.btn, { backgroundColor: '#c0c0c0' }]} onPress={() => setIntentModalOpen(false)}>
-              <Text style={styles.btnText}>Close</Text>
-            </TouchableOpacity>
+            <RetroButton variant="gray" title="Close" onPress={() => setIntentModalOpen(false)} style={styles.fullBtn} />
           </View>
         </View>
       </Modal>
@@ -642,85 +751,261 @@ export function MyProfileScreen({ onNavigate }) {
                   )}
                 </View>
 
-                {/* Bio & Interests */}
+                {/* About, Add me, Interests, Voice — mirrors swipe card (draft state) */}
                 <ScrollView style={styles.previewBioContainer} contentContainerStyle={{ paddingBottom: 20 }}>
-                  <Text style={styles.previewBio}>{String(profile?.bio || '')}</Text>
-                  <View style={styles.previewInterestsContainer}>
-                    {(profile?.interests || []).slice(0, 4).map((interest, idx) => {
-                      const colors = ['#98fb98', '#b0e0e6', '#fffacd', '#f0e68c'];
-                      return (
-                        <View
-                          key={`${interest}-${idx}`}
-                          style={[styles.previewInterestTag, { backgroundColor: colors[idx % colors.length] }]}
-                        >
-                          <Text style={styles.previewInterestTagText}>{interest}</Text>
+                  {!!String(bio || '').trim() && (
+                    <>
+                      <Text style={styles.previewSectionLabel}>About</Text>
+                      <Text style={styles.previewBio}>{String(bio || '').trim()}</Text>
+                    </>
+                  )}
+                  {!!String(addMe || '').trim() && (
+                    <>
+                      <Text style={[styles.previewSectionLabel, { marginTop: 12 }]}>Add me</Text>
+                      <Text style={styles.previewAddMe}>{String(addMe || '').trim()}</Text>
+                    </>
+                  )}
+                  {(() => {
+                    const previewInterests = String(interestsText || '')
+                      .split(/[,\n]/)
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .slice(0, 20);
+                    if (!previewInterests.length) return null;
+                    return (
+                      <>
+                        <Text style={[styles.previewSectionLabel, { marginTop: 12 }]}>Interests</Text>
+                        <View style={styles.previewInterestsContainer}>
+                          {previewInterests.map((interest, idx) => {
+                            const colors = ['#98fb98', '#b0e0e6', '#fffacd', '#f0e68c'];
+                            return (
+                              <View
+                                key={`${interest}-${idx}`}
+                                style={[styles.previewInterestTag, { backgroundColor: colors[idx % colors.length] }]}
+                              >
+                                <Text style={styles.previewInterestTagText}>{interest}</Text>
+                              </View>
+                            );
+                          })}
                         </View>
-                      );
-                    })}
-                  </View>
+                      </>
+                    );
+                  })()}
+                  {aboutVoiceUrl && String(aboutVoiceUrl).trim() ? (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={styles.previewSectionLabel}>Voice</Text>
+                      <ProfileVoicePlayer audioUrl={aboutVoiceUrl.trim()} durationMs={aboutVoiceDurationMs} />
+                    </View>
+                  ) : null}
                 </ScrollView>
               </View>
             </View>
           </View>
         </SafeAreaView>
       </Modal>
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#ffffff' },
-  header: {
+  root: {
+    flex: 1,
+    backgroundColor: tokens.colors.filterBgRose,
+  },
+  safe: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  screenHeader: {
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.colors.border,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingBottom: tokens.spacing.sm,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 3,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+  },
+  headerSideBtn: {
+    minWidth: 44,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+  },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.xs,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: tokens.colors.text,
+    letterSpacing: -0.3,
+  },
+  scroll: { flex: 1 },
+  scrollContent: {
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.md,
+  },
+  card: {
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12,
+  },
+  sectionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconWrapViolet: { backgroundColor: 'rgba(139, 92, 246, 0.22)' },
+  iconWrapEmerald: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },
+  iconWrapRose: { backgroundColor: 'rgba(225, 29, 72, 0.18)' },
+  iconWrapSky: { backgroundColor: 'rgba(14, 165, 233, 0.2)' },
+  iconWrapAmber: { backgroundColor: 'rgba(245, 158, 11, 0.22)' },
+  sectionHeadText: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: tokens.colors.text,
+    letterSpacing: -0.2,
+    flex: 1,
+  },
+  sectionHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: tokens.colors.textMuted,
+    marginTop: 2,
+  },
+  sectionViolet: {
+    backgroundColor: tokens.colors.filterBgViolet,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderViolet,
+  },
+  sectionEmerald: {
+    backgroundColor: tokens.colors.filterBgEmerald,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderEmerald,
+  },
+  sectionRose: {
+    backgroundColor: tokens.colors.filterBgRose,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderRose,
+  },
+  sectionSky: {
+    backgroundColor: tokens.colors.filterBgSky,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderSky,
+  },
+  sectionAmber: {
+    backgroundColor: tokens.colors.filterBgAmber,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderAmber,
+  },
+  previewPill: {
+    paddingVertical: 6,
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 3,
-    borderBottomColor: '#8b4513',
-    backgroundColor: '#ffffff',
+    borderRadius: tokens.radius.full,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
   },
-  headerBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 3,
-    borderColor: '#654321',
-    borderRadius: 8,
-    backgroundColor: '#ffffff',
-    minWidth: 60,
-    alignItems: 'center',
+  previewPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.accent,
   },
-  headerBtnText: { fontWeight: '900', color: '#000000' },
-  title: { fontSize: 18, fontWeight: '900', color: '#8b4513', letterSpacing: 1 },
-  box: {
-    backgroundColor: '#ffffff',
-    borderWidth: 3,
-    borderColor: '#654321',
-    borderRadius: 12,
-    padding: 14,
-  },
-  boxTitle: { fontSize: 12, fontWeight: '900', color: '#800020', letterSpacing: 1, marginBottom: 10 },
-  boxText: { fontSize: 12, fontWeight: 'bold', color: '#000000', marginBottom: 6 },
-  label: { fontSize: 12, fontWeight: 'bold', color: '#000000', marginTop: 8, marginBottom: 6 },
-  input: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#8b4513',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  mutedLine: {
     fontSize: 14,
-    color: '#000000',
+    color: tokens.colors.textSecondary,
+    marginBottom: 6,
   },
-  btn: {
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: '#654321',
-    backgroundColor: '#c0c0c0',
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.colors.text,
+    marginTop: 10,
+    marginBottom: 6,
   },
-  btnText: { textAlign: 'center', fontWeight: '900', color: '#000000', textTransform: 'uppercase', letterSpacing: 0.5 },
+  fieldInput: {
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    color: tokens.colors.text,
+  },
+  fieldInputTouchable: {
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  fieldInputTouchableText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: tokens.colors.text,
+  },
+  btnStack: { gap: 10 },
+  fullBtn: { alignSelf: 'stretch', width: '100%' },
+  radioRow: { flexDirection: 'row', gap: 10, marginBottom: 8, flexWrap: 'wrap' },
+  radioChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    backgroundColor: tokens.colors.surface,
+  },
+  radioChipOn: {
+    borderColor: tokens.colors.accent,
+    backgroundColor: tokens.colors.accentDim,
+  },
+  radioChipText: { fontSize: 14, fontWeight: '600', color: tokens.colors.text },
+  radioChipTextOn: { color: tokens.colors.accent },
+  inviteBanner: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: tokens.radius.md,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  inviteBannerText: { fontSize: 13, fontWeight: '700', color: '#047857' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -728,43 +1013,45 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 4,
-    borderColor: '#8b4513',
-    padding: 16,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    padding: tokens.spacing.md,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#8b4513',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontSize: 17,
+    fontWeight: '700',
+    color: tokens.colors.text,
+    marginBottom: 12,
   },
   modalSearch: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#8b4513',
+    backgroundColor: tokens.colors.surfaceElevated,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
     padding: 12,
-    fontSize: 14,
-    color: '#000000',
+    fontSize: 16,
+    color: tokens.colors.text,
     marginBottom: 12,
   },
   modalRow: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: '#654321',
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
     paddingVertical: 12,
     paddingHorizontal: 12,
     marginBottom: 8,
   },
   modalRowText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+    color: tokens.colors.text,
+  },
+  modalRowSelected: {
+    backgroundColor: tokens.colors.accentDim,
+    borderColor: tokens.colors.accent,
   },
   photoGrid: {
     flexDirection: 'row',
@@ -775,10 +1062,10 @@ const styles = StyleSheet.create({
   photoItem: {
     width: '31%',
     aspectRatio: 4 / 5,
-    borderRadius: 12,
+    borderRadius: tokens.radius.sm,
     overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#8b4513',
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
     position: 'relative',
   },
   photo: {
@@ -807,38 +1094,25 @@ const styles = StyleSheet.create({
   addPhotoBtn: {
     width: '31%',
     aspectRatio: 4 / 5,
-    borderRadius: 12,
-    borderWidth: 3,
-    borderColor: '#8b4513',
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
     borderStyle: 'dashed',
-    backgroundColor: '#ffffff',
+    backgroundColor: tokens.colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addPhotoText: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#8b4513',
+    fontSize: 28,
+    fontWeight: '700',
+    color: tokens.colors.accent,
   },
   photoHint: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#654321',
-    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    color: tokens.colors.textMuted,
+    marginTop: 8,
     textAlign: 'center',
-  },
-  previewBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderWidth: 2,
-    borderColor: '#8b4513',
-    borderRadius: 8,
-    backgroundColor: '#fffef0',
-  },
-  previewBtnText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#800020',
   },
   previewBackdrop: {
     flex: 1,
@@ -847,10 +1121,10 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   previewContainer: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    borderWidth: 4,
-    borderColor: '#8b4513',
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
     maxHeight: '85%',
     flex: 1,
     overflow: 'hidden',
@@ -860,30 +1134,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 3,
-    borderBottomColor: '#8b4513',
-    backgroundColor: '#fffef0',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.colors.border,
+    backgroundColor: 'rgba(255,255,255,0.98)',
   },
   previewTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#8b4513',
-    letterSpacing: 1,
+    fontSize: 17,
+    fontWeight: '700',
+    color: tokens.colors.text,
+    letterSpacing: -0.2,
   },
   previewCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#800020',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: tokens.colors.surfaceOverlay,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#654321',
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
   },
   previewCloseText: {
-    color: '#ffffff',
+    color: tokens.colors.textSecondary,
     fontSize: 18,
-    fontWeight: '900',
+    fontWeight: '600',
   },
   previewScrollContent: {
     flex: 1,
@@ -908,7 +1182,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   previewImageContainer: {
-    height: '74%',
+    height: '62%',
     position: 'relative',
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
@@ -1019,17 +1293,32 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   previewBioContainer: {
-    height: '26%',
+    height: '38%',
     backgroundColor: '#ffe4e1',
     padding: 12,
     borderBottomLeftRadius: 36,
     borderBottomRightRadius: 36,
   },
+  previewSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#654321',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   previewBio: {
     fontSize: 12,
     color: '#000000',
     fontWeight: '900',
-    marginBottom: 12,
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  previewAddMe: {
+    fontSize: 12,
+    color: '#333333',
+    fontWeight: '600',
+    lineHeight: 18,
   },
   previewInterestsContainer: {
     flexDirection: 'row',
@@ -1052,30 +1341,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     color: '#000000',
-  },
-  infoIcon: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  radioOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#8b4513',
-    backgroundColor: '#ffffff',
-  },
-  radioOptionSelected: {
-    backgroundColor: '#800020',
-    borderColor: '#654321',
-  },
-  radioText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#000000',
-  },
-  radioTextSelected: {
-    color: '#ffffff',
   },
 });
 

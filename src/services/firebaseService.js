@@ -50,6 +50,7 @@ import { matchAnalyticsService } from './matchAnalyticsService';
 import { contentModerationService } from './contentModerationService';
 import { auditLogService } from './auditLogService';
 import { exportService } from './exportService';
+import { translateChatMessage } from './translateChatMessage';
 
 /**
  * Firestore collection names (single source of truth)
@@ -1764,6 +1765,13 @@ export const messageService = {
 };
 
 /**
+ * Chat translation: ML Kit on Android (see translateChatMessage.native.js), cloud elsewhere.
+ */
+export const translationService = {
+  translateChatMessage,
+};
+
+/**
  * Wingman (co-op swipe) rooms
  */
 export const wingmanService = {
@@ -2591,6 +2599,35 @@ export const storageService = {
       return { url: downloadURL, error: null };
     } catch (error) {
       console.error('Upload voice note error:', error);
+      return { url: null, error: error.message };
+    }
+  },
+
+  /**
+   * Profile “about me” voice clip (recorded or picked). Same Storage path as chat voice; max ~2MB via rules.
+   * Content type must match audio/* (m4a, mpeg, mp3, etc.).
+   */
+  async uploadProfileAboutVoice(userId, audioUri) {
+    try {
+      const response = await fetch(audioUri);
+      const blob = await response.blob();
+      const raw = String(audioUri || '').split('?')[0];
+      const ext = (raw.split('.').pop() || 'm4a').toLowerCase().replace(/[^a-z0-9]/g, '') || 'm4a';
+      const mime =
+        ext === 'mp3' || ext === 'mpeg'
+          ? 'audio/mpeg'
+          : ext === 'wav'
+            ? 'audio/wav'
+            : ext === 'caf'
+              ? 'audio/x-caf'
+              : 'audio/mp4';
+      const filename = `voice/${userId}/about_${Date.now()}.${ext}`;
+      const storageRef = ref(storage, filename);
+      await uploadBytes(storageRef, blob, { contentType: mime });
+      const downloadURL = await getDownloadURL(storageRef);
+      return { url: downloadURL, error: null };
+    } catch (error) {
+      console.error('Upload profile about voice error:', error);
       return { url: null, error: error.message };
     }
   },

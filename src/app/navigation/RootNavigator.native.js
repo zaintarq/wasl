@@ -30,6 +30,7 @@ import { getDeviceHash } from '../../services/deviceService';
 import * as Contacts from 'expo-contacts';
 import { vpnDetectionService } from '../../services/vpnDetectionService';
 import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
+import { PresenceHeartbeat } from '../components/PresenceHeartbeat.native';
 
 const RootStack = createNativeStackNavigator();
 
@@ -610,6 +611,7 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer ref={navRef} initialState={rootInitialState}>
+      <PresenceHeartbeat />
       <LocationSyncGate />
       <PushTokenGate />
       <DeviceBanGate />

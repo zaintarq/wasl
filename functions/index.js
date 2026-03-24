@@ -372,6 +372,168 @@ exports.checkMessageToxicity = functions
   });
 
 // ---------------------------------------------------------------------------
+// Chat: on-demand translation via MyMemory (free tier, no paid API).
+// https://mymemory.translated.net/doc/spec.php
+// Optional: set MYMEMORY_CONTACT_EMAIL in functions config for a higher free daily quota.
+// ---------------------------------------------------------------------------
+const CHAT_TRANSLATE_LANGS = new Set([
+  'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'ru', 'uk', 'tr', 'ar', 'hi', 'ur', 'bn',
+  'ta', 'te', 'id', 'ms', 'th', 'vi', 'zh', 'ja', 'ko', 'fa', 'he', 'el', 'sv', 'cs', 'ro', 'hu', 'sw', 'fil',
+]);
+
+/** MyMemory uses slightly different codes for some targets */
+const MYMEMORY_TARGET = {
+  fil: 'tl',
+  zh: 'zh-CN',
+};
+
+/** Source side (left of langpair) — MyMemory rejects `auto`; use explicit codes */
+const MYMEMORY_SOURCE = {
+  zh: 'zh-CN',
+  fil: 'tl',
+};
+
+function getMyMemoryContactEmail() {
+  if (process.env.MYMEMORY_CONTACT_EMAIL) return String(process.env.MYMEMORY_CONTACT_EMAIL).trim();
+  try {
+    const cfg = functions.config && typeof functions.config === 'function' ? functions.config() : {};
+    const e = cfg.mymemory && cfg.mymemory.contact_email;
+    return e ? String(e).trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Normalize for comparing source vs target (zh-CN vs zh, tl vs fil).
+ * @param {string} code
+ * @returns {string}
+ */
+function myMemoryLangBase(code) {
+  const s = String(code || '').toLowerCase();
+  if (s.startsWith('zh')) return 'zh';
+  if (s === 'tl' || s === 'fil') return 'tl';
+  return s.split(/[-_]/)[0];
+}
+
+/**
+ * Detect source language (ISO 639-1) without extra npm deps (avoids ESM/heavy packages on Cloud Functions).
+ * MyMemory rejects `auto|target` — we must send an explicit source.
+ * Latin script defaults to `en` (cannot distinguish es/fr/de/… without ML).
+ * @param {string} raw
+ * @returns {string}
+ */
+function detectSourceIso6391Sync(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return 'en';
+
+  const hasArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(t);
+  const hasHebrew = /[\u0590-\u05FF]/.test(t);
+  const hasDevanagari = /[\u0900-\u097F]/.test(t);
+  const hasBengali = /[\u0980-\u09FF]/.test(t);
+  const hasTamil = /[\u0B80-\u0BFF]/.test(t);
+  const hasTelugu = /[\u0C00-\u0C7F]/.test(t);
+  const hasThai = /[\u0E00-\u0E7F]/.test(t);
+  const hasHangul = /[\uAC00-\uD7AF\u1100-\u11FF]/.test(t);
+  const hasHiraganaKatakana = /[\u3040-\u30ff\u31f0-\u31ff]/.test(t);
+  const hasCJKHan = /[\u4e00-\u9fff\u3400-\u4dbf]/.test(t);
+  const hasCyrillic = /[\u0400-\u04FF]/.test(t);
+  const hasGreek = /[\u0370-\u03FF]/.test(t);
+
+  if (hasHebrew) return 'he';
+  if (hasGreek) return 'el';
+  if (hasHangul) return 'ko';
+  if (hasHiraganaKatakana) return 'ja';
+  if (hasCJKHan && !hasHiraganaKatakana) return 'zh';
+  if (hasThai) return 'th';
+  if (hasTamil) return 'ta';
+  if (hasTelugu) return 'te';
+  if (hasBengali) return 'bn';
+  if (hasDevanagari) return 'hi';
+  if (hasCyrillic) {
+    if (/[іїєґІЇЄҐ]/.test(t)) return 'uk';
+    return 'ru';
+  }
+  if (hasArabic) return 'ar';
+
+  // Latin / rest: very short strings default to English (common in chat).
+  if (t.length < 24) return 'en';
+
+  return 'en';
+}
+
+/**
+ * @param {string} text
+ * @param {string} targetLang app BCP-47 / ISO code
+ * @returns {Promise<string>}
+ */
+async function translateWithMyMemory(text, targetLang) {
+  const targetRaw = MYMEMORY_TARGET[targetLang] || targetLang;
+  const q = text.length > 3500 ? `${text.slice(0, 3500)}…` : text;
+  const trimmed = q.trim();
+
+  const sourceIso = detectSourceIso6391Sync(trimmed);
+  const sourceLeft = MYMEMORY_SOURCE[sourceIso] || sourceIso;
+  const target = String(targetRaw).toLowerCase();
+
+  if (myMemoryLangBase(sourceLeft) === myMemoryLangBase(target)) {
+    return trimmed;
+  }
+
+  const langpair = `${sourceLeft}|${target}`.toLowerCase();
+  const url = new URL('https://api.mymemory.translated.net/get');
+  url.searchParams.set('q', q);
+  url.searchParams.set('langpair', langpair);
+  const contact = getMyMemoryContactEmail();
+  if (contact) url.searchParams.set('de', contact);
+
+  const res = await fetch(url.toString(), {
+    headers: {'User-Agent': 'HuzzChat/1.0 (Firebase Function)'},
+  });
+  if (!res.ok) {
+    throw new Error(`Translation service HTTP ${res.status}`);
+  }
+  const j = await res.json();
+  const details = String(j.responseDetails || '');
+  if (details.includes('MYMEMORY WARNING') && details.includes('FREE TRANSLATION')) {
+    throw new Error('Daily free translation limit reached. Try again tomorrow.');
+  }
+  const status = j.responseStatus;
+  if (status !== 200 && status !== '200') {
+    throw new Error(details || 'Translation failed');
+  }
+  const out = j.responseData && j.responseData.translatedText;
+  if (typeof out !== 'string' || !out.trim()) {
+    throw new Error(details || 'Empty translation');
+  }
+  return out.trim();
+}
+
+exports.translateChatMessage = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  const text = typeof data?.text === 'string' ? data.text.trim() : '';
+  const targetLang = typeof data?.targetLang === 'string' ? data.targetLang.trim().toLowerCase() : '';
+  if (!text || text.length > 8000) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid text.');
+  }
+  if (!targetLang || !CHAT_TRANSLATE_LANGS.has(targetLang)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid target language.');
+  }
+  try {
+    const translatedText = await translateWithMyMemory(text, targetLang);
+    return {translatedText};
+  } catch (e) {
+    console.error('[translateChatMessage]', e);
+    throw new functions.https.HttpsError(
+      'internal',
+      e && e.message ? e.message : 'Translation failed. Try again later.'
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Sign up: email OTP → session → finalize (Admin createUser + custom token)
 // ---------------------------------------------------------------------------
 

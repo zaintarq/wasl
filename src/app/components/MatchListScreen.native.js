@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
+import { getPresenceDisplay } from '../../utils/presence';
 
 export function MatchListScreen({ onNavigate }) {
   const [loading, setLoading] = useState(true);
@@ -132,7 +133,11 @@ export function MatchListScreen({ onNavigate }) {
                     ? isReceiver
                       ? 'Match request pending your approval'
                       : 'Pending approval'
-                    : other?.categoryIntent || ''}
+                    : (() => {
+                        const p = getPresenceDisplay(other?.lastSeen);
+                        if (p && canChat) return p.label;
+                        return other?.categoryIntent || '';
+                      })()}
                 </Text>
               </View>
               {status === 'pending' && isReceiver ? (

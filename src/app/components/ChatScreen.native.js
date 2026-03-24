@@ -1,5 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, Platform, Alert, Keyboard, Image } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  Platform,
+  Alert,
+  Keyboard,
+  Image,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -8,7 +20,16 @@ import Animated, {
   withSpring,
   FadeInUp,
 } from 'react-native-reanimated';
-import { authService, matchService, messageService, reportService, blockService, userService, waliService } from '../../services/firebaseService';
+import {
+  authService,
+  matchService,
+  messageService,
+  reportService,
+  blockService,
+  userService,
+  waliService,
+  translationService,
+} from '../../services/firebaseService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
@@ -18,6 +39,8 @@ import * as Haptics from 'expo-haptics';
 import { useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import * as Clipboard from 'expo-clipboard';
 import Svg, { Rect } from 'react-native-svg';
+import { getPresenceDisplay } from '../../utils/presence';
+import { CHAT_TRANSLATE_LANGUAGES, getChatLanguageLabel } from '../../utils/chatLanguages';
 
 const TYPING_INDICATOR_IMG = require('../../../assets/images/typinggg.png');
 
@@ -77,21 +100,6 @@ function fmtDayLabel(d) {
   return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function formatLastSeen(d) {
-  if (!d || !(d instanceof Date)) return '';
-  const now = new Date();
-  const diffMs = now - d;
-  const diffMins = Math.floor(diffMs / (60 * 1000));
-  const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
-  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24 && d.getDate() === now.getDate()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (diffDays === 1) return `Yesterday ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  if (diffDays < 7) return fmtDayLabel(d);
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
-
 // Swipe right to reply (WhatsApp style) with animated "Reply" strip
 const SWIPE_REPLY_THRESHOLD = 56;
 const SWIPE_REPLY_MAX = 80;
@@ -106,6 +114,10 @@ function MessageBubbleRow({
   onSwipeReply,
   onTogglePlay,
   onReport,
+  targetLang,
+  translateState,
+  onPressTranslate,
+  onHideTranslation,
 }) {
   const translateX = useSharedValue(0);
 
@@ -142,6 +154,16 @@ function MessageBubbleRow({
   const reply = item?.replyTo && typeof item.replyTo === 'object' ? item.replyTo : null;
   const reactions = item?.reactions && typeof item.reactions === 'object' ? item.reactions : {};
   const reactionLine = Object.values(reactions).filter(Boolean).join(' ');
+
+  const showTranslate =
+    !mine &&
+    !isVoice &&
+    !deleted &&
+    String(item?.text || '').trim().length > 0 &&
+    !!targetLang;
+
+  const tr = translateState;
+  const trPhase = tr?.phase || 'hidden';
 
   return (
     <GestureDetector gesture={swipeReplyGesture}>
@@ -193,6 +215,36 @@ function MessageBubbleRow({
             ) : null}
           </HuzzPressable>
         </Animated.View>
+
+        {showTranslate ? (
+          <View style={st.translateColumn}>
+            {trPhase === 'visible' && tr?.text ? (
+              <View style={st.translatedBox}>
+                <Text style={st.translatedLabel}>Translation</Text>
+                <Text style={st.translatedBody}>{tr.text}</Text>
+                <HuzzPressable onPress={() => onHideTranslation?.(item?.id)} haptic="light">
+                  <Text style={st.translatedHide}>Hide</Text>
+                </HuzzPressable>
+              </View>
+            ) : null}
+            {trPhase === 'loading' ? (
+              <View style={st.translateLoadingRow}>
+                <ActivityIndicator size="small" color={tokens.colors.accent} />
+                <Text style={st.translateLoadingText}>Translating…</Text>
+              </View>
+            ) : null}
+            {trPhase === 'error' ? (
+              <HuzzPressable onPress={() => onPressTranslate?.(item)} haptic="light">
+                <Text style={st.translateErrorText}>{tr?.error || 'Could not translate'} · Retry</Text>
+              </HuzzPressable>
+            ) : null}
+            {trPhase === 'hidden' ? (
+              <HuzzPressable onPress={() => onPressTranslate?.(item)} haptic="light">
+                <Text style={st.translateLink}>Translate to {getChatLanguageLabel(targetLang)}</Text>
+              </HuzzPressable>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </GestureDetector>
   );
@@ -220,6 +272,67 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
   const player = useAudioPlayer(null);
 
   const meUid = authService.getCurrentUser()?.uid || null;
+
+  /** BCP-47 code — messages from others translate on demand into this language */
+  const [chatTranslateLang, setChatTranslateLang] = useState('en');
+  const [langModalOpen, setLangModalOpen] = useState(false);
+  const [langSearch, setLangSearch] = useState('');
+  /** { [messageId]: { phase: 'hidden'|'loading'|'visible'|'error', text?: string, error?: string } } */
+  const [translationById, setTranslationById] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!meUid) return;
+    (async () => {
+      try {
+        const res = await userService.getUserById(meUid);
+        const lang = res?.data?.chatTranslateLang;
+        if (!cancelled && typeof lang === 'string' && lang.trim()) {
+          setChatTranslateLang(lang.trim().toLowerCase());
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [meUid]);
+
+  const persistChatLanguage = useCallback(async (code) => {
+    const c = String(code || 'en').trim().toLowerCase();
+    setChatTranslateLang(c);
+    setTranslationById({});
+    if (!meUid) return;
+    await userService.updateUser(meUid, { chatTranslateLang: c });
+  }, [meUid]);
+
+  const requestTranslate = useCallback(
+    async (msg) => {
+      const id = msg?.id;
+      const raw = String(msg?.text || '').trim();
+      if (!id || !raw || !chatTranslateLang) return;
+      setTranslationById((prev) => ({ ...prev, [id]: { phase: 'loading' } }));
+      const { translatedText, error } = await translationService.translateChatMessage(raw, chatTranslateLang);
+      if (error || !translatedText) {
+        setTranslationById((prev) => ({
+          ...prev,
+          [id]: { phase: 'error', error: error || 'Translation failed' },
+        }));
+        return;
+      }
+      setTranslationById((prev) => ({
+        ...prev,
+        [id]: { phase: 'visible', text: translatedText },
+      }));
+    },
+    [chatTranslateLang]
+  );
+
+  const hideTranslation = useCallback((id) => {
+    if (!id) return;
+    setTranslationById((prev) => ({ ...prev, [id]: { phase: 'hidden' } }));
+  }, []);
 
   useEffect(() => {
     if (!matchId) return;
@@ -287,21 +400,6 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
     });
     return () => sub?.remove?.();
   }, []);
-
-  // Update lastSeen when user is viewing chat (every 30 seconds)
-  useEffect(() => {
-    if (!matchId || !meUid || !isActive) return;
-    
-    // Update immediately
-    userService.updateUser(meUid, { lastSeen: new Date() }).catch(() => {});
-    
-    // Update every 30 seconds while chat is open
-    const interval = setInterval(() => {
-      userService.updateUser(meUid, { lastSeen: new Date() }).catch(() => {});
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [matchId, meUid, isActive]);
 
   const canSend = useMemo(() => String(text || '').trim().length > 0, [text]);
   const hasActiveRecording = recorderState.isRecording || (recorderState.canRecord && (recorderState.durationMillis ?? 0) > 0);
@@ -627,16 +725,37 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
                 </View>
               )}
             </View>
-            <Text style={styles.subtitle}>
-              {otherUser?.lastSeen
-                ? `Last seen ${formatLastSeen(toDate(otherUser.lastSeen))}`
-                : otherUser?.categoryIntent || ''}
+            <Text
+              style={[
+                styles.subtitle,
+                getPresenceDisplay(otherUser?.lastSeen)?.kind === 'online' ? styles.subtitleOnline : null,
+              ]}
+            >
+              {(() => {
+                const p = getPresenceDisplay(otherUser?.lastSeen);
+                if (p) return p.label;
+                return otherUser?.categoryIntent || '';
+              })()}
             </Text>
             {waliViewMode && (
               <Text style={[styles.subtitle, { color: tokens.colors.accent, marginTop: 2 }]}>
                 {waliInfo?.name || 'Wali'} is viewing
               </Text>
             )}
+            {!waliViewMode ? (
+              <HuzzPressable
+                style={styles.langChip}
+                onPress={() => {
+                  setLangSearch('');
+                  setLangModalOpen(true);
+                }}
+                haptic="light"
+              >
+                <Text style={styles.langChipText}>
+                  🌐 Translate to: {getChatLanguageLabel(chatTranslateLang)}
+                </Text>
+              </HuzzPressable>
+            ) : null}
           </View>
           <HuzzPressable
             style={styles.headerBtn}
@@ -729,7 +848,7 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
           data={chatData}
           keyExtractor={(item) => String(item?.id)}
           inverted
-          extraData={otherIsTyping}
+          extraData={{ otherIsTyping, translationById, chatTranslateLang }}
           ListHeaderComponent={
             isActive && otherIsTyping ? (
               <View style={styles.typingInline} pointerEvents="none" accessibilityLabel="Typing">
@@ -820,6 +939,10 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
                     },
                   ]);
                 }}
+                targetLang={chatTranslateLang}
+                translateState={translationById[item?.id]}
+                onPressTranslate={requestTranslate}
+                onHideTranslation={hideTranslation}
                 />
               </Animated.View>
             );
@@ -983,6 +1106,53 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
             <Text style={styles.scrollToBottomText}>↓</Text>
           </HuzzPressable>
         ) : null}
+
+        <Modal visible={langModalOpen} animationType="fade" transparent onRequestClose={() => setLangModalOpen(false)}>
+          <View style={styles.langModalBackdrop}>
+            <View style={styles.langModalCard}>
+              <Text style={styles.langModalTitle}>Your translation language</Text>
+              <Text style={styles.langModalHint}>
+                Original messages stay instant. Tap Translate under a received message — it loads in a few seconds.
+              </Text>
+              <TextInput
+                style={styles.langModalSearch}
+                placeholder="Search languages…"
+                value={langSearch}
+                onChangeText={setLangSearch}
+                placeholderTextColor={tokens.colors.textMuted}
+              />
+              <FlatList
+                data={CHAT_TRANSLATE_LANGUAGES.filter((l) =>
+                  l.label.toLowerCase().includes(String(langSearch || '').trim().toLowerCase())
+                )}
+                keyExtractor={(it) => it.code}
+                keyboardShouldPersistTaps="handled"
+                style={styles.langModalList}
+                renderItem={({ item }) => (
+                  <HuzzPressable
+                    style={[
+                      styles.langModalRow,
+                      item.code === chatTranslateLang ? styles.langModalRowSelected : null,
+                    ]}
+                    onPress={() => {
+                      persistChatLanguage(item.code);
+                      setLangModalOpen(false);
+                    }}
+                    haptic="light"
+                  >
+                    <Text style={styles.langModalRowText}>{item.label}</Text>
+                    {item.code === chatTranslateLang ? (
+                      <Text style={styles.langModalCheck}>✓</Text>
+                    ) : null}
+                  </HuzzPressable>
+                )}
+              />
+              <HuzzPressable style={styles.langModalDone} onPress={() => setLangModalOpen(false)} haptic="light">
+                <Text style={styles.langModalDoneText}>Done</Text>
+              </HuzzPressable>
+            </View>
+          </View>
+        </Modal>
         </View>
       </KeyboardAwareLayout>
     </SafeAreaView>
@@ -1018,6 +1188,145 @@ const styles = StyleSheet.create({
   headerBtnText: { ...tokens.typography.label, color: tokens.colors.text },
   title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
   subtitle: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
+  subtitleOnline: { color: '#22c55e', fontWeight: '700' },
+  langChip: {
+    marginTop: 6,
+    alignSelf: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: tokens.radius.full,
+    backgroundColor: tokens.colors.surfaceOverlay,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  langChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: tokens.colors.accent,
+  },
+  translateColumn: {
+    marginTop: 4,
+    maxWidth: '80%',
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  translatedBox: {
+    padding: 8,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.surfaceOverlay,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  translatedLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  translatedBody: {
+    ...tokens.typography.bodySmall,
+    color: tokens.colors.text,
+    lineHeight: 20,
+  },
+  translatedHide: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.accent,
+  },
+  translateLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  translateLoadingText: {
+    fontSize: 12,
+    color: tokens.colors.textSecondary,
+  },
+  translateErrorText: {
+    fontSize: 12,
+    color: tokens.colors.danger,
+    textDecorationLine: 'underline',
+  },
+  translateLink: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.accent,
+  },
+  langModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  langModalCard: {
+    backgroundColor: tokens.colors.surface,
+    borderTopLeftRadius: tokens.radius.lg,
+    borderTopRightRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
+    paddingBottom: 28,
+    maxHeight: '88%',
+  },
+  langModalTitle: {
+    ...tokens.typography.titleSmall,
+    color: tokens.colors.text,
+    marginBottom: 6,
+  },
+  langModalHint: {
+    ...tokens.typography.caption,
+    color: tokens.colors.textSecondary,
+    marginBottom: 12,
+  },
+  langModalSearch: {
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    borderRadius: tokens.radius.sm,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 10,
+    color: tokens.colors.text,
+  },
+  langModalList: {
+    maxHeight: 380,
+  },
+  langModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    marginBottom: 8,
+    backgroundColor: tokens.colors.surfaceElevated,
+  },
+  langModalRowSelected: {
+    borderColor: tokens.colors.accent,
+    backgroundColor: tokens.colors.accentDim,
+  },
+  langModalRowText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: tokens.colors.text,
+  },
+  langModalCheck: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: tokens.colors.accent,
+  },
+  langModalDone: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.surfaceOverlay,
+  },
+  langModalDoneText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: tokens.colors.text,
+  },
   bubbleSwipeWrap: { marginBottom: 5 },
   bubbleAnimatedWrap: {},
   bubbleAnimatedWrapMine: { alignSelf: 'flex-end' },
