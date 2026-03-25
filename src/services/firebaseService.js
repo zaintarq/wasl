@@ -59,6 +59,8 @@ const COL = {
   users: 'users',
   matches: 'matches',
   reports: 'reports',
+  safetyEvents: 'safetyEvents',
+  userSafetyProfiles: 'userSafetyProfiles',
   bannedDevices: 'bannedDevices',
   wingmanRooms: 'wingmanRooms',
   spinRooms: 'spinRooms',
@@ -1474,6 +1476,28 @@ const _checkMessageToxicityCallable = (() => {
   }
 })();
 
+const _recordSafetyEventCallable = (() => {
+  try {
+    const functions = getFunctions(app, 'us-central1');
+    return httpsCallable(functions, 'recordSafetyEvent');
+  } catch {
+    return null;
+  }
+})();
+
+export const safetyService = {
+  async recordEvent(payload) {
+    const callable = _recordSafetyEventCallable;
+    if (!callable) return { error: null, data: null };
+    try {
+      const { data } = await callable(payload || {});
+      return { data: data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to record safety event.' };
+    }
+  },
+};
+
 export const messageService = {
   _messagesCol(matchId) {
     return collection(db, COL.matches, String(matchId), 'messages');
@@ -1563,6 +1587,37 @@ export const messageService = {
           });
         } catch {}
       }
+
+      try {
+        const safetyCalls = [
+          safetyService.recordEvent({
+            source: 'message_fingerprint',
+            targetUid: String(fromUid),
+            matchId: String(matchId),
+            messageId: String(msgRef.id),
+            details: trimmed,
+          }),
+        ];
+
+        if (mod.flagged) {
+          safetyCalls.push(
+            safetyService.recordEvent({
+              source: 'keyword_scan',
+              targetUid: String(fromUid),
+              matchId: String(matchId),
+              messageId: String(msgRef.id),
+              categories: Array.isArray(mod.categories) ? mod.categories.map(String) : [],
+              matchedTerms: Array.isArray(mod.matchedTerms) ? mod.matchedTerms.map(String) : [],
+              score: Number(mod.score || 0),
+              details: trimmed,
+              severity: Number(mod.score || 0) >= 3 ? 'high' : 'medium',
+            })
+          );
+        }
+
+        await Promise.allSettled(safetyCalls);
+      } catch {}
+
       return { error: null };
     } catch (error) {
       console.error('Send message error:', error);
@@ -1986,11 +2041,16 @@ export const reportService = {
     score = 0,
   }) {
     try {
+      const resolvedTargetUserId = targetUserId
+        ? String(targetUserId)
+        : targetType === 'user'
+          ? String(targetId)
+          : null;
       const payload = {
         reporterUid: String(reporterUid),
         targetType,
         targetId: String(targetId),
-        targetUserId: targetUserId ? String(targetUserId) : null,
+        targetUserId: resolvedTargetUserId,
         matchId: matchId ? String(matchId) : null,
         reason: String(reason || ''),
         categories: Array.isArray(categories) ? categories.map(String) : [],
@@ -2003,6 +2063,24 @@ export const reportService = {
         actionTaken: null,
       };
       const docRef = await addDoc(collection(db, COL.reports), payload);
+      if (!autoFlagged && resolvedTargetUserId) {
+        const safetyCategories = Array.isArray(payload.categories) && payload.categories.length
+          ? payload.categories
+          : payload.reason
+            ? [payload.reason]
+            : [];
+        await safetyService.recordEvent({
+          source: 'manual_report',
+          targetUid: resolvedTargetUserId,
+          reportId: docRef.id,
+          matchId: payload.matchId,
+          messageId: payload.targetType === 'message' ? payload.targetId : null,
+          categories: safetyCategories,
+          details: payload.details,
+          severity: 'medium',
+          score: payload.score,
+        });
+      }
       return { data: { id: docRef.id, ...payload }, error: null };
     } catch (error) {
       console.error('Create report error:', error);
@@ -2325,6 +2403,114 @@ export const adminService = {
     } catch (error) {
       console.error('[AdminService] listVulgarAttempts error:', error);
       return { data: [], error: error.message };
+    }
+  },
+
+  async listUserSafetyProfiles({ limitCount = 50, riskLevel = '' } = {}) {
+    try {
+      const snap = await getDocs(collection(db, COL.userSafetyProfiles));
+      let profiles = snap.docs.map((d) => {
+        const data = d.data() || {};
+        return {
+          id: d.id,
+          uid: d.id,
+          ...data,
+          lastFlagAt: data.lastFlagAt?.toMillis?.() ?? data.lastFlagAt?.seconds * 1000 ?? null,
+          updatedAt: data.updatedAt?.toMillis?.() ?? data.updatedAt?.seconds * 1000 ?? null,
+        };
+      });
+
+      if (riskLevel) {
+        profiles = profiles.filter(
+          (profile) => String(profile.riskLevel || '').toLowerCase() === String(riskLevel).toLowerCase()
+        );
+      }
+
+      profiles.sort((a, b) => (b.lastFlagAt || 0) - (a.lastFlagAt || 0));
+      return { data: profiles.slice(0, limitCount || 50), error: null };
+    } catch (error) {
+      console.error('[AdminService] listUserSafetyProfiles error:', error);
+      return { data: [], error: error.message };
+    }
+  },
+
+  async getUserSafetyProfile(uid, { limitCount = 60 } = {}) {
+    try {
+      const targetUid = String(uid || '').trim();
+      if (!targetUid) return { data: null, error: 'Missing userId' };
+
+      const [profileSnap, eventsSnap, reportsRes, vulgarRes] = await Promise.all([
+        getDoc(doc(db, COL.userSafetyProfiles, targetUid)),
+        getDocs(query(collection(db, COL.safetyEvents), where('targetUid', '==', targetUid), limit((limitCount || 60) * 3))),
+        this.listReports({ status: null, limitCount: Math.max(limitCount || 60, 100) }),
+        this.listVulgarAttempts({ limitCount: Math.max(limitCount || 60, 100) }),
+      ]);
+
+      const profile = profileSnap.exists()
+        ? {
+            id: profileSnap.id,
+            uid: profileSnap.id,
+            ...profileSnap.data(),
+            lastFlagAt:
+              profileSnap.data()?.lastFlagAt?.toMillis?.() ??
+              profileSnap.data()?.lastFlagAt?.seconds * 1000 ??
+              null,
+          }
+        : null;
+
+      const events = eventsSnap.docs
+        .map((d) => {
+          const data = d.data() || {};
+          return {
+            id: d.id,
+            ...data,
+            createdAt: data.createdAt?.toMillis?.() ?? data.createdAt?.seconds * 1000 ?? null,
+          };
+        })
+        .filter((event) => event.source !== 'message_fingerprint')
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, limitCount || 60);
+
+      const reports = (reportsRes.data || [])
+        .filter((report) => String(report.targetUserId || '') === targetUid)
+        .slice(0, limitCount || 60);
+
+      const vulgarAttempts = (vulgarRes.data || [])
+        .filter((attempt) => String(attempt.userId || '') === targetUid)
+        .slice(0, limitCount || 60);
+
+      return {
+        data: {
+          profile,
+          events,
+          reports,
+          vulgarAttempts,
+        },
+        error: null,
+      };
+    } catch (error) {
+      console.error('[AdminService] getUserSafetyProfile error:', error);
+      return { data: null, error: error.message };
+    }
+  },
+
+  async updateUserSafetyProfile(uid, { adminStatus, adminNotes } = {}) {
+    try {
+      const targetUid = String(uid || '').trim();
+      if (!targetUid) return { error: 'Missing userId' };
+
+      const updates = {
+        updatedAt: serverTimestamp(),
+      };
+
+      if (adminStatus !== undefined) updates.adminStatus = String(adminStatus || '').trim() || 'clear';
+      if (adminNotes !== undefined) updates.adminNotes = String(adminNotes || '');
+
+      await setDoc(doc(db, COL.userSafetyProfiles, targetUid), updates, { merge: true });
+      return { error: null };
+    } catch (error) {
+      console.error('[AdminService] updateUserSafetyProfile error:', error);
+      return { error: error.message };
     }
   },
 

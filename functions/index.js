@@ -330,6 +330,293 @@ exports.moderateProfileImage = functions
 // attempts for admin. Uses bad-words filter; can be replaced with FastText later.
 // ---------------------------------------------------------------------------
 const VULGAR_COLLECTION = 'vulgarAttempts';
+const SAFETY_EVENTS_COLLECTION = 'safetyEvents';
+const USER_SAFETY_PROFILES_COLLECTION = 'userSafetyProfiles';
+
+function normalizeSafetyText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim();
+}
+
+function hashSafetyText(text) {
+  const normalized = normalizeSafetyText(text);
+  if (!normalized) return '';
+  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 24);
+}
+
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  if (value instanceof Date) return value.getTime();
+  return 0;
+}
+
+function deriveRiskSummary(events = []) {
+  const now = Date.now();
+  const day7 = now - 7 * 24 * 60 * 60 * 1000;
+  const day30 = now - 30 * 24 * 60 * 60 * 1000;
+
+  const counts = {
+    totalFlags: 0,
+    recentFlags7d: 0,
+    recentFlags30d: 0,
+    sexualFlags30d: 0,
+    harassmentFlags30d: 0,
+    spamFlags30d: 0,
+    scamRiskFlags30d: 0,
+    profanityBlocks30d: 0,
+    manualReports30d: 0,
+    uniqueReporters30d: 0,
+    copyPasteSignals30d: 0,
+  };
+
+  const recentReasons = [];
+  const uniqueReporters = new Set();
+
+  for (const event of events) {
+    if (event && event.countTowardRisk === false) continue;
+    counts.totalFlags += 1;
+
+    const createdAtMs = toMillis(event?.createdAt);
+    const isRecent7d = createdAtMs >= day7;
+    const isRecent30d = createdAtMs >= day30;
+    const categories = Array.isArray(event?.categories)
+      ? event.categories.map(String)
+      : event?.category
+        ? [String(event.category)]
+        : [];
+
+    if (isRecent7d) counts.recentFlags7d += 1;
+    if (isRecent30d) {
+      counts.recentFlags30d += 1;
+
+      if (categories.includes('sexual')) counts.sexualFlags30d += 1;
+      if (categories.includes('harassment')) counts.harassmentFlags30d += 1;
+      if (categories.includes('spam')) counts.spamFlags30d += 1;
+      if (categories.includes('scam_risk')) counts.scamRiskFlags30d += 1;
+      if (event?.source === 'profanity_block') counts.profanityBlocks30d += 1;
+      if (event?.source === 'manual_report') {
+        counts.manualReports30d += 1;
+        if (event?.reporterUid) uniqueReporters.add(String(event.reporterUid));
+      }
+      if (event?.source === 'copy_paste_signal') counts.copyPasteSignals30d += 1;
+    }
+  }
+
+  counts.uniqueReporters30d = uniqueReporters.size;
+
+  if (counts.sexualFlags30d >= 3) {
+    recentReasons.push(`Repeated sexual language across ${counts.sexualFlags30d} flagged events in 30 days`);
+  }
+  if (counts.profanityBlocks30d >= 2) {
+    recentReasons.push(`${counts.profanityBlocks30d} blocked profanity attempts in 30 days`);
+  }
+  if (counts.copyPasteSignals30d >= 1) {
+    recentReasons.push(`Copy-paste opener pattern detected in ${counts.copyPasteSignals30d} recent signals`);
+  }
+  if (counts.uniqueReporters30d >= 2) {
+    recentReasons.push(`Reported by ${counts.uniqueReporters30d} unique users in 30 days`);
+  }
+  if (counts.harassmentFlags30d >= 2) {
+    recentReasons.push(`Repeated harassment/profanity language across ${counts.harassmentFlags30d} events`);
+  }
+  if (counts.scamRiskFlags30d >= 1) {
+    recentReasons.push(`Scam-risk messaging pattern detected`);
+  }
+  if (counts.spamFlags30d >= 2) {
+    recentReasons.push(`Spam-like message behavior detected across ${counts.spamFlags30d} events`);
+  }
+
+  const riskScore =
+    counts.sexualFlags30d * 3 +
+    counts.harassmentFlags30d * 2 +
+    counts.spamFlags30d * 2 +
+    counts.scamRiskFlags30d * 4 +
+    counts.profanityBlocks30d * 2 +
+    counts.manualReports30d * 2 +
+    counts.uniqueReporters30d * 3 +
+    counts.copyPasteSignals30d * 3 +
+    counts.recentFlags7d;
+
+  let riskLevel = 'clear';
+  let recommendedAction = 'No action needed';
+  let suggestedAdminStatus = 'clear';
+
+  if (
+    riskScore >= 12 ||
+    counts.sexualFlags30d >= 4 ||
+    counts.uniqueReporters30d >= 3 ||
+    counts.copyPasteSignals30d >= 2
+  ) {
+    riskLevel = 'restricted';
+    suggestedAdminStatus = 'restricted';
+    recommendedAction = 'Immediate moderator review recommended';
+  } else if (riskScore >= 7 || counts.sexualFlags30d >= 2 || counts.manualReports30d >= 2) {
+    riskLevel = 'review';
+    suggestedAdminStatus = 'review';
+    recommendedAction = 'Review recent chats and decide on warning or restriction';
+  } else if (riskScore >= 3) {
+    riskLevel = 'watch';
+    suggestedAdminStatus = 'watch';
+    recommendedAction = 'Monitor for repeated behavior';
+  }
+
+  return {
+    ...counts,
+    riskScore,
+    riskLevel,
+    suggestedAdminStatus,
+    recommendedAction,
+    currentReasons: recentReasons.slice(0, 4),
+  };
+}
+
+async function listSafetyEventsForUser(targetUid) {
+  const snap = await db.collection(SAFETY_EVENTS_COLLECTION).where('targetUid', '==', String(targetUid)).get();
+  return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+}
+
+async function refreshUserSafetyProfile(targetUid) {
+  const uid = String(targetUid || '').trim();
+  if (!uid) return null;
+
+  const [events, userSnap, existingProfileSnap] = await Promise.all([
+    listSafetyEventsForUser(uid),
+    db.collection(COL.users).doc(uid).get(),
+    db.collection(USER_SAFETY_PROFILES_COLLECTION).doc(uid).get(),
+  ]);
+
+  const summary = deriveRiskSummary(events);
+  const existingProfile = existingProfileSnap.exists ? existingProfileSnap.data() : {};
+  const lastFlagAt = events
+    .map((event) => toMillis(event?.createdAt))
+    .sort((a, b) => b - a)[0] || null;
+
+  const payload = {
+    uid,
+    userName: userSnap.exists ? String(userSnap.data()?.name || '') : '',
+    totalFlags: summary.totalFlags,
+    recentFlags7d: summary.recentFlags7d,
+    recentFlags30d: summary.recentFlags30d,
+    sexualFlags30d: summary.sexualFlags30d,
+    harassmentFlags30d: summary.harassmentFlags30d,
+    spamFlags30d: summary.spamFlags30d,
+    scamRiskFlags30d: summary.scamRiskFlags30d,
+    profanityBlocks30d: summary.profanityBlocks30d,
+    manualReports30d: summary.manualReports30d,
+    uniqueReporters30d: summary.uniqueReporters30d,
+    copyPasteSignals30d: summary.copyPasteSignals30d,
+    riskScore: summary.riskScore,
+    riskLevel: summary.riskLevel,
+    recommendedAction: summary.recommendedAction,
+    currentReasons: summary.currentReasons,
+    lastFlagAt: lastFlagAt ? admin.firestore.Timestamp.fromMillis(lastFlagAt) : null,
+    adminStatus: existingProfile?.adminStatus || summary.suggestedAdminStatus,
+    adminNotes: existingProfile?.adminNotes || '',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastEvaluatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  await db.collection(USER_SAFETY_PROFILES_COLLECTION).doc(uid).set(payload, { merge: true });
+  return payload;
+}
+
+async function writeSafetyEvent(payload) {
+  const event = {
+    source: String(payload?.source || '').trim(),
+    reporterUid: payload?.reporterUid ? String(payload.reporterUid) : null,
+    targetUid: String(payload?.targetUid || '').trim(),
+    category: payload?.category ? String(payload.category) : '',
+    categories: Array.isArray(payload?.categories) ? payload.categories.map(String) : [],
+    severity: String(payload?.severity || 'medium'),
+    matchId: payload?.matchId ? String(payload.matchId) : null,
+    messageId: payload?.messageId ? String(payload.messageId) : null,
+    reportId: payload?.reportId ? String(payload.reportId) : null,
+    score: Number(payload?.score || 0),
+    matchedTerms: Array.isArray(payload?.matchedTerms) ? payload.matchedTerms.map(String) : [],
+    details: String(payload?.details || '').slice(0, 280),
+    fingerprint: payload?.fingerprint ? String(payload.fingerprint) : '',
+    countTowardRisk: payload?.countTowardRisk !== false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const ref = await db.collection(SAFETY_EVENTS_COLLECTION).add(event);
+  return { id: ref.id, ...event };
+}
+
+async function maybeCreateCopyPasteSignal(targetUid, fingerprint) {
+  const uid = String(targetUid || '').trim();
+  const fp = String(fingerprint || '').trim();
+  if (!uid || !fp) return false;
+
+  const now = Date.now();
+  const day30 = now - 30 * 24 * 60 * 60 * 1000;
+  const day7 = now - 7 * 24 * 60 * 60 * 1000;
+  const events = await listSafetyEventsForUser(uid);
+
+  const fingerprintEvents = events.filter((event) => {
+    const createdAtMs = toMillis(event?.createdAt);
+    return (
+      event?.source === 'message_fingerprint' &&
+      event?.fingerprint === fp &&
+      createdAtMs >= day30
+    );
+  });
+
+  const uniqueMatchCount = new Set(
+    fingerprintEvents.map((event) => String(event?.matchId || '')).filter(Boolean)
+  ).size;
+
+  const recentSignals = events.filter((event) => {
+    const createdAtMs = toMillis(event?.createdAt);
+    return (
+      event?.source === 'copy_paste_signal' &&
+      event?.fingerprint === fp &&
+      createdAtMs >= day7
+    );
+  });
+
+  if (uniqueMatchCount >= 3 && recentSignals.length === 0) {
+    await writeSafetyEvent({
+      source: 'copy_paste_signal',
+      reporterUid: uid,
+      targetUid: uid,
+      category: 'spam',
+      categories: ['spam'],
+      severity: uniqueMatchCount >= 5 ? 'high' : 'medium',
+      details: `Same message pattern sent across ${uniqueMatchCount} chats`,
+      fingerprint: fp,
+    });
+    return true;
+  }
+
+  return false;
+}
+
+async function recordSafetyEventAndRefresh(payload) {
+  const source = String(payload?.source || '').trim();
+  const targetUid = String(payload?.targetUid || '').trim();
+  if (!source || !targetUid) {
+    throw new Error('Missing source or targetUid');
+  }
+
+  const fingerprint = payload?.fingerprint || hashSafetyText(payload?.details || '');
+  await writeSafetyEvent({ ...payload, fingerprint });
+
+  if (source === 'message_fingerprint') {
+    const createdSignal = await maybeCreateCopyPasteSignal(targetUid, fingerprint);
+    if (createdSignal) {
+      return refreshUserSafetyProfile(targetUid);
+    }
+    return null;
+  }
+
+  return refreshUserSafetyProfile(targetUid);
+}
 
 function isMessageToxic(text) {
   if (typeof text !== 'string' || !text.trim()) return false;
@@ -363,12 +650,72 @@ exports.checkMessageToxicity = functions
           status: 'blocked',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
+        await recordSafetyEventAndRefresh({
+          source: 'profanity_block',
+          reporterUid: uid,
+          targetUid: uid,
+          category: 'harassment',
+          categories: ['harassment'],
+          severity: 'medium',
+          matchId: matchId || null,
+          details: text.trim(),
+          score: 1,
+        });
       } catch (e) {
         console.error('[checkMessageToxicity] Failed to log vulgar attempt:', e.message);
       }
       return { toxic: true };
     }
     return { toxic: false };
+  });
+
+exports.recordSafetyEvent = functions
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+    }
+
+    const source = String(data?.source || '').trim();
+    const allowedSources = new Set(['manual_report', 'keyword_scan', 'message_fingerprint']);
+    if (!allowedSources.has(source)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid safety event source.');
+    }
+
+    const reporterUid = context.auth.uid;
+    const targetUid =
+      source === 'manual_report'
+        ? String(data?.targetUid || '').trim()
+        : reporterUid;
+
+    if (!targetUid) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing target user.');
+    }
+
+    const categories = Array.isArray(data?.categories) ? data.categories.map(String) : [];
+    const payload = {
+      source,
+      reporterUid,
+      targetUid,
+      category: categories[0] || String(data?.category || ''),
+      categories,
+      severity: String(data?.severity || (source === 'message_fingerprint' ? 'low' : 'medium')),
+      matchId: data?.matchId ? String(data.matchId) : null,
+      messageId: data?.messageId ? String(data.messageId) : null,
+      reportId: data?.reportId ? String(data.reportId) : null,
+      details: String(data?.details || ''),
+      matchedTerms: Array.isArray(data?.matchedTerms) ? data.matchedTerms.map(String) : [],
+      score: Number(data?.score || 0),
+      countTowardRisk: source !== 'message_fingerprint',
+    };
+
+    try {
+      const profile = await recordSafetyEventAndRefresh(payload);
+      return { ok: true, profile: profile || null };
+    } catch (error) {
+      console.error('[recordSafetyEvent] Failed:', error.message);
+      throw new functions.https.HttpsError('internal', error.message || 'Failed to record safety event.');
+    }
   });
 
 // ---------------------------------------------------------------------------

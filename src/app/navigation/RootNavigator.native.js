@@ -31,6 +31,10 @@ import * as Contacts from 'expo-contacts';
 import { vpnDetectionService } from '../../services/vpnDetectionService';
 import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
 import { PresenceHeartbeat } from '../components/PresenceHeartbeat.native';
+import {
+  syncScreenCaptureToNavigationState,
+  releaseScreenCaptureNavigation,
+} from '../../services/screenCaptureSensitive';
 
 const RootStack = createNativeStackNavigator();
 
@@ -590,6 +594,10 @@ export function RootNavigator() {
     navigationRef = navRef.current;
   }, []);
 
+  useEffect(() => {
+    return () => releaseScreenCaptureNavigation();
+  }, []);
+
   if (!isReady) {
     // Show nothing while checking auth (or show a loading screen)
     return null;
@@ -610,7 +618,19 @@ export function RootNavigator() {
       : undefined;
 
   return (
-    <NavigationContainer ref={navRef} initialState={rootInitialState}>
+    <NavigationContainer
+      ref={navRef}
+      initialState={rootInitialState}
+      onReady={() => {
+        try {
+          const s = navRef.current?.getRootState?.();
+          if (s) syncScreenCaptureToNavigationState(s);
+        } catch {
+          /* ignore */
+        }
+      }}
+      onStateChange={(state) => syncScreenCaptureToNavigationState(state)}
+    >
       <PresenceHeartbeat />
       <LocationSyncGate />
       <PushTokenGate />
