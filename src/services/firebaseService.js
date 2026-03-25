@@ -1485,6 +1485,33 @@ const _recordSafetyEventCallable = (() => {
   }
 })();
 
+const _generateChatSuggestionsCallable = (() => {
+  try {
+    const functions = getFunctions(app, 'us-central1');
+    return httpsCallable(functions, 'generateChatSuggestions');
+  } catch {
+    return null;
+  }
+})();
+
+const _generateModerationEvidenceCallable = (() => {
+  try {
+    const functions = getFunctions(app, 'us-central1');
+    return httpsCallable(functions, 'generateModerationEvidence');
+  } catch {
+    return null;
+  }
+})();
+
+const _sendModerationNoticeCallable = (() => {
+  try {
+    const functions = getFunctions(app, 'us-central1');
+    return httpsCallable(functions, 'sendModerationNotice');
+  } catch {
+    return null;
+  }
+})();
+
 export const safetyService = {
   async recordEvent(payload) {
     const callable = _recordSafetyEventCallable;
@@ -1494,6 +1521,51 @@ export const safetyService = {
       return { data: data || null, error: null };
     } catch (error) {
       return { data: null, error: error?.message || 'Failed to record safety event.' };
+    }
+  },
+};
+
+export const aiSuggestionService = {
+  async generateChatSuggestions(matchId, { mode = 'reply_suggestions', draft = '' } = {}) {
+    const callable = _generateChatSuggestionsCallable;
+    if (!callable) return { data: null, error: 'AI suggestions are unavailable.' };
+    try {
+      const { data } = await callable({
+        matchId: String(matchId || ''),
+        mode: String(mode || 'reply_suggestions'),
+        draft: String(draft || ''),
+      });
+      return { data: data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to generate suggestions.' };
+    }
+  },
+};
+
+export const moderationNoticeService = {
+  async generateEvidence(targetUid, { matchId = '', reportId = '' } = {}) {
+    const callable = _generateModerationEvidenceCallable;
+    if (!callable) return { data: null, error: 'Moderation evidence is unavailable.' };
+    try {
+      const { data } = await callable({
+        targetUid: String(targetUid || ''),
+        matchId: String(matchId || ''),
+        reportId: String(reportId || ''),
+      });
+      return { data: data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to generate moderation evidence.' };
+    }
+  },
+
+  async sendNotice(payload) {
+    const callable = _sendModerationNoticeCallable;
+    if (!callable) return { data: null, error: 'Moderation email is unavailable.' };
+    try {
+      const { data } = await callable(payload || {});
+      return { data: data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to send moderation notice.' };
     }
   },
 };
@@ -1525,6 +1597,14 @@ export const messageService = {
       const trimmed = String(text || '').trim();
       if (!trimmed) return { error: 'Message is empty.' };
       const mod = scanMessageText(trimmed);
+      let otherUid = null;
+      try {
+        const msnap = await getDoc(doc(db, COL.matches, String(matchId)));
+        if (msnap.exists()) {
+          const uids = msnap.data()?.uids || [];
+          otherUid = Array.isArray(uids) ? uids.find((u) => String(u) !== String(fromUid)) || null : null;
+        }
+      } catch {}
       const msgRef = await addDoc(this._messagesCol(matchId), {
         fromUid: String(fromUid),
         type: 'text',
@@ -1552,20 +1632,15 @@ export const messageService = {
 
       // Notify the other participant (new message)
       try {
-        const msnap = await getDoc(doc(db, COL.matches, String(matchId)));
-        if (msnap.exists()) {
-          const uids = msnap.data()?.uids || [];
-          const otherUid = Array.isArray(uids) ? uids.find((u) => String(u) !== String(fromUid)) : null;
-          if (otherUid) {
-            await notificationService.createNotification(String(otherUid), {
-              type: 'message_new',
-              fromUid: String(fromUid),
-              matchId: String(matchId),
-              title: 'New message',
-              body: trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed,
-              status: 'unread',
-            });
-          }
+        if (otherUid) {
+          await notificationService.createNotification(String(otherUid), {
+            type: 'message_new',
+            fromUid: String(fromUid),
+            matchId: String(matchId),
+            title: 'New message',
+            body: trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed,
+            status: 'unread',
+          });
         }
       } catch {}
 
@@ -1578,6 +1653,9 @@ export const messageService = {
             targetId: String(msgRef.id),
             targetUserId: String(fromUid),
             matchId: String(matchId),
+            senderUid: String(fromUid),
+            recipientUid: otherUid ? String(otherUid) : null,
+            messageSentAt: new Date().toISOString(),
             reason: mod.categories?.[0] || 'inappropriate',
             categories: mod.categories,
             details: trimmed,
@@ -2033,6 +2111,9 @@ export const reportService = {
     targetId,
     targetUserId = null,
     matchId = null,
+    senderUid = null,
+    recipientUid = null,
+    messageSentAt = null,
     reason,
     categories = [],
     details = '',
@@ -2052,6 +2133,16 @@ export const reportService = {
         targetId: String(targetId),
         targetUserId: resolvedTargetUserId,
         matchId: matchId ? String(matchId) : null,
+        senderUid: senderUid ? String(senderUid) : null,
+        recipientUid: recipientUid ? String(recipientUid) : null,
+        messageSentAt:
+          typeof messageSentAt === 'string'
+            ? String(messageSentAt)
+            : messageSentAt?.toDate
+              ? messageSentAt.toDate().toISOString()
+              : messageSentAt instanceof Date
+                ? messageSentAt.toISOString()
+                : null,
         reason: String(reason || ''),
         categories: Array.isArray(categories) ? categories.map(String) : [],
         details: String(details || ''),

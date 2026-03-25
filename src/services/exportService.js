@@ -7,6 +7,31 @@ import { Alert } from 'react-native';
  * Exports analytics data and reports to various formats
  */
 export const exportService = {
+  async saveCsvContent(csvContent, filename = 'export.csv') {
+    try {
+      const content = String(csvContent || '');
+      if (!content.trim()) {
+        return { fileUri: null, error: 'No CSV content to export' };
+      }
+
+      const fileUri = `${FileSystem.documentDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(fileUri, content, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri);
+      } else {
+        Alert.alert('Export Complete', `File saved to: ${fileUri}`);
+      }
+
+      return { fileUri, error: null };
+    } catch (error) {
+      console.error('[Export] Save CSV content error:', error);
+      return { fileUri: null, error: error.message };
+    }
+  },
+
   /**
    * Export data to CSV format
    * @param {array} data - Array of objects to export

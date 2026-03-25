@@ -45,8 +45,401 @@ function isValidEmailFormat(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
+function getOpenAiApiKey() {
+  return String(process.env.OPENAI_API_KEY || '').trim();
+}
+
+function getOpenAiModel() {
+  return String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+}
+
+function truncateAiText(text, maxLen = 600) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return '';
+  return trimmed.length > maxLen ? `${trimmed.slice(0, maxLen - 1)}…` : trimmed;
+}
+
+function buildUserProfileSummary(user) {
+  if (!user || typeof user !== 'object') return 'No profile details available.';
+  const parts = [
+    user.name ? `Name: ${String(user.name).trim()}` : '',
+    user.age ? `Age: ${String(user.age).trim()}` : '',
+    user.city ? `City: ${String(user.city).trim()}` : '',
+    user.country ? `Country: ${String(user.country).trim()}` : '',
+    user.bio ? `Bio: ${truncateAiText(user.bio, 220)}` : '',
+    user.addMe ? `About: ${truncateAiText(user.addMe, 220)}` : '',
+    Array.isArray(user.interests) && user.interests.length
+      ? `Interests: ${user.interests.slice(0, 8).map((x) => String(x).trim()).filter(Boolean).join(', ')}`
+      : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join('\n') : 'No profile details available.';
+}
+
+function sanitizeSuggestionList(list, maxItems = 3) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of list) {
+    const value = String(item || '').replace(/\s+/g, ' ').trim();
+    if (!value) continue;
+    const normalized = value.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(value);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+async function generateOpenAiSuggestions({systemPrompt, userPrompt}) {
+  const apiKey = getOpenAiApiKey();
+  if (!apiKey) {
+    throw new Error('Missing OPENAI_API_KEY.');
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: getOpenAiModel(),
+      temperature: 0.85,
+      response_format: {type: 'json_object'},
+      messages: [
+        {role: 'system', content: systemPrompt},
+        {role: 'user', content: userPrompt},
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI request failed (${response.status}): ${errorText.slice(0, 280)}`);
+  }
+
+  const payload = await response.json();
+  const raw = payload?.choices?.[0]?.message?.content;
+  if (!raw) {
+    throw new Error('OpenAI returned an empty response.');
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`OpenAI returned invalid JSON: ${error.message}`);
+  }
+
+  const suggestions = sanitizeSuggestionList(parsed?.suggestions, 3);
+  if (!suggestions.length) {
+    throw new Error('OpenAI did not return any suggestions.');
+  }
+  return suggestions;
+}
+
 // NSFW threshold for profile image moderation (Gen1 storage trigger)
 const NSFW_THRESHOLD = 0.6;
+const MODERATION_WARNING_TEMPLATES = {
+  sexual: {
+    subject: 'Warning: inappropriate sexual messages on HUZZ',
+    title: 'Inappropriate sexual content',
+    body:
+      'Our moderation team reviewed recent chat activity and found sexual or explicit language that violates the platform rules.',
+  },
+  harassment: {
+    subject: 'Warning: harassment or abusive language on HUZZ',
+    title: 'Harassment / abusive language',
+    body:
+      'Our moderation team found abusive, hostile, or disrespectful language in your recent chat activity. This is not allowed on HUZZ.',
+  },
+  spam: {
+    subject: 'Warning: repetitive or spam-like messaging on HUZZ',
+    title: 'Spam / repetitive messaging',
+    body:
+      'Our moderation team found repeated opener patterns or spam-like outreach in your recent chats. Repetitive mass messaging is not allowed.',
+  },
+  scam_risk: {
+    subject: 'Warning: scam-risk behavior detected on HUZZ',
+    title: 'Scam-risk behavior',
+    body:
+      'Our moderation team found behavior that appears deceptive, manipulative, or otherwise risky for other users. This is taken seriously.',
+  },
+  profanity: {
+    subject: 'Warning: blocked profanity attempts on HUZZ',
+    title: 'Blocked profanity attempts',
+    body:
+      'Our moderation team reviewed blocked profanity attempts tied to your account. Repeated attempts may lead to stronger action.',
+  },
+  suspension: {
+    subject: 'Account suspension notice from HUZZ',
+    title: 'Account suspended',
+    body:
+      'Your account has been suspended after moderator review of repeated policy violations. The attached evidence file summarizes the reviewed activity.',
+  },
+  device_ban: {
+    subject: 'Device restriction notice from HUZZ',
+    title: 'Device restricted',
+    body:
+      'A device-level restriction has been applied after moderator review of repeated or severe policy violations. The attached evidence file summarizes the reviewed activity.',
+  },
+};
+
+function csvEscape(value) {
+  const text = value === null || value === undefined ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function rowsToCsv(rows = []) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.map(csvEscape).join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((header) => csvEscape(row?.[header])).join(','));
+  }
+  return lines.join('\n');
+}
+
+async function isAdminCaller(uid) {
+  if (!uid) return false;
+  try {
+    const snap = await db.collection('admin').doc(String(uid)).get();
+    return snap.exists && String(snap.data()?.role || '').toLowerCase().trim() === 'admin';
+  } catch {
+    return false;
+  }
+}
+
+function getWarningEmailUser() {
+  return String(process.env.WARNING_SMTP_USER || '').trim();
+}
+
+function getWarningEmailPassword() {
+  return String(process.env.WARNING_SMTP_PASSWORD || '').trim();
+}
+
+function getWarningTransporter() {
+  const user = getWarningEmailUser();
+  const pass = getWarningEmailPassword();
+  if (!user || !pass) return null;
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: {
+      user,
+      pass,
+    },
+  });
+}
+
+function getModerationTemplate(key) {
+  const normalized = String(key || '').trim().toLowerCase();
+  return MODERATION_WARNING_TEMPLATES[normalized] || MODERATION_WARNING_TEMPLATES.harassment;
+}
+
+function timestampToIso(value) {
+  if (!value) return '';
+  if (typeof value.toDate === 'function') return value.toDate().toISOString();
+  if (typeof value.toMillis === 'function') return new Date(value.toMillis()).toISOString();
+  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000).toISOString();
+  return '';
+}
+
+async function buildModerationEvidencePayload({targetUid, matchId = '', reportId = ''}) {
+  const userSnap = await db.collection(COL.users).doc(String(targetUid)).get();
+  const userData = userSnap.exists ? userSnap.data() || {} : {};
+
+  const [reportsSnap, vulgarSnap, profileSnap] = await Promise.all([
+    db.collection('reports').where('targetUserId', '==', String(targetUid)).get(),
+    db.collection('vulgarAttempts').where('userId', '==', String(targetUid)).get(),
+    db.collection('userSafetyProfiles').doc(String(targetUid)).get(),
+  ]);
+
+  const reports = reportsSnap.docs.map((docSnap) => ({id: docSnap.id, ...docSnap.data()}));
+  const vulgarAttempts = vulgarSnap.docs.map((docSnap) => ({id: docSnap.id, ...docSnap.data()}));
+  const safetyProfile = profileSnap.exists ? profileSnap.data() || {} : {};
+  const participantCache = {};
+
+  const getParticipantsByMatchId = async (targetMatchId) => {
+    const key = String(targetMatchId || '').trim();
+    if (!key) return {};
+    if (participantCache[key]) return participantCache[key];
+
+    const matchSnap = await db.collection('matches').doc(key).get();
+    const matchData = matchSnap.exists ? matchSnap.data() || {} : {};
+    const participantIds = Array.isArray(matchData?.uids) ? matchData.uids.map(String) : [];
+    const participantSnaps = await Promise.all(
+      participantIds.map(async (uid) => {
+        const snap = await db.collection(COL.users).doc(uid).get();
+        return [uid, snap.exists ? snap.data() || {} : {}];
+      })
+    );
+    participantCache[key] = Object.fromEntries(participantSnaps);
+    return participantCache[key];
+  };
+
+  const enrichedReports = await Promise.all(
+    reports.map(async (report) => {
+      if (report?.targetType !== 'message' || !report?.matchId || !report?.targetId) {
+        return report;
+      }
+
+      try {
+        const [messageSnap, participantsById] = await Promise.all([
+          db.collection('matches').doc(String(report.matchId)).collection('messages').doc(String(report.targetId)).get(),
+          getParticipantsByMatchId(report.matchId),
+        ]);
+
+        const message = messageSnap.exists ? messageSnap.data() || {} : {};
+        const senderUid = String(report.senderUid || message.fromUid || '');
+        const recipientUid = String(
+          report.recipientUid ||
+            Object.keys(participantsById).find((uid) => uid && uid !== senderUid) ||
+            ''
+        );
+
+        return {
+          ...report,
+          senderUid: senderUid || null,
+          recipientUid: recipientUid || null,
+          messageSentAt:
+            report.messageSentAt ||
+            timestampToIso(message.createdAt) ||
+            '',
+          senderName: senderUid ? String(participantsById[senderUid]?.name || '') : '',
+          recipientName: recipientUid ? String(participantsById[recipientUid]?.name || '') : '',
+        };
+      } catch {
+        return report;
+      }
+    })
+  );
+
+  let exchangeRows = [];
+  let matchSummary = null;
+  if (matchId) {
+    const [matchSnap, messagesSnap] = await Promise.all([
+      db.collection('matches').doc(String(matchId)).get(),
+      db.collection('matches').doc(String(matchId)).collection('messages').orderBy('createdAt', 'asc').get(),
+    ]);
+    const matchData = matchSnap.exists ? matchSnap.data() || {} : {};
+    const participantIds = Array.isArray(matchData?.uids) ? matchData.uids.map(String) : [];
+    const participantSnaps = await Promise.all(
+      participantIds.map(async (uid) => {
+        const snap = await db.collection(COL.users).doc(uid).get();
+        return [uid, snap.exists ? snap.data() || {} : {}];
+      })
+    );
+    const participantsById = Object.fromEntries(participantSnaps);
+    matchSummary = {
+      id: String(matchId),
+      participants: participantIds.map((uid) => ({
+        uid,
+        name: String(participantsById[uid]?.name || 'Unknown user'),
+      })),
+    };
+    exchangeRows = messagesSnap.docs.map((docSnap) => {
+      const message = docSnap.data() || {};
+      const senderUid = String(message.fromUid || '');
+      const recipientUid = participantIds.find((uid) => uid !== senderUid) || '';
+      return {
+        rowType: 'message_exchange',
+        matchId: String(matchId),
+        messageId: docSnap.id,
+        senderUid,
+        senderName: String(participantsById[senderUid]?.name || 'Unknown user'),
+        recipientUid,
+        recipientName: String(participantsById[recipientUid]?.name || ''),
+        messageType: String(message.type || 'text'),
+        text: truncateAiText(message.text || (message.type === 'voice' ? '[Voice note]' : ''), 1200),
+        moderationFlagged: message?.moderation?.flagged === true ? 'yes' : 'no',
+        moderationCategories: Array.isArray(message?.moderation?.categories) ? message.moderation.categories.join('|') : '',
+        sentAt: timestampToIso(message.createdAt),
+      };
+    });
+  }
+
+  const rows = [
+    {
+      rowType: 'summary',
+      targetUid: String(targetUid),
+      targetName: String(userData?.name || ''),
+      targetEmail: String(userData?.email || ''),
+      reportCount: reports.length,
+      vulgarAttemptCount: vulgarAttempts.length,
+      riskLevel: String(safetyProfile?.riskLevel || ''),
+      currentReasons: Array.isArray(safetyProfile?.currentReasons) ? safetyProfile.currentReasons.join(' | ') : '',
+      generatedAt: new Date().toISOString(),
+    },
+    ...enrichedReports.map((report) => ({
+      rowType: 'report',
+      targetUid: String(targetUid),
+      reportId: report.id,
+      reporterUid: String(report.reporterUid || ''),
+      senderUid: String(report.senderUid || ''),
+      senderName: String(report.senderName || ''),
+      recipientUid: String(report.recipientUid || ''),
+      recipientName: String(report.recipientName || ''),
+      reason: String(report.reason || ''),
+      categories: Array.isArray(report.categories) ? report.categories.join('|') : '',
+      autoFlagged: report.autoFlagged ? 'yes' : 'no',
+      status: String(report.status || ''),
+      details: truncateAiText(report.details || '', 1200),
+      matchId: String(report.matchId || ''),
+      messageId: String(report.targetType === 'message' ? report.targetId || '' : ''),
+      messageSentAt: String(report.messageSentAt || ''),
+      createdAt: timestampToIso(report.createdAt),
+    })),
+    ...vulgarAttempts.map((attempt) => ({
+      rowType: 'vulgar_attempt',
+      targetUid: String(targetUid),
+      attemptId: attempt.id,
+      status: String(attempt.status || ''),
+      originalMessage: truncateAiText(attempt.originalMessage || '', 1200),
+      matchId: String(attempt.matchId || ''),
+      createdAt: timestampToIso(attempt.createdAt),
+    })),
+    ...exchangeRows,
+  ];
+
+  if (reportId) {
+    rows.unshift({
+      rowType: 'selected_report',
+      targetUid: String(targetUid),
+      reportId: String(reportId),
+      generatedAt: new Date().toISOString(),
+    });
+  }
+
+  return {
+    target: {
+      uid: String(targetUid),
+      name: String(userData?.name || 'User'),
+      email: String(userData?.email || ''),
+    },
+    safetyProfile: {
+      riskLevel: String(safetyProfile?.riskLevel || ''),
+      currentReasons: Array.isArray(safetyProfile?.currentReasons) ? safetyProfile.currentReasons : [],
+      recommendedAction: String(safetyProfile?.recommendedAction || ''),
+    },
+    matchSummary,
+    rows,
+    csvContent: rowsToCsv(rows),
+  };
+}
+
+async function writeModerationAuditLog(adminUid, action, targetUserId, details = {}) {
+  await db.collection('auditLogs').add({
+    adminId: String(adminUid),
+    action: String(action),
+    targetUserId: targetUserId ? String(targetUserId) : null,
+    details,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
 
 // Configure email transporter using Gmail SMTP
 const getEmailTransporter = () => {
@@ -877,6 +1270,314 @@ exports.translateChatMessage = functions.region('us-central1').https.onCall(asyn
       'internal',
       e && e.message ? e.message : 'Translation failed. Try again later.'
     );
+  }
+});
+
+exports.generateChatSuggestions = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+
+  const matchId = typeof data?.matchId === 'string' ? data.matchId.trim() : '';
+  const mode = typeof data?.mode === 'string' ? data.mode.trim().toLowerCase() : 'reply_suggestions';
+  const draft = typeof data?.draft === 'string' ? data.draft.trim() : '';
+  const uid = context.auth.uid;
+
+  if (!matchId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing matchId.');
+  }
+  if (!['icebreakers', 'reply_suggestions'].includes(mode)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid suggestion mode.');
+  }
+
+  try {
+    const matchSnap = await db.collection('matches').doc(matchId).get();
+    if (!matchSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Match not found.');
+    }
+
+    const matchData = matchSnap.data() || {};
+    const uids = Array.isArray(matchData.uids) ? matchData.uids.map(String) : [];
+    if (!uids.includes(uid)) {
+      throw new functions.https.HttpsError('permission-denied', 'Not allowed to access this match.');
+    }
+
+    const otherUid = uids.find((id) => id !== uid) || '';
+    const [meSnap, otherSnap, messagesSnap] = await Promise.all([
+      db.collection(COL.users).doc(uid).get(),
+      otherUid ? db.collection(COL.users).doc(otherUid).get() : null,
+      db.collection('matches')
+        .doc(matchId)
+        .collection('messages')
+        .orderBy('createdAt', 'desc')
+        .limit(8)
+        .get(),
+    ]);
+
+    const me = meSnap.exists ? meSnap.data() || {} : {};
+    const otherUser = otherSnap && otherSnap.exists ? otherSnap.data() || {} : {};
+    const recentMessages = messagesSnap.docs
+      .map((docSnap) => docSnap.data() || {})
+      .reverse()
+      .map((message) => {
+        const speaker = String(message.fromUid || '') === uid ? 'Me' : (otherUser?.name || 'Them');
+        const text = message.type === 'voice'
+          ? '[Voice note]'
+          : truncateAiText(String(message.text || '').trim(), 180);
+        return `${speaker}: ${text}`;
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    const systemPrompt = [
+      'You write short, respectful dating-chat suggestions for a Muslim-focused app.',
+      'Never generate sexual, manipulative, deceptive, or coercive language.',
+      'Keep suggestions warm, natural, and concise.',
+      'Return strict JSON in the form {"suggestions":["...", "...", "..."]}.',
+    ].join(' ');
+
+    const userPrompt = mode === 'icebreakers'
+      ? [
+          'Generate 3 conversation starters for the current user.',
+          'Each suggestion must be under 120 characters.',
+          'They should feel personal to the other profile and easy to send as a first message.',
+          `My profile:\n${buildUserProfileSummary(me)}`,
+          `Their profile:\n${buildUserProfileSummary(otherUser)}`,
+          recentMessages ? `Recent chat context:\n${recentMessages}` : 'No prior messages yet.',
+        ].join('\n\n')
+      : [
+          'Generate 3 reply suggestions for the current user.',
+          'Each suggestion must be under 140 characters and should sound like a direct reply they can send now.',
+          draft ? `Current draft:\n${truncateAiText(draft, 220)}` : 'Current draft: (empty)',
+          `My profile:\n${buildUserProfileSummary(me)}`,
+          `Their profile:\n${buildUserProfileSummary(otherUser)}`,
+          recentMessages ? `Recent chat context:\n${recentMessages}` : 'No recent messages available.',
+        ].join('\n\n');
+
+    const suggestions = await generateOpenAiSuggestions({systemPrompt, userPrompt});
+    return {suggestions, mode};
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    console.error('[generateChatSuggestions]', error);
+    throw new functions.https.HttpsError(
+      error.message === 'Missing OPENAI_API_KEY.' ? 'failed-precondition' : 'internal',
+      error && error.message ? error.message : 'Failed to generate chat suggestions.'
+    );
+  }
+});
+
+exports.generateModerationEvidence = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+  }
+
+  const targetUid = typeof data?.targetUid === 'string' ? data.targetUid.trim() : '';
+  const matchId = typeof data?.matchId === 'string' ? data.matchId.trim() : '';
+  const reportId = typeof data?.reportId === 'string' ? data.reportId.trim() : '';
+  if (!targetUid) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing target user.');
+  }
+
+  try {
+    const evidence = await buildModerationEvidencePayload({targetUid, matchId, reportId});
+    const filename = `moderation_evidence_${targetUid}_${Date.now()}.csv`;
+    await writeModerationAuditLog(context.auth.uid, 'generate_moderation_evidence', targetUid, {
+      matchId: matchId || null,
+      reportId: reportId || null,
+      filename,
+    });
+    return {
+      filename,
+      csvContent: evidence.csvContent,
+      target: evidence.target,
+      safetyProfile: evidence.safetyProfile,
+      rowCount: evidence.rows.length,
+      matchSummary: evidence.matchSummary,
+    };
+  } catch (error) {
+    console.error('[generateModerationEvidence]', error);
+    throw new functions.https.HttpsError('internal', error?.message || 'Failed to generate moderation evidence.');
+  }
+});
+
+exports.sendModerationNotice = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+  }
+
+  const targetUid = typeof data?.targetUid === 'string' ? data.targetUid.trim() : '';
+  const matchId = typeof data?.matchId === 'string' ? data.matchId.trim() : '';
+  const reportId = typeof data?.reportId === 'string' ? data.reportId.trim() : '';
+  const templateKey = typeof data?.templateKey === 'string' ? data.templateKey.trim().toLowerCase() : 'harassment';
+  const customMessage = typeof data?.customMessage === 'string' ? data.customMessage.trim() : '';
+  const actionType = typeof data?.actionType === 'string' ? data.actionType.trim().toLowerCase() : 'warning';
+  const referenceNotes = typeof data?.referenceNotes === 'string' ? data.referenceNotes.trim() : '';
+  const includeEvidence = data?.includeEvidence !== false;
+
+  if (!targetUid) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing target user.');
+  }
+  if (!['warning', 'suspension', 'device_ban'].includes(actionType)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid moderation action.');
+  }
+
+  const transporter = getWarningTransporter();
+  if (!transporter) {
+    throw new functions.https.HttpsError('failed-precondition', 'Missing warning email SMTP configuration.');
+  }
+
+  try {
+    const evidence = await buildModerationEvidencePayload({targetUid, matchId, reportId});
+    if (!evidence.target.email) {
+      throw new Error('Target user has no email address on file.');
+    }
+
+    const template = getModerationTemplate(
+      actionType === 'warning' ? templateKey : actionType === 'suspension' ? 'suspension' : 'device_ban'
+    );
+    const filename = `moderation_notice_${targetUid}_${Date.now()}.csv`;
+    const reasonsLine = evidence.safetyProfile.currentReasons?.length
+      ? evidence.safetyProfile.currentReasons.join('; ')
+      : 'Moderator-reviewed policy violations';
+    const references = [
+      reportId ? `Report reference: ${reportId}` : '',
+      matchId ? `Match reference: ${matchId}` : '',
+      referenceNotes ? `Moderator references: ${referenceNotes}` : '',
+    ].filter(Boolean);
+
+    const html = `
+      <div style="margin:0;padding:24px;background:#fff8fb;font-family:Arial,sans-serif;color:#1f2937;">
+        <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #eadcf3;border-radius:24px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
+          <div style="padding:28px 28px 20px;background:linear-gradient(135deg,#fff4f7 0%,#eff6ff 50%,#f0fdf4 100%);border-bottom:1px solid #eadcf3;">
+            <div style="text-align:center;">
+              <div style="font-size:42px;line-height:1;font-weight:800;font-style:italic;color:#1c1917;letter-spacing:0.5px;">Huzz</div>
+              <div style="width:96px;height:4px;border-radius:999px;margin:8px auto 0;background:linear-gradient(90deg,#1d4ed8,#2563eb,#3b82f6);"></div>
+              <div style="margin-top:16px;display:inline-block;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid #f1d1dc;color:#e11d48;font-size:11px;font-weight:800;letter-spacing:1px;">MODERATION NOTICE</div>
+              <h2 style="margin:18px 0 0;font-size:28px;line-height:1.2;color:#111827;">${template.title}</h2>
+            </div>
+          </div>
+          <div style="padding:28px;">
+            <p style="margin:0 0 14px;font-size:15px;">Hello ${evidence.target.name || 'there'},</p>
+            <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">${template.body}</p>
+            <div style="margin:18px 0;padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #dbeafe;">
+              <div style="font-size:12px;font-weight:800;letter-spacing:0.8px;color:#2563eb;margin-bottom:8px;">WHY YOU ARE RECEIVING THIS</div>
+              <div style="font-size:14px;line-height:1.7;color:#111827;">${reasonsLine}</div>
+            </div>
+            ${customMessage ? `
+              <div style="margin:18px 0;padding:16px 18px;border-radius:18px;background:#fff7ed;border:1px solid #fde68a;">
+                <div style="font-size:12px;font-weight:800;letter-spacing:0.8px;color:#d97706;margin-bottom:8px;">MODERATOR MESSAGE</div>
+                <div style="font-size:14px;line-height:1.7;color:#111827;">${customMessage}</div>
+              </div>
+            ` : ''}
+            ${references.length ? `
+              <div style="margin:18px 0;padding:16px 18px;border-radius:18px;background:#faf5ff;border:1px solid #e9d5ff;">
+                <div style="font-size:12px;font-weight:800;letter-spacing:0.8px;color:#7c3aed;margin-bottom:8px;">REFERENCES</div>
+                <div style="font-size:14px;line-height:1.7;color:#111827;">${references.join('<br>')}</div>
+              </div>
+            ` : ''}
+            ${includeEvidence ? `
+              <p style="margin:18px 0 0;font-size:14px;line-height:1.7;color:#374151;">
+                A CSV evidence file is attached for transparency and record-keeping.
+              </p>
+            ` : ''}
+            <p style="margin:18px 0 0;font-size:14px;line-height:1.7;color:#374151;">
+              If you believe this was sent in error, reply to this email and include the references above.
+            </p>
+          </div>
+          <div style="padding:18px 28px;background:#fff7f9;border-top:1px solid #f1dbe6;text-align:center;font-size:12px;color:#6b7280;">
+            HUZZ Moderation Team
+          </div>
+        </div>
+      </div>
+    `;
+    const text = [
+      template.title,
+      '',
+      `Hello ${evidence.target.name || 'there'},`,
+      '',
+      template.body,
+      '',
+      `Why you are receiving this: ${reasonsLine}`,
+      customMessage ? `Moderator note: ${customMessage}` : '',
+      references.length ? `References:\n${references.join('\n')}` : '',
+      includeEvidence ? 'An evidence CSV is attached for transparency and record-keeping.' : '',
+      'If you believe this was sent in error, reply to this email and include the references above.',
+      '',
+      'HUZZ Moderation Team',
+    ].filter(Boolean).join('\n');
+
+    await transporter.sendMail({
+      from: `HUZZ Warnings <${getWarningEmailUser()}>`,
+      to: evidence.target.email,
+      subject: template.subject,
+      text,
+      html,
+      attachments: includeEvidence ? [
+        {
+          filename,
+          content: evidence.csvContent,
+          contentType: 'text/csv',
+        },
+      ] : [],
+    });
+
+    const userRef = db.collection(COL.users).doc(String(targetUid));
+    const userSnap = await userRef.get();
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
+
+    if (actionType === 'suspension') {
+      await userRef.set(
+        {
+          isDisabled: true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+    }
+
+    if (actionType === 'device_ban') {
+      const deviceHash = String(userData?.deviceHash || '').trim();
+      if (!deviceHash) {
+        throw new Error('User has no device hash recorded.');
+      }
+      await db.collection('bannedDevices').doc(deviceHash).set(
+        {
+          deviceHash,
+          bannedByUid: String(context.auth.uid),
+          reason: `moderation_notice:${templateKey || actionType}`,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+    }
+
+    await writeModerationAuditLog(context.auth.uid, `send_${actionType}_notice`, targetUid, {
+      templateKey,
+      matchId: matchId || null,
+      reportId: reportId || null,
+      referenceNotes: referenceNotes || null,
+      emailedTo: evidence.target.email,
+      filename,
+      includeEvidence,
+    });
+
+    return {
+      ok: true,
+      emailedTo: evidence.target.email,
+      filename,
+      actionType,
+    };
+  } catch (error) {
+    console.error('[sendModerationNotice]', error);
+    throw new functions.https.HttpsError('internal', error?.message || 'Failed to send moderation notice.');
   }
 });
 

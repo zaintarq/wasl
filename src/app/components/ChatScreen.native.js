@@ -29,6 +29,7 @@ import {
   userService,
   waliService,
   translationService,
+  aiSuggestionService,
 } from '../../services/firebaseService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
@@ -279,6 +280,9 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
   const [langSearch, setLangSearch] = useState('');
   /** { [messageId]: { phase: 'hidden'|'loading'|'visible'|'error', text?: string, error?: string } } */
   const [translationById, setTranslationById] = useState({});
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [aiMode, setAiMode] = useState('reply_suggestions');
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -333,6 +337,29 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
     if (!id) return;
     setTranslationById((prev) => ({ ...prev, [id]: { phase: 'hidden' } }));
   }, []);
+
+  const loadAiSuggestions = useCallback(
+    async (mode) => {
+      if (!matchId) return;
+      setAiMode(mode);
+      setAiLoading(true);
+      try {
+        const { data, error } = await aiSuggestionService.generateChatSuggestions(matchId, {
+          mode,
+          draft: text,
+        });
+        if (error) {
+          Alert.alert('AI suggestions', error);
+          setAiSuggestions([]);
+          return;
+        }
+        setAiSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []);
+      } finally {
+        setAiLoading(false);
+      }
+    },
+    [matchId, text]
+  );
 
   useEffect(() => {
     if (!matchId) return;
@@ -404,6 +431,10 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
   const canSend = useMemo(() => String(text || '').trim().length > 0, [text]);
   const hasActiveRecording = recorderState.isRecording || (recorderState.canRecord && (recorderState.durationMillis ?? 0) > 0);
   const isActive = useMemo(() => String(match?.status || 'active') === 'active', [match?.status]);
+  const showAiStarterTools = useMemo(
+    () => isActive && !loading && Array.isArray(messages) && messages.length === 0,
+    [isActive, loading, messages]
+  );
   const isReceiver = useMemo(
     () => !!meUid && String(match?.requestedTo || '') === String(meUid),
     [match?.requestedTo, meUid]
@@ -623,6 +654,9 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
               targetId: item.id,
               targetUserId: item?.fromUid || null,
               matchId,
+              senderUid: item?.fromUid || null,
+              recipientUid: reporterUid,
+              messageSentAt: item?.createdAt || null,
               reason: 'inappropriate',
               details: isVoice ? 'Voice note' : String(item?.text || ''),
             });
@@ -931,6 +965,9 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
                             targetId: msg.id,
                             targetUserId: msg?.fromUid || null,
                             matchId,
+                            senderUid: msg?.fromUid || null,
+                            recipientUid: reporterUid,
+                            messageSentAt: msg?.createdAt || null,
                             reason: 'inappropriate',
                             details: String(msg?.text || ''),
                           });
@@ -984,6 +1021,51 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
             >
               <Text style={styles.replyCloseText}>✕</Text>
             </HuzzPressable>
+          </View>
+        ) : null}
+
+        {showAiStarterTools ? (
+          <View style={styles.aiToolsWrap}>
+            <View style={styles.aiToolsRow}>
+              <HuzzPressable
+                style={[styles.aiToolBtn, aiMode === 'icebreakers' ? styles.aiToolBtnActive : null]}
+                onPress={() => loadAiSuggestions('icebreakers')}
+                haptic="light"
+              >
+                <Text style={styles.aiToolBtnText}>AI Icebreakers</Text>
+              </HuzzPressable>
+              <HuzzPressable
+                style={[styles.aiToolBtn, aiMode === 'reply_suggestions' ? styles.aiToolBtnActive : null]}
+                onPress={() => loadAiSuggestions('reply_suggestions')}
+                haptic="light"
+              >
+                <Text style={styles.aiToolBtnText}>Reply Ideas</Text>
+              </HuzzPressable>
+            </View>
+
+            {aiLoading ? (
+              <View style={styles.aiLoadingRow}>
+                <ActivityIndicator size="small" />
+                <Text style={styles.aiHintText}>Generating suggestions...</Text>
+              </View>
+            ) : aiSuggestions.length ? (
+              <View style={styles.aiSuggestionRow}>
+                {aiSuggestions.map((suggestion, index) => (
+                  <HuzzPressable
+                    key={`${aiMode}-${index}`}
+                    style={styles.aiSuggestionChip}
+                    onPress={() => setText(suggestion)}
+                    haptic="light"
+                  >
+                    <Text style={styles.aiSuggestionText}>{suggestion}</Text>
+                  </HuzzPressable>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.aiHintText}>
+                Tap a button for short, respectful AI-generated chat help.
+              </Text>
+            )}
           </View>
         ) : null}
 
@@ -1401,6 +1483,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   replyCloseText: { fontSize: 14, fontWeight: '600', color: tokens.colors.text },
+  aiToolsWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    backgroundColor: tokens.colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: tokens.colors.border,
+    gap: 10,
+  },
+  aiToolsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  aiToolBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: tokens.radius.full,
+    backgroundColor: tokens.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  aiToolBtnActive: {
+    backgroundColor: tokens.colors.accentDim,
+    borderColor: tokens.colors.accent,
+  },
+  aiToolBtnText: {
+    ...tokens.typography.caption,
+    color: tokens.colors.text,
+    fontWeight: '700',
+  },
+  aiLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  aiHintText: {
+    ...tokens.typography.caption,
+    color: tokens.colors.textMuted,
+  },
+  aiSuggestionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  aiSuggestionChip: {
+    maxWidth: '100%',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  aiSuggestionText: {
+    ...tokens.typography.bodySmall,
+    color: tokens.colors.text,
+  },
   voiceRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   voicePlay: {
     width: 42,
