@@ -7,6 +7,7 @@ export const Routes = {
   TabMatches: 'Matches',
   TabChat: 'Chat',
   TabProfile: 'Profile',
+  TabLive: 'LiveRandom',
   TabSettings: 'Settings',
 
   HomeStack: 'HomeStack',

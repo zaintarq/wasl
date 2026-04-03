@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 import { tokens } from '../../ui/tokens';
 import { RetroButton } from '../../ui/components/RetroButton.native';
+import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
@@ -150,9 +151,9 @@ export function WelcomeScreen({ onNavigate }) {
             variant="primary"
             onPress={() => onNavigate('onboarding', { mode: 'signup' })}
             title="Sign up with email"
-            style={[styles.welcomeBtnShape, styles.welcomeBtnPrimaryShadow]}
+            style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
             textStyle={[
-              styles.welcomeBtnLabel,
+              welcomeButtonStyles.welcomeBtnLabel,
               fontsLoaded ? styles.btnFontKaushan : styles.btnFontFallback,
             ]}
           />
@@ -160,9 +161,9 @@ export function WelcomeScreen({ onNavigate }) {
             variant="outline"
             onPress={() => onNavigate('onboarding', { mode: 'login' })}
             title="Log in"
-            style={[styles.welcomeBtnShape, styles.outlineOnBlue]}
+            style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
             textStyle={[
-              styles.welcomeBtnLabel,
+              welcomeButtonStyles.welcomeBtnLabel,
               fontsLoaded ? styles.btnFontKaushan : styles.btnFontFallback,
             ]}
           />
@@ -204,49 +205,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: tokens.spacing.sm,
   },
-  /** Rounded “soft tile” shape — not a skinny pill, reads more premium with Kaushan. */
-  welcomeBtnShape: {
-    alignSelf: 'stretch',
-    borderRadius: 22,
-    paddingVertical: 16,
-    paddingHorizontal: 26,
-    minHeight: 56,
-  },
-  welcomeBtnPrimaryShadow: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#BE123C',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.28,
-        shadowRadius: 14,
-      },
-      android: { elevation: 6 },
-    }),
-  },
-  welcomeBtnLabel: {
-    fontSize: 19,
-    letterSpacing: 0.4,
-    paddingVertical: 2,
-  },
   btnFontKaushan: {
     fontFamily: 'KaushanScript_400Regular',
   },
   btnFontFallback: {
     fontWeight: '700',
-  },
-  outlineOnBlue: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 2,
-    borderColor: 'rgba(37, 99, 235, 0.35)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#1e40af',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-      },
-      android: { elevation: 3 },
-    }),
   },
   brandBlock: {
     alignItems: 'center',

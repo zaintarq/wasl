@@ -15,6 +15,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { authService, blockService, contactBlockService, likeService, userService, matchService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
+import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
 import { loadLocalFilters } from '../../utils/localFilterStorage';
@@ -61,6 +62,7 @@ export function HomeScreen({ onNavigate }) {
   /** Increment to re-run discovery load (header “Huzz” tap refresh). */
   const [deckRefreshKey, setDeckRefreshKey] = useState(0);
   const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
+  const kaushan = fontsLoaded ? { fontFamily: 'KaushanScript_400Regular' } : undefined;
 
   // Max-tall card: fill as much as possible between header and pinned bottom nav.
   const cardHeight = useMemo(() => {
@@ -1285,14 +1287,14 @@ export function HomeScreen({ onNavigate }) {
         {loading ? (
           <View style={[styles.card, { alignItems: 'center', justifyContent: 'center', minHeight: 400 }]}>
             <ActivityIndicator size="large" />
-            <Text style={{ marginTop: 12, fontWeight: 'bold', fontSize: 16 }}>Loading matches...</Text>
+            <Text style={[{ marginTop: 12, fontSize: 16 }, kaushan]}>Loading matches...</Text>
           </View>
         ) : !currentUser ? (
           <View style={[styles.card, { alignItems: 'center', justifyContent: 'center', minHeight: 400, padding: 24 }]}>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: tokens.colors.textSecondary, marginBottom: 8 }}>
+            <Text style={[{ fontSize: 18, color: tokens.colors.textSecondary, marginBottom: 8 }, kaushan]}>
               No profiles found
             </Text>
-            <Text style={{ textAlign: 'center', color: tokens.colors.text, fontWeight: '600', marginBottom: 16 }}>
+            <Text style={[{ textAlign: 'center', color: tokens.colors.text, marginBottom: 16 }, kaushan]}>
               Try changing your match country using the filter button.
             </Text>
             <RetroButton variant="blue" onPress={openFilters} title="Open Filters" />
@@ -1585,15 +1587,15 @@ export function HomeScreen({ onNavigate }) {
       {hotSeatEnabled && handoffOpen ? (
         <View style={styles.handoffOverlay}>
           <View style={styles.handoffCard}>
-            <Text style={styles.handoffTitle}>PASS THE PHONE</Text>
-            <Text style={styles.handoffSub}>Next turn:</Text>
-            <Text style={styles.handoffName}>{hotSeatTurn === 0 ? hotSeatP1 : hotSeatP2}</Text>
+            <Text style={[styles.handoffTitle, kaushan]}>PASS THE PHONE</Text>
+            <Text style={[styles.handoffSub, kaushan]}>Next turn:</Text>
+            <Text style={[styles.handoffName, kaushan]}>{hotSeatTurn === 0 ? hotSeatP1 : hotSeatP2}</Text>
             <HuzzPressable
               style={[styles.btnWide, { backgroundColor: tokens.colors.success }]}
               onPress={() => setHandoffOpen(false)}
               haptic="medium"
             >
-              <Text style={styles.btnWideText}>Ready</Text>
+              <Text style={[styles.btnWideText, kaushan]}>Ready</Text>
             </HuzzPressable>
           </View>
         </View>
@@ -1605,28 +1607,40 @@ export function HomeScreen({ onNavigate }) {
         onLayout={(e) => setBottomNavH(e?.nativeEvent?.layout?.height || 0)}
       >
         <HuzzPressable
-          style={[styles.navButton, { backgroundColor: '#90ee90', borderColor: '#228b22' }]}
+          style={[
+            welcomeButtonStyles.outlineOnBlue,
+            styles.navButton,
+            { backgroundColor: '#90ee90', borderColor: '#228b22' },
+          ]}
           onPress={() => onNavigate('home')}
           haptic="light"
         >
           <Text style={styles.navIcon}>🏠</Text>
-          <Text style={styles.navLabel}>Home</Text>
+          <Text style={[styles.navLabel, kaushan]}>Home</Text>
         </HuzzPressable>
         <HuzzPressable
-          style={[styles.navButton, { backgroundColor: '#87ceeb', borderColor: '#4682b4' }]}
+          style={[
+            welcomeButtonStyles.outlineOnBlue,
+            styles.navButton,
+            { backgroundColor: '#87ceeb', borderColor: '#4682b4' },
+          ]}
           onPress={() => onNavigate('matches')}
           haptic="light"
         >
           <Text style={styles.navIcon}>💬</Text>
-          <Text style={styles.navLabel}>Matches</Text>
+          <Text style={[styles.navLabel, kaushan]}>Matches</Text>
         </HuzzPressable>
         <HuzzPressable
-          style={[styles.navButton, { backgroundColor: '#ff6b9d', borderColor: '#8b4513' }]}
-          onPress={() => onNavigate('myProfile')}
+          style={[
+            welcomeButtonStyles.outlineOnBlue,
+            styles.navButton,
+            { backgroundColor: '#c4b5fd', borderColor: '#6d28d9' },
+          ]}
+          onPress={() => onNavigate('liveRandom')}
           haptic="light"
         >
-          <Text style={styles.navIcon}>👤</Text>
-          <Text style={styles.navLabel}>Profile</Text>
+          <Text style={styles.navIcon}>🎥</Text>
+          <Text style={[styles.navLabel, kaushan]}>Live</Text>
         </HuzzPressable>
       </View>
       </View>
@@ -2013,22 +2027,22 @@ const styles = StyleSheet.create({
   },
   navButton: {
     flex: 1,
-    maxWidth: 140,
+    maxWidth: 148,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginHorizontal: 6,
-    borderRadius: tokens.radius.md,
-    gap: 6,
-    backgroundColor: tokens.colors.surfaceElevated,
+    borderRadius: 22,
+    minHeight: 52,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    marginHorizontal: 4,
+    gap: 4,
   },
   navIcon: {
-    fontSize: 26,
+    fontSize: 24,
   },
   navLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 15,
+    letterSpacing: 0.4,
     color: tokens.colors.textSecondary,
   },
   authButton: {

@@ -64,6 +64,8 @@ const COL = {
   bannedDevices: 'bannedDevices',
   wingmanRooms: 'wingmanRooms',
   spinRooms: 'spinRooms',
+  liveRandomPool: 'liveRandomPool',
+  liveRandomSessions: 'liveRandomSessions',
   verifications: 'verifications',
   admin: 'admin', // Separate collection for admins and staff
   vulgarAttempts: 'vulgarAttempts',
@@ -2000,6 +2002,163 @@ export const wingmanService = {
       const uid = String(memberUid || '').trim();
       if (!c || !uid) return { error: 'Missing.' };
       await updateDoc(this._roomRef(c), { memberVote: String(vote || ''), updatedAt: serverTimestamp() });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+};
+
+/** Omegle-style random 1-minute live sessions (text chat; video UI placeholder). */
+export const liveRandomService = {
+  POOL_DOC_ID: 'current',
+  SESSION_MS: 60 * 1000,
+
+  _poolRef() {
+    return doc(db, COL.liveRandomPool, this.POOL_DOC_ID);
+  },
+
+  _sessionRef(sessionId) {
+    return doc(db, COL.liveRandomSessions, String(sessionId));
+  },
+
+  _messagesCol(sessionId) {
+    return collection(db, COL.liveRandomSessions, String(sessionId), 'messages');
+  },
+
+  /**
+   * Enter matching pool. Either waits for a partner or matches immediately.
+   * @returns {{ state: 'waiting', error?: string } | { state: 'matched', sessionId: string, partnerUid: string, error?: null }}
+   */
+  async enterPool(uid) {
+    const me = String(uid || '').trim();
+    if (!me) return { state: 'waiting', error: 'Not signed in.' };
+    try {
+      const sessionRef = doc(collection(db, COL.liveRandomSessions));
+      const sessionId = sessionRef.id;
+      const poolRef = this._poolRef();
+      const result = await runTransaction(db, async (tx) => {
+        const poolSnap = await tx.get(poolRef);
+        const w = poolSnap.exists() ? String(poolSnap.data()?.waitingUid || '').trim() : '';
+        if (w && w !== me) {
+          tx.set(poolRef, { waitingUid: null, updatedAt: serverTimestamp() }, { merge: true });
+          tx.set(sessionRef, {
+            uids: [me, w].sort(),
+            status: 'active',
+            startedAt: serverTimestamp(),
+            endedBy: null,
+            endedReason: null,
+          });
+          return { type: 'matched', partnerUid: w, sessionId };
+        }
+        tx.set(poolRef, { waitingUid: me, updatedAt: serverTimestamp() }, { merge: true });
+        return { type: 'waiting' };
+      });
+      if (result.type === 'matched') {
+        return { state: 'matched', sessionId: result.sessionId, partnerUid: result.partnerUid, error: null };
+      }
+      return { state: 'waiting', error: null };
+    } catch (e) {
+      return { state: 'waiting', error: e?.message || String(e) };
+    }
+  },
+
+  async leavePool(uid) {
+    const me = String(uid || '').trim();
+    if (!me) return { error: 'Not signed in.' };
+    try {
+      await runTransaction(db, async (tx) => {
+        const poolRef = this._poolRef();
+        const poolSnap = await tx.get(poolRef);
+        if (!poolSnap.exists()) return;
+        const w = String(poolSnap.data()?.waitingUid || '').trim();
+        if (w === me) {
+          tx.set(poolRef, { waitingUid: null, updatedAt: serverTimestamp() }, { merge: true });
+        }
+      });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  listenActiveSessionForUser(uid, callback) {
+    const me = String(uid || '').trim();
+    if (!me) return () => {};
+    const q = query(
+      collection(db, COL.liveRandomSessions),
+      where('uids', 'array-contains', me),
+      where('status', '==', 'active'),
+      limit(1)
+    );
+    return onSnapshot(
+      q,
+      (snap) => {
+        const doc0 = snap.docs[0];
+        callback({
+          data: doc0 ? { id: doc0.id, ...doc0.data() } : null,
+          error: null,
+        });
+      },
+      (error) => callback({ data: null, error: error.message })
+    );
+  },
+
+  async getSessionById(sessionId) {
+    const sid = String(sessionId || '').trim();
+    if (!sid) return { data: null, error: 'Missing id.' };
+    try {
+      const snap = await getDoc(this._sessionRef(sid));
+      return { data: snap.exists() ? { id: snap.id, ...snap.data() } : null, error: null };
+    } catch (e) {
+      return { data: null, error: e?.message || String(e) };
+    }
+  },
+
+  async endSession(sessionId, uid, reason) {
+    const sid = String(sessionId || '').trim();
+    const me = String(uid || '').trim();
+    const r = String(reason || 'leave');
+    if (!sid || !me) return { error: 'Missing.' };
+    try {
+      await updateDoc(this._sessionRef(sid), {
+        status: 'ended',
+        endedAt: serverTimestamp(),
+        endedBy: me,
+        endedReason: r,
+      });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  listenMessages(sessionId, callback) {
+    const sid = String(sessionId || '').trim();
+    if (!sid) return () => {};
+    const q = query(this._messagesCol(sid), orderBy('createdAt', 'asc'), limit(80));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        callback({ data: rows, error: null });
+      },
+      (error) => callback({ data: [], error: error.message })
+    );
+  },
+
+  async sendMessage(sessionId, fromUid, text) {
+    const sid = String(sessionId || '').trim();
+    const me = String(fromUid || '').trim();
+    const t = String(text || '').trim();
+    if (!sid || !me || !t) return { error: 'Message empty.' };
+    if (t.length > 2000) return { error: 'Message too long.' };
+    try {
+      await addDoc(this._messagesCol(sid), {
+        fromUid: me,
+        text: t,
+        createdAt: serverTimestamp(),
+      });
       return { error: null };
     } catch (e) {
       return { error: e?.message || String(e) };

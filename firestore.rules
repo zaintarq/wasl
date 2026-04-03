@@ -343,6 +343,58 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Omegle-style random live pool (singleton doc; matching is client-side transaction)
+    match /liveRandomPool/{poolId} {
+      allow get: if isSignedIn() && !isDisabled();
+      allow create, update: if isSignedIn() && !isDisabled();
+      allow delete: if false;
+    }
+
+    // Random 1-minute sessions between two authenticated users
+    match /liveRandomSessions/{sessionId} {
+      allow create: if isSignedIn()
+        && !isDisabled()
+        && request.resource.data.uids is list
+        && request.resource.data.uids.size() == 2
+        && request.resource.data.uids.hasAny([request.auth.uid])
+        && request.resource.data.status == 'active';
+
+      allow read: if isSignedIn()
+        && !isDisabled()
+        && resource.data.uids is list
+        && resource.data.uids.hasAny([request.auth.uid]);
+
+      allow update: if isSignedIn()
+        && !isDisabled()
+        && resource.data.uids is list
+        && resource.data.uids.hasAny([request.auth.uid])
+        && request.resource.data.uids == resource.data.uids
+        && request.resource.data.status == 'ended'
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'endedAt', 'endedBy', 'endedReason']);
+
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn()
+          && !isDisabled()
+          && exists(/databases/$(database)/documents/liveRandomSessions/$(sessionId))
+          && get(/databases/$(database)/documents/liveRandomSessions/$(sessionId)).data.uids is list
+          && get(/databases/$(database)/documents/liveRandomSessions/$(sessionId)).data.uids.hasAny([request.auth.uid]);
+
+        allow create: if isSignedIn()
+          && !isDisabled()
+          && exists(/databases/$(database)/documents/liveRandomSessions/$(sessionId))
+          && get(/databases/$(database)/documents/liveRandomSessions/$(sessionId)).data.status == 'active'
+          && get(/databases/$(database)/documents/liveRandomSessions/$(sessionId)).data.uids.hasAny([request.auth.uid])
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+
+        allow update, delete: if false;
+      }
+    }
+
     // Reports
     match /reports/{reportId} {
       allow create: if isSignedIn() && !isDisabled();

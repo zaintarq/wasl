@@ -14,6 +14,7 @@ import { AdminScreen } from '../components/AdminScreen.native.js';
 import { ContactsBlockScreen } from '../components/ContactsBlockScreen.native.js';
 import { BlockedUsersScreen } from '../components/BlockedUsersScreen.native.js';
 import { MyProfileScreen } from '../components/MyProfileScreen.native.js';
+import { LiveRandomScreen } from '../components/LiveRandomScreen.native.js';
 import { WingmanScreen } from '../components/WingmanScreen.native.js';
 import { SpinBottleScreen } from '../components/SpinBottleScreen.native.js';
 import { VerificationScreen } from '../components/VerificationScreen.native.js';
@@ -430,6 +431,9 @@ function useLegacyOnNavigate(navigation) {
         case 'myProfile':
           navigation.navigate(Routes.TabProfile);
           return;
+        case 'liveRandom':
+          navigation.navigate(Routes.TabLive);
+          return;
         case 'wali':
           navigation.dispatch(
             CommonActions.reset({
@@ -677,6 +681,9 @@ export function RootNavigator() {
         </RootStack.Screen>
         <RootStack.Screen name={Routes.TabProfile}>
           {({ navigation }) => <MyProfileScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.TabLive}>
+          {({ navigation }) => <LiveRandomScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.TabSettings}>
           {({ navigation }) => <SettingsScreen onNavigate={useLegacyOnNavigate(navigation)} />}
