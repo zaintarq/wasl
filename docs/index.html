@@ -4,152 +4,276 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Huzz — Connect freely</title>
-  <meta name="description" content="Huzz is a mobile social app for discovery, chat, clubs, and live voice spaces. Connect freely with real people." />
+  <meta name="description" content="Huzz is a mobile social app for discovery, chat, clubs, and live voice spaces." />
+  <link rel="icon" href="assets/icon-512.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      color-scheme: light;
-      --bg: #0a0a0a;
-      --card: #141414;
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #3b82f6;
-      --accent-soft: rgba(59, 130, 246, 0.15);
-      --border: #262626;
+      --bg-top: #f8fafc;
+      --bg-mid: #eff6ff;
+      --bg-bottom: #dbeafe;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --accent: #e11d48;
+      --accent-pressed: #be123c;
+      --blue: #2563eb;
+      --border: #e2e8f0;
+      --rose-bg: #fff1f2;
+      --rose-border: #fda4af;
+      --sky-bg: #eff6ff;
+      --sky-border: #7dd3fc;
+      --violet-bg: #f5f3ff;
+      --violet-border: #c4b5fd;
+      --amber-bg: #fffbeb;
+      --amber-border: #fcd34d;
+      --max: 440px;
+      --radius-lg: 20px;
+      --radius-md: 16px;
+      --shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+      --shadow-btn: 0 6px 14px rgba(190, 18, 60, 0.28);
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      line-height: 1.6;
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      min-height: 100%;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: var(--text);
-      background: radial-gradient(ellipse 80% 60% at 50% -10%, #1e3a5f 0%, var(--bg) 55%);
+      background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-bottom) 100%);
+      background-attachment: fixed;
+    }
+
+    .page {
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 20px 48px;
     }
-    main {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 48px 20px 64px;
+
+    .shell {
+      width: 100%;
+      max-width: var(--max);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
     }
-    .logo {
-      font-size: 2.5rem;
-      font-weight: 900;
-      letter-spacing: -0.03em;
-      margin: 0 0 8px;
+
+    .hero {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
     }
-    .tagline {
-      font-size: 1.25rem;
-      color: var(--muted);
-      margin: 0 0 32px;
-      font-weight: 500;
+
+    .mascot {
+      width: min(280px, 78vw);
+      aspect-ratio: 1;
+      margin-bottom: 8px;
+      animation: float 4s ease-in-out infinite;
     }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 28px 24px;
-      margin-bottom: 20px;
+
+    .mascot img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: drop-shadow(0 12px 24px rgba(37, 99, 235, 0.12));
     }
-    .card h2 {
-      margin: 0 0 12px;
-      font-size: 1.1rem;
-      font-weight: 800;
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
     }
-    .card p {
-      margin: 0;
-      color: var(--muted);
+
+    .brand {
+      font-family: "Kaushan Script", cursive;
+      font-size: clamp(3rem, 12vw, 4rem);
+      color: #1c1917;
+      letter-spacing: 0.5px;
+      line-height: 1.1;
+      text-shadow: 0 1px 2px rgba(28, 25, 23, 0.12);
+    }
+
+    .brand-line {
+      width: 112px;
+      height: 3px;
+      margin: 8px auto 14px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #1d4ed8, #2563eb, #3b82f6);
+      opacity: 0.85;
+    }
+
+    .tagline-main {
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.15rem;
+      line-height: 1.5;
+      color: var(--text-secondary);
+      padding: 0 12px;
+      margin-bottom: 6px;
+    }
+
+    .tagline-sub {
+      font-family: "Kaushan Script", cursive;
       font-size: 0.95rem;
+      color: var(--text-muted);
+      padding: 0 12px;
     }
+
     .features {
+      width: 100%;
       display: grid;
-      gap: 12px;
-      margin: 28px 0;
+      gap: 10px;
     }
-    .feature {
+
+    .pill {
       display: flex;
+      align-items: center;
       gap: 12px;
-      align-items: flex-start;
       padding: 14px 16px;
-      background: var(--accent-soft);
-      border: 1px solid rgba(59, 130, 246, 0.25);
-      border-radius: 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid;
       font-size: 0.92rem;
-      color: var(--text);
+      font-weight: 600;
+      line-height: 1.35;
     }
-    .feature strong { color: var(--accent); min-width: 72px; }
-    .links {
+
+    .pill-icon {
+      font-size: 1.25rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .pill.discover { background: var(--rose-bg); border-color: var(--rose-border); }
+    .pill.chats { background: var(--sky-bg); border-color: var(--sky-border); }
+    .pill.clubs { background: var(--violet-bg); border-color: var(--violet-border); }
+    .pill.live { background: var(--amber-bg); border-color: var(--amber-border); }
+
+    .actions {
+      width: 100%;
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 28px;
+      flex-direction: column;
+      gap: 14px;
     }
-    a.btn {
-      display: inline-block;
-      padding: 12px 20px;
-      border-radius: 12px;
-      font-weight: 700;
-      font-size: 0.9rem;
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 56px;
+      padding: 16px 26px;
+      border-radius: 22px;
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.15rem;
+      letter-spacing: 0.4px;
       text-decoration: none;
-      transition: opacity 0.15s;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s;
     }
-    a.btn:hover { opacity: 0.88; }
-    a.btn-primary {
+
+    .btn:active { transform: scale(0.98); }
+
+    .btn-primary {
       background: var(--accent);
       color: #fff;
+      box-shadow: var(--shadow-btn);
     }
-    a.btn-outline {
-      background: transparent;
+
+    .btn-primary:hover {
+      background: var(--accent-pressed);
+    }
+
+    .btn-outline {
+      background: rgba(255, 255, 255, 0.9);
       color: var(--text);
-      border: 1px solid var(--border);
+      border: 2px solid rgba(37, 99, 235, 0.35);
+      box-shadow: 0 3px 10px rgba(30, 64, 175, 0.08);
     }
-    footer {
-      margin-top: 40px;
-      padding-top: 24px;
-      border-top: 1px solid var(--border);
-      font-size: 0.85rem;
-      color: var(--muted);
+
+    .legal {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px 16px;
+      font-size: 0.82rem;
     }
-    footer a { color: var(--accent); }
+
+    .legal a {
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .legal a:hover { text-decoration: underline; }
+
+    .footer {
+      margin-top: 8px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .footer a { color: var(--blue); text-decoration: none; }
   </style>
 </head>
 <body>
-  <main>
-    <h1 class="logo">Huzz</h1>
-    <p class="tagline">Connect freely with real people.</p>
+  <div class="page">
+    <div class="shell">
+      <header class="hero">
+        <div class="mascot">
+          <img src="assets/app-logo.png" alt="Huzz mascot" width="280" height="280" />
+        </div>
+        <h1 class="brand">Huzz</h1>
+        <div class="brand-line" aria-hidden="true"></div>
+        <p class="tagline-main">Connect authentically. Connect freely.</p>
+        <p class="tagline-sub">Open-source &amp; community-driven</p>
+      </header>
 
-    <div class="card">
-      <h2>What is Huzz?</h2>
-      <p>
-        Huzz is a mobile social app for discovery, mutual connections, private chats,
-        voice clubs, and live sessions. Browse profiles, connect when interest is mutual,
-        and join club spaces to chat and hang out with your community.
-      </p>
+      <section class="features" aria-label="App features">
+        <div class="pill discover">
+          <span class="pill-icon">✦</span>
+          <span>Discover people near you and connect when it&apos;s mutual</span>
+        </div>
+        <div class="pill chats">
+          <span class="pill-icon">💬</span>
+          <span>Private chats with people you matched</span>
+        </div>
+        <div class="pill clubs">
+          <span class="pill-icon">🎙</span>
+          <span>Join clubs — text chat and voice spaces</span>
+        </div>
+        <div class="pill live">
+          <span class="pill-icon">⚡</span>
+          <span>Go Live for short random sessions</span>
+        </div>
+      </section>
+
+      <div class="actions">
+        <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=com.huzz.app">
+          Get Huzz on Google Play
+        </a>
+        <a class="btn btn-outline" href="mailto:support@huzz.com">
+          Contact support
+        </a>
+      </div>
+
+      <nav class="legal">
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="child-safety.html">Child Safety</a>
+      </nav>
+
+      <footer class="footer">
+        <p>Android · <code style="font-size:0.75rem;color:var(--text-secondary)">com.huzz.app</code></p>
+        <p><a href="mailto:support@huzz.com">support@huzz.com</a> · © Huzz 2026</p>
+      </footer>
     </div>
-
-    <div class="features">
-      <div class="feature"><strong>Discover</strong> Browse and connect with people near you</div>
-      <div class="feature"><strong>Chats</strong> Message after a mutual connection</div>
-      <div class="feature"><strong>Clubs</strong> Join public or private spaces with voice chat</div>
-      <div class="feature"><strong>Live</strong> Short random live sessions when you want spontaneity</div>
-    </div>
-
-    <div class="card">
-      <h2>Download</h2>
-      <p>
-        Android app package: <code style="color:var(--accent)">com.huzz.app</code>.
-        Available on Google Play when published.
-      </p>
-    </div>
-
-    <div class="links">
-      <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=com.huzz.app">Google Play</a>
-      <a class="btn btn-outline" href="privacy.html">Privacy Policy</a>
-      <a class="btn btn-outline" href="child-safety.html">Child Safety</a>
-    </div>
-
-    <footer>
-      <p>Support: <a href="mailto:support@huzz.com">support@huzz.com</a></p>
-      <p>© Huzz · Last updated July 2026</p>
-    </footer>
-  </main>
+  </div>
 </body>
 </html>
