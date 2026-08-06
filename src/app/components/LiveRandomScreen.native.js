@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MessageCircle, Shuffle } from 'lucide-react-native';
+import { MessageCircle } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { requestRecordingPermissionsAsync } from 'expo-audio';
 import { authService, liveRandomService } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
@@ -20,12 +22,13 @@ import {
   LiveRetroButton,
 } from '../../ui/components/live/LiveTypography.native';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
-
+import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
 const SESSION_MS = liveRandomService.SESSION_MS;
 
 export function LiveRandomScreen({ onNavigate }) {
   const meUid = authService.getCurrentUser()?.uid || null;
   const insets = useSafeAreaInsets();
+  const [bottomNavH, setBottomNavH] = useState(0);
   const [phase, setPhase] = useState('idle');
   const [session, setSession] = useState(null);
   const [error, setError] = useState(null);
@@ -55,6 +58,18 @@ export function LiveRandomScreen({ onNavigate }) {
       return;
     }
     setError(null);
+
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    if (!cam.granted) {
+      setError('Camera access is required for Live video chat.');
+      return;
+    }
+    const mic = await requestRecordingPermissionsAsync();
+    if (!mic.granted) {
+      setError('Microphone access is required for Live video chat.');
+      return;
+    }
+
     setPhase('searching');
     const res = await liveRandomService.enterPool(meUid);
     if (res.error) {
@@ -140,7 +155,7 @@ export function LiveRandomScreen({ onNavigate }) {
     setError(null);
   };
 
-  const skipOrLeave = async (reason) => {
+  const skipOrLeave = useCallback(async (reason) => {
     const sid = session?.id;
     clearTimers();
     if (meUid && sid) {
@@ -158,7 +173,7 @@ export function LiveRandomScreen({ onNavigate }) {
     } else {
       setPhase('idle');
     }
-  };
+  }, [session?.id, meUid, clearTimers, startOrSearch]);
 
   const sendChat = async () => {
     const t = chatText.trim();
@@ -168,15 +183,21 @@ export function LiveRandomScreen({ onNavigate }) {
     if (err) setError(err);
   };
 
-  const listPadBottom = Math.max(12, insets.bottom);
+  const handleSkip = useCallback(() => {
+    skipOrLeave('skip');
+  }, [skipOrLeave]);
+
+  const handleLeave = useCallback(() => {
+    skipOrLeave('leave');
+  }, [skipOrLeave]);
+
+  const listPadBottom = Math.max(8, insets.bottom);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <LiveTypographyProvider>
         <View style={styles.header}>
-          <HuzzPressable style={styles.headerBtn} onPress={() => onNavigate('home')} haptic="light">
-            <LiveText style={styles.headerBtnText}>← Home</LiveText>
-          </HuzzPressable>
+          <View style={{ width: 70 }} />
           <LiveText style={styles.title}>Live</LiveText>
           <View style={{ width: 70 }} />
         </View>
@@ -197,7 +218,7 @@ export function LiveRandomScreen({ onNavigate }) {
           {phase === 'idle' ? (
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={[styles.scrollContent, { paddingBottom: 28 + insets.bottom }]}
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: 28 + bottomNavH + insets.bottom }]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
@@ -211,7 +232,7 @@ export function LiveRandomScreen({ onNavigate }) {
                   style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
                   textStyle={welcomeButtonStyles.welcomeBtnLabel}
                 >
-                  Start matching
+                  Start Live
                 </LiveRetroButton>
               </LiveContentWidth>
             </ScrollView>
@@ -237,59 +258,62 @@ export function LiveRandomScreen({ onNavigate }) {
           {phase === 'session' && session ? (
             <View style={styles.sessionWrap}>
               <LiveSessionHeader secondsLeft={secondsLeft} totalSeconds={60} />
-              <LiveVideoTiles partnerConnected={!!partnerUid} />
-
-              <LiveContentWidth style={styles.chatHead}>
-                <View style={styles.chatRow}>
-                  <MessageCircle size={18} color={tokens.colors.textMuted} strokeWidth={2} />
-                  <LiveText style={styles.chatTitle}>Messages</LiveText>
-                </View>
-              </LiveContentWidth>
-
-              <FlatList
-                style={styles.chatList}
-                data={messages}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => {
-                  const mine = String(item.fromUid) === String(meUid);
-                  return (
-                    <View style={[styles.bubbleWrap, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-                      <LiveText style={styles.bubbleText}>{String(item.text || '')}</LiveText>
-                    </View>
-                  );
-                }}
-                contentContainerStyle={[styles.chatListContent, { paddingBottom: listPadBottom }]}
+              <LiveVideoTiles
+                sessionId={session?.id}
+                partnerConnected={!!partnerUid}
+                onLiveKitError={(msg) => setError(String(msg || ''))}
+                onSkip={handleSkip}
+                onLeave={handleLeave}
               />
 
-              <View style={[styles.composer, { paddingBottom: listPadBottom }]}>
-                <LiveTextInput
-                  style={styles.input}
-                  value={chatText}
-                  onChangeText={setChatText}
-                  placeholder="Say something…"
-                  placeholderTextColor={tokens.colors.textMuted}
-                  maxLength={2000}
-                  onSubmitEditing={sendChat}
-                />
-                <LiveRetroButton variant="blue" onPress={sendChat} style={styles.sendCompact}>
-                  Send
-                </LiveRetroButton>
-              </View>
-
-              <View style={[styles.actions, { paddingBottom: Math.max(10, insets.bottom) }]}>
-                <HuzzPressable style={styles.skipBtn} onPress={() => skipOrLeave('skip')} haptic="medium">
-                  <View style={styles.skipInner}>
-                    <Shuffle size={18} color={tokens.colors.text} strokeWidth={2} />
-                    <LiveText style={styles.skipText}>Skip</LiveText>
+              <View style={styles.chatSection}>
+                <LiveContentWidth style={styles.chatHead}>
+                  <View style={styles.chatRow}>
+                    <MessageCircle size={18} color={tokens.colors.textMuted} strokeWidth={2} />
+                    <LiveText style={styles.chatTitle}>Live chat</LiveText>
                   </View>
-                </HuzzPressable>
-                <HuzzPressable style={styles.leaveBtn} onPress={() => skipOrLeave('leave')} haptic="medium">
-                  <LiveText style={styles.leaveText}>Leave</LiveText>
-                </HuzzPressable>
+                </LiveContentWidth>
+
+                <FlatList
+                  style={styles.chatList}
+                  data={messages}
+                  keyExtractor={(item) => item.id}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => {
+                    const mine = String(item.fromUid) === String(meUid);
+                    return (
+                      <View style={[styles.bubbleWrap, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
+                        <LiveText style={styles.bubbleText}>{String(item.text || '')}</LiveText>
+                      </View>
+                    );
+                  }}
+                  ListEmptyComponent={
+                    <LiveText style={styles.chatEmpty}>Say hi — messages appear here for both of you.</LiveText>
+                  }
+                  contentContainerStyle={styles.chatListContent}
+                />
+
+                <View style={[styles.composer, { paddingBottom: listPadBottom }]}>
+                  <LiveTextInput
+                    style={styles.input}
+                    value={chatText}
+                    onChangeText={setChatText}
+                    placeholder="Type a message…"
+                    placeholderTextColor={tokens.colors.textMuted}
+                    maxLength={2000}
+                    onSubmitEditing={sendChat}
+                  />
+                  <LiveRetroButton variant="blue" onPress={sendChat} style={styles.sendCompact}>
+                    Send
+                  </LiveRetroButton>
+                </View>
               </View>
             </View>
           ) : null}
         </KeyboardAvoidingView>
+        {phase !== 'session' ? (
+          <MainBottomNav active="live" onNavigate={onNavigate} onLayout={setBottomNavH} />
+        ) : null}
       </LiveTypographyProvider>
     </SafeAreaView>
   );
@@ -332,11 +356,24 @@ const styles = StyleSheet.create({
   cta: { width: '100%' },
   searchingPage: { flex: 1, justifyContent: 'center', paddingVertical: 24 },
   sessionWrap: { flex: 1, backgroundColor: tokens.colors.bg },
-  chatHead: { paddingTop: tokens.spacing.md, paddingBottom: 6 },
+  chatSection: {
+    flex: 1,
+    minHeight: 140,
+    borderTopWidth: 1,
+    borderTopColor: tokens.colors.border,
+    backgroundColor: tokens.colors.surface,
+  },
+  chatHead: { paddingTop: 10, paddingBottom: 4 },
   chatRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   chatTitle: { ...tokens.typography.label, color: tokens.colors.textMuted },
-  chatList: { flex: 1, maxHeight: 240 },
-  chatListContent: { paddingHorizontal: LIVE_SCREEN_GUTTER, paddingTop: 8 },
+  chatList: { flex: 1 },
+  chatListContent: { paddingHorizontal: LIVE_SCREEN_GUTTER, paddingTop: 6, paddingBottom: 8, flexGrow: 1 },
+  chatEmpty: {
+    ...tokens.typography.caption,
+    color: tokens.colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
   bubbleWrap: {
     maxWidth: '88%',
     marginBottom: 8,
@@ -374,33 +411,4 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.bgSecondary,
   },
   sendCompact: { paddingVertical: 10, paddingHorizontal: 16, minHeight: 44 },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: LIVE_SCREEN_GUTTER,
-    paddingTop: 8,
-  },
-  skipBtn: {
-    flex: 1,
-    backgroundColor: tokens.colors.filterBgAmber,
-    borderWidth: 1,
-    borderColor: tokens.colors.filterBorderAmber,
-    borderRadius: tokens.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  skipInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  skipText: { ...tokens.typography.label, color: tokens.colors.text },
-  leaveBtn: {
-    flex: 1,
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    borderRadius: tokens.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  leaveText: { ...tokens.typography.label, color: tokens.colors.textSecondary },
 });

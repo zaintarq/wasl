@@ -64,55 +64,34 @@ service cloud.firestore {
         );
     }
 
-    // Helper function to check if wali has consent to access match
-    function isWaliWithConsent(matchId) {
-      return isSignedIn()
-        && !isDisabled()
-        && exists(/databases/$(database)/documents/matches/$(matchId))
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && (
-          // Check if request.auth.uid matches wali userId for either participant
-          (
-            get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0] != null
-            && exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0]))
-            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0])).data.wali.userId == request.auth.uid
-            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[0])).data.wali.consentLevel != 'never'
-          )
-          || (
-            get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1] != null
-            && exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1]))
-            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1])).data.wali.userId == request.auth.uid
-            && get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/matches/$(matchId)).data.uids[1])).data.wali.consentLevel != 'never'
-          )
-        );
+    function clubMemberPath(clubId) {
+      return /databases/$(database)/documents/clubs/$(clubId)/members/$(request.auth.uid);
     }
 
-    // Helper function to check if wali can update match
-    function canWaliUpdate(matchId) {
-      // Wali can update wali involvement tracking fields
-      return request.resource.data.diff(resource.data).changedKeys().hasAny(['waliInvolvement'])
-        || request.resource.data.diff(resource.data).changedKeys().hasOnly(['waliInvolvement', 'lastMessageAt', 'status']);
+    function isClubMember(clubId) {
+      return isSignedIn()
+        && !isDisabled()
+        && exists(clubMemberPath(clubId));
+    }
+
+    function clubMemberRole(clubId) {
+      return get(clubMemberPath(clubId)).data.role;
+    }
+
+    function isClubAdmin(clubId) {
+      return isClubMember(clubId)
+        && clubMemberRole(clubId) in ['owner', 'admin'];
     }
 
     // Users
     match /users/{uid} {
       // Allow users to create their own document (onboarding)
-      // Also allow wali user creation (they authenticate via hash first, then create account)
-      allow create: if isSignedIn() && request.auth.uid == uid
-        || (isSignedIn() && request.resource.data.role == 'wali');
+      allow create: if isSignedIn() && request.auth.uid == uid;
 
       // NOTE: This allows signed-in users to read profiles for discovery.
-      // Also allow unauthenticated list queries for wali hash lookup (necessary for wali login)
-      // This is a security trade-off: we allow limited unauthenticated reads for wali authentication
-      // The query will only return documents matching the wali.hash filter
-      // IMPORTANT: Unauthenticated queries are allowed for wali authentication flow
-      // Allow users to read their own document (for checking role, profile, etc.)
-      // Also allow reading if document doesn't exist (for onboarding)
-      allow get: if !isSignedIn() 
-        || (isSignedIn() && request.auth.uid == uid) 
+      allow get: if (isSignedIn() && request.auth.uid == uid)
         || (isSignedIn() && !isDisabled());
-      allow list: if !isSignedIn() 
-        || (isSignedIn() && !isDisabled());
+      allow list: if isSignedIn() && !isDisabled();
 
       // Owners can update their profile
       // Cannot self-promote to admin or disable themselves.
@@ -133,6 +112,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.auth.uid == uid;
 
       allow delete: if isAdmin();
+
+      match /clubMemberships/{clubId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) || isClubAdmin(clubId);
+        allow update: if isOwner(uid) || isClubAdmin(clubId);
+        allow delete: if isOwner(uid) || isClubAdmin(clubId);
+      }
 
       // Per-user subcollections
       match /likesSent/{otherUid} {
@@ -203,14 +189,12 @@ service cloud.firestore {
 
       // Allow users to list matches where they are a participant
       allow list: if isSignedIn() && !isDisabled();
-      // Allow get when doc doesn't exist (so client can check before create) or when user is participant/admin/wali
+      // Allow get when doc doesn't exist (so client can check before create) or when user is participant/admin
       allow get: if !exists(/databases/$(database)/documents/matches/$(matchId))
         || isMatchParticipant()
-        || isAdmin()
-        || isWaliWithConsent(matchId);
+        || isAdmin();
       // Participants can update match docs (status, lastMessageAt, typing, etc.)
-      // Wali can update if consent allows (for wali involvement tracking)
-      allow update: if isMatchParticipantOrRequestParty() || isAdmin() || (isWaliWithConsent(matchId) && canWaliUpdate(matchId));
+      allow update: if isMatchParticipantOrRequestParty() || isAdmin();
       // Participants can delete (unmatch); admins can delete any match
       allow delete: if isAdmin() || isMatchParticipantOrRequestParty();
 
@@ -297,50 +281,6 @@ service cloud.firestore {
 
         allow delete: if false;
       }
-    }
-
-    // Wingman co-op swipe rooms
-    match /wingmanRooms/{code} {
-      allow create: if isSignedIn()
-        && !isDisabled()
-        && request.resource.data.ownerUid == request.auth.uid;
-
-      allow get: if isSignedIn()
-        && !isDisabled()
-        && (resource.data.ownerUid == request.auth.uid || resource.data.memberUid == request.auth.uid);
-
-      allow list: if false;
-
-      allow update: if isSignedIn()
-        && !isDisabled()
-        && (resource.data.ownerUid == request.auth.uid || resource.data.memberUid == request.auth.uid)
-        && request.resource.data.ownerUid == resource.data.ownerUid;
-
-      allow delete: if isAdmin();
-    }
-
-    // Spin-the-Bottle rooms (3–6 people, host spins a random pair for a 60s chat)
-    match /spinRooms/{code} {
-      allow create: if isSignedIn()
-        && !isDisabled()
-        && request.resource.data.ownerUid == request.auth.uid;
-
-      allow get: if isSignedIn()
-        && !isDisabled()
-        && (resource.data.participants is list)
-        && resource.data.participants.hasAny([request.auth.uid]);
-
-      allow list: if false;
-
-      // Participants can join/leave via controlled updates.
-      // OwnerUid is immutable.
-      allow update: if isSignedIn()
-        && !isDisabled()
-        && (resource.data.participants is list)
-        && resource.data.participants.hasAny([request.auth.uid])
-        && request.resource.data.ownerUid == resource.data.ownerUid;
-
-      allow delete: if isAdmin();
     }
 
     // Omegle-style random live pool (singleton doc; matching is client-side transaction)
@@ -465,28 +405,16 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isAdmin();
     }
 
-    // Wali Access audit trail
-    match /waliAccess/{accessId} {
-      // Only admins can read wali access logs
-      allow read: if isAdmin();
-      // Users can create their own wali access logs (via waliService)
-      allow create: if isSignedIn() 
-        && !isDisabled()
+    // Device photo gallery manifest (Storage files under gallery/{uid}/)
+    match /photo-upload/{photoId} {
+      allow create, update: if isSignedIn()
+        && photoId == request.auth.uid
         && request.resource.data.userId == request.auth.uid;
-      // Only admins can update/delete
-      allow update, delete: if isAdmin();
-    }
 
-    // Wali Access audit trail
-    match /waliAccess/{accessId} {
-      // Only admins can read wali access logs
-      allow read: if isAdmin();
-      // Users can create their own wali access logs (via waliService)
-      allow create: if isSignedIn() 
-        && !isDisabled()
-        && request.resource.data.userId == request.auth.uid;
-      // Only admins can update/delete
-      allow update, delete: if isAdmin();
+      allow read: if isSignedIn()
+        && (photoId == request.auth.uid || isAdmin());
+
+      allow delete: if isAdmin();
     }
 
     // Date Plans
@@ -594,6 +522,68 @@ service cloud.firestore {
       
       // Audit logs are immutable (no updates/deletes)
       allow update, delete: if false;
+    }
+
+    // Username registry (writes via Cloud Function at signup; reads for lookup)
+    match /usernames/{handle} {
+      allow read: if isSignedIn() && !isDisabled();
+      allow create, update, delete: if false;
+    }
+
+    // Clubs — voice + chat spaces
+    match /clubs/{clubId} {
+      allow read: if isSignedIn() && !isDisabled()
+        && (resource.data.isPublic == true || isClubMember(clubId) || isAdmin());
+
+      allow create: if isSignedIn() && !isDisabled()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.memberCount == 1;
+
+      allow update: if isClubAdmin(clubId) || isAdmin();
+
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+
+      match /members/{memberUid} {
+        allow read: if isClubMember(clubId) || isAdmin()
+          || (isSignedIn() && get(/databases/$(database)/documents/clubs/$(clubId)).data.isPublic == true);
+
+        allow create: if isSignedIn() && !isDisabled()
+          && (
+            (memberUid == request.auth.uid
+              && request.resource.data.uid == request.auth.uid
+              && request.resource.data.role == 'member')
+            || isClubAdmin(clubId)
+          );
+
+        allow update: if isClubAdmin(clubId) || isAdmin()
+          && !(resource.data.role == 'owner' && request.resource.data.role != 'owner');
+
+        allow delete: if isAdmin()
+          || isClubAdmin(clubId)
+          || (memberUid == request.auth.uid && resource.data.role != 'owner');
+      }
+
+      match /messages/{messageId} {
+        allow read: if isClubMember(clubId) || isAdmin();
+        allow create: if isClubMember(clubId)
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.text is string;
+        allow update, delete: if isAdmin();
+      }
+
+      match /micRequests/{requestUid} {
+        allow read: if isClubMember(clubId) || isAdmin();
+        allow create: if isSignedIn() && requestUid == request.auth.uid && isClubMember(clubId);
+        allow delete: if isClubAdmin(clubId) || requestUid == request.auth.uid || isAdmin();
+        allow update: if isClubAdmin(clubId) || isAdmin();
+      }
+    }
+
+    // App-wide update alerts (admin writes via Cloud Function; all signed-in users read)
+    match /appAlerts/{docId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
     }
 
     // Admin collection (separate collection for admins and staff)

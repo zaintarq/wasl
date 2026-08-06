@@ -205,10 +205,10 @@ export function SwipeDeck({
           >
             {/* Overlays */}
             <Animated.View pointerEvents="none" style={[styles.overlay, styles.like, likeStyle]}>
-              <Text style={styles.overlayText}>{showLiked ? 'LIKED' : 'LIKE'}</Text>
+              <Text style={styles.overlayText}>{showLiked ? 'CONNECT!' : 'CONNECT'}</Text>
             </Animated.View>
             <Animated.View pointerEvents="none" style={[styles.overlay, styles.nope, nopeStyle]}>
-              <Text style={styles.overlayText}>NOPE</Text>
+              <Text style={styles.overlayText}>NEXT</Text>
             </Animated.View>
             {renderCard(top, { isTop: true })}
           </Animated.View>
@@ -243,11 +243,13 @@ const styles = StyleSheet.create({
   },
   like: {
     left: 18,
-    backgroundColor: tokens.colors.green,
+    backgroundColor: tokens.colors.filterBgEmerald,
+    borderColor: tokens.colors.filterBorderEmerald,
   },
   nope: {
     right: 18,
-    backgroundColor: tokens.colors.pink,
+    backgroundColor: tokens.colors.bgSecondary,
+    borderColor: tokens.colors.borderDark,
   },
   overlayText: {
     fontWeight: '900',

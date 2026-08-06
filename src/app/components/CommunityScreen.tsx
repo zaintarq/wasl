@@ -26,7 +26,8 @@ export function CommunityScreen({ onNavigate }: CommunityScreenProps) {
           </div>
           <h2 className="text-2xl mb-2">Built by the Community</h2>
           <p className="text-white/90 max-w-md mx-auto">
-            Huzz is 100% free and open-source. Join us in creating a dating app
+            Huzz is 100% free and open-source. Join us in creating a social app
+            where people connect freely.
             that's transparent, inclusive, and community-driven.
           </p>
         </div>
@@ -110,7 +111,7 @@ export function CommunityScreen({ onNavigate }: CommunityScreenProps) {
             <p>🤝 Be respectful and inclusive</p>
             <p>💬 Communicate openly and constructively</p>
             <p>🔒 Respect user privacy and data security</p>
-            <p>❤️ Help create a safe dating environment</p>
+            <p>❤️ Help create a safe space to connect freely</p>
             <p>📖 Follow our Code of Conduct</p>
           </div>
         </div>

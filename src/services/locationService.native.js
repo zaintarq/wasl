@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { Linking, Platform } from 'react-native';
 
 function clean(v) {
   return String(v || '').trim();
@@ -13,6 +14,38 @@ function pickCity(geo) {
     clean(geo.region) ||
     ''
   );
+}
+
+export async function getLocationPermissionStatus() {
+  try {
+    const perm = await Location.getForegroundPermissionsAsync();
+    return {
+      status: perm?.status || 'undetermined',
+      canAskAgain: perm?.canAskAgain !== false,
+      granted: perm?.status === 'granted',
+    };
+  } catch {
+    return { status: 'undetermined', canAskAgain: true, granted: false };
+  }
+}
+
+/** Request foreground location — required to use Huzz. */
+export async function requestForegroundLocationPermission() {
+  try {
+    const perm = await Location.requestForegroundPermissionsAsync();
+    return {
+      status: perm?.status || 'undetermined',
+      canAskAgain: perm?.canAskAgain !== false,
+      granted: perm?.status === 'granted',
+    };
+  } catch (e) {
+    return { status: 'denied', canAskAgain: false, granted: false, error: e?.message || String(e) };
+  }
+}
+
+export function openAppSettings() {
+  if (Platform.OS === 'ios') Linking.openURL('app-settings:');
+  else Linking.openSettings();
 }
 
 /**
@@ -30,7 +63,7 @@ export async function detectCountryCity({ requestPermission = true } = {}) {
       status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined';
 
     if (permission !== 'granted') {
-      return { country: '', city: '', permission, error: null };
+      return { country: '', city: '', permission, canAskAgain: perm?.canAskAgain !== false, error: null };
     }
 
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -43,10 +76,14 @@ export async function detectCountryCity({ requestPermission = true } = {}) {
     const country = clean(geo?.country);
     const city = pickCity(geo);
 
-    return { country, city, permission: 'granted', error: null };
+    return { country, city, permission: 'granted', canAskAgain: true, error: null };
   } catch (e) {
-    // Never block UX on location errors.
-    return { country: '', city: '', permission: 'undetermined', error: e?.message || String(e) };
+    return {
+      country: '',
+      city: '',
+      permission: 'undetermined',
+      canAskAgain: true,
+      error: e?.message || String(e),
+    };
   }
 }
-

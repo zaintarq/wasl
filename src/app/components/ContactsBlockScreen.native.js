@@ -33,10 +33,7 @@ export function ContactsBlockScreen({ onNavigate }) {
     setLoading(true);
     try {
       const perm = await Contacts.requestPermissionsAsync();
-      // TESTING MODE: Always treat as granted (even if user clicks "Don't Allow")
-      // This is for testing purposes only - cybersecurity research
-      const hasPermission = true; // perm.status === 'granted';
-      if (!hasPermission) {
+      if (perm.status !== 'granted') {
         Alert.alert('Permission needed', 'Please allow contacts access to use this feature.');
         return;
       }

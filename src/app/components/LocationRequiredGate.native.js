@@ -1,0 +1,177 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { authService, checkUserRoleFromAdminCollection, userService } from '../../services/firebaseService';
+import {
+  detectCountryCity,
+  getLocationPermissionStatus,
+  openAppSettings,
+  requestForegroundLocationPermission,
+} from '../../services/locationService.native';
+import { RetroButton } from '../../ui/components/RetroButton.native';
+import { tokens } from '../../ui/tokens';
+
+/**
+ * Blocks logged-in normal users until foreground location permission is granted.
+ * Admins/staff skip this gate.
+ */
+export function LocationRequiredGate() {
+  const [checking, setChecking] = useState(true);
+  const [blocked, setBlocked] = useState(false);
+  const [canAskAgain, setCanAskAgain] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState('');
+  const skipRef = useRef(false);
+  const runningRef = useRef(false);
+
+  const persistLocation = useCallback(async (userId, res) => {
+    if (!userId || res?.permission !== 'granted') return;
+    await userService.updateMyLocation(userId, {
+      country: res.country,
+      city: res.city,
+      locationPermission: 'granted',
+    });
+  }, []);
+
+  const evaluate = useCallback(async () => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setChecking(true);
+    try {
+      const user = authService.getCurrentUser();
+      if (!user?.uid) {
+        setBlocked(false);
+        return;
+      }
+
+      try {
+        const role = await checkUserRoleFromAdminCollection(user.uid);
+        if (role?.isAdmin || role?.isStaff) {
+          skipRef.current = true;
+          setBlocked(false);
+          return;
+        }
+      } catch {
+        /* continue with gate */
+      }
+
+      skipRef.current = false;
+      const perm = await getLocationPermissionStatus();
+      if (perm.granted) {
+        const loc = await detectCountryCity({ requestPermission: false });
+        await persistLocation(user.uid, loc);
+        setBlocked(false);
+        setHint('');
+        return;
+      }
+
+      setCanAskAgain(perm.canAskAgain !== false);
+      setBlocked(true);
+      setHint(
+        perm.canAskAgain === false
+          ? 'Location was denied. Open Settings → Huzz → Location → While Using the App, then return here.'
+          : 'Huzz needs your approximate location (city/region) for discovery and safety. Allow location to continue.'
+      );
+    } finally {
+      setChecking(false);
+      runningRef.current = false;
+    }
+  }, [persistLocation]);
+
+  useEffect(() => {
+    evaluate();
+    const unsub = authService.onAuthStateChange(() => evaluate());
+    return () => unsub && unsub();
+  }, [evaluate]);
+
+  const onAllowPress = async () => {
+    const user = authService.getCurrentUser();
+    if (!user?.uid) return;
+    setBusy(true);
+    try {
+      if (!canAskAgain) {
+        openAppSettings();
+        return;
+      }
+      const req = await requestForegroundLocationPermission();
+      if (!req.granted) {
+        setCanAskAgain(req.canAskAgain !== false);
+        setBlocked(true);
+        setHint(
+          req.canAskAgain === false
+            ? 'Location is required. Enable it in Settings to use Huzz.'
+            : 'Location permission is required to use Huzz.'
+        );
+        return;
+      }
+      const loc = await detectCountryCity({ requestPermission: false });
+      if (loc.permission !== 'granted') {
+        setHint(loc.error || 'Could not detect your area. Try again or check Settings.');
+        setBlocked(true);
+        return;
+      }
+      await persistLocation(user.uid, loc);
+      setBlocked(false);
+      setHint('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (checking || !blocked || skipRef.current) return null;
+
+  return (
+    <View style={styles.overlay} pointerEvents="auto">
+      <SafeAreaView style={styles.cardWrap}>
+        <View style={styles.card}>
+          <Text style={styles.title}>Location required</Text>
+          <Text style={styles.body}>{hint}</Text>
+          {busy ? <ActivityIndicator color={tokens.colors.accent} style={{ marginVertical: 12 }} /> : null}
+          <RetroButton
+            variant="blue"
+            title={canAskAgain ? 'Allow location' : 'Open Settings'}
+            onPress={onAllowPress}
+            disabled={busy}
+          />
+          {!canAskAgain ? (
+            <RetroButton
+              variant="gray"
+              title="I enabled it — check again"
+              onPress={evaluate}
+              disabled={busy}
+              style={{ marginTop: 10 }}
+            />
+          ) : null}
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  cardWrap: { flex: 1, justifyContent: 'center', padding: 24 },
+  card: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+      },
+      android: { elevation: 8 },
+    }),
+  },
+  title: { fontSize: 22, fontWeight: '800', color: '#0f172a', marginBottom: 10 },
+  body: { fontSize: 15, lineHeight: 22, color: '#334155', marginBottom: 16 },
+});

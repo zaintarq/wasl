@@ -3,12 +3,13 @@ import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-nativ
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Shield, Sparkles, LogOut } from 'lucide-react-native';
+import { ArrowLeft, Shield, LogOut, Users } from 'lucide-react-native';
 
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
+import { MatchPreferencesSettings } from './MatchPreferencesSettings.native';
 
 const cardShadow =
   Platform.OS === 'ios'
@@ -105,6 +106,19 @@ export function SettingsScreen({ onNavigate }) {
     >
       {!isAdmin && !isStaff && (
         <>
+          <View style={[styles.card, styles.sectionSky, cardShadow]}>
+            <View style={styles.sectionHead}>
+              <View style={[styles.sectionIconWrap, styles.iconWrapSky]}>
+                <Users size={20} color="#2563EB" strokeWidth={2.2} />
+              </View>
+              <View style={styles.sectionHeadText}>
+                <Text style={styles.sectionTitle}>Discovery preferences</Text>
+                <Text style={styles.sectionHint}>Your profile and who you want to connect with</Text>
+              </View>
+            </View>
+            <MatchPreferencesSettings />
+          </View>
+
           <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
             <View style={styles.sectionHead}>
               <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
@@ -121,31 +135,6 @@ export function SettingsScreen({ onNavigate }) {
             </View>
           </View>
 
-          <View style={[styles.card, styles.sectionViolet, cardShadow]}>
-            <View style={styles.sectionHead}>
-              <View style={[styles.sectionIconWrap, styles.iconWrapViolet]}>
-                <Sparkles size={20} color="#6D28D9" strokeWidth={2.2} />
-              </View>
-              <View style={styles.sectionHeadText}>
-                <Text style={styles.sectionTitle}>{'Games & social'}</Text>
-                <Text style={styles.sectionHint}>Extra modes with friends</Text>
-              </View>
-            </View>
-            <View style={styles.btnStack}>
-              <RetroButton
-                variant="gray"
-                title="Wingman Mode"
-                onPress={() => onNavigate('wingman')}
-                style={[styles.fullBtn, { backgroundColor: tokens.colors.warning }]}
-              />
-              <RetroButton
-                variant="primary"
-                title="Spin Bottle"
-                onPress={() => onNavigate('spinBottle')}
-                style={styles.fullBtn}
-              />
-            </View>
-          </View>
         </>
       )}
 
@@ -260,7 +249,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconWrapEmerald: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },
-  iconWrapViolet: { backgroundColor: 'rgba(139, 92, 246, 0.22)' },
+  iconWrapSky: { backgroundColor: 'rgba(37, 99, 235, 0.18)' },
   iconWrapRose: { backgroundColor: 'rgba(225, 29, 72, 0.18)' },
   sectionHeadText: {
     flex: 1,
@@ -283,10 +272,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.colors.filterBorderEmerald,
   },
-  sectionViolet: {
-    backgroundColor: tokens.colors.filterBgViolet,
+  sectionSky: {
+    backgroundColor: tokens.colors.filterBgSky,
     borderWidth: 1,
-    borderColor: tokens.colors.filterBorderViolet,
+    borderColor: tokens.colors.filterBorderSky,
   },
   sectionRose: {
     backgroundColor: tokens.colors.filterBgRose,

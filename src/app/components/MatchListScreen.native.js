@@ -7,15 +7,17 @@ import { tokens } from '../../ui/tokens';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { getPresenceDisplay } from '../../utils/presence';
+import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
 
 export function MatchListScreen({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);
   const [usersById, setUsersById] = useState({});
+  const [bottomNavH, setBottomNavH] = useState(0);
 
   const meUid = authService.getCurrentUser()?.uid || null;
 
-  // Real-time match list: updates when the other person approves or new messages
+  // Real-time match list: updates when new messages arrive or match status changes
   useEffect(() => {
     const authUser = authService.getCurrentUser();
     if (!authUser) {
@@ -58,24 +60,21 @@ export function MatchListScreen({ onNavigate }) {
       const otherUid = (m?.uids || []).find((u) => u !== meUid) || null;
       const other = otherUid ? usersById[otherUid] : null;
       const status = String(m?.status || 'active');
-      const isReceiver = meUid && String(m?.requestedTo || '') === String(meUid);
-      const canChat = status === 'active';
-      return { match: m, otherUid, other, status, isReceiver, canChat };
+      const canChat = status === 'active' || status === 'pending';
+      return { match: m, otherUid, other, status, canChat };
     });
   }, [matches, usersById, meUid]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <HuzzPressable style={styles.headerBtn} onPress={() => onNavigate('home')} haptic="light">
-          <Text style={styles.headerBtnText}>← Back</Text>
-        </HuzzPressable>
-        <Text style={styles.title}>Matches</Text>
+        <View style={{ width: 70 }} />
+        <Text style={styles.title}>Chats</Text>
         <View style={{ width: 70 }} />
       </View>
 
       <FlatList
-        contentContainerStyle={{ padding: 16, paddingBottom: 22 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: bottomNavH + 22 }}
         initialNumToRender={12}
         windowSize={8}
         maxToRenderPerBatch={10}
@@ -96,15 +95,23 @@ export function MatchListScreen({ onNavigate }) {
               </View>
             );
           }
-          const { match, otherUid, other, status, isReceiver, canChat } = item;
+          const { match, otherUid, other, status, canChat } = item;
+          const openChat = async () => {
+            const uid = authService.getCurrentUser()?.uid;
+            if (!uid || !otherUid) return;
+            if (status === 'pending') {
+              await matchService.createActiveMatch(uid, otherUid, { initiatedBy: uid });
+            }
+            onNavigate('chat', { matchId: match.id, userId: otherUid });
+          };
           const handleUnmatch = () => {
             Alert.alert(
-              'Unmatch?',
-              `Remove match with ${other?.name || 'this person'}? You will no longer be able to chat.`,
+              'Remove connection?',
+              `Stop chatting with ${other?.name || 'this person'}? You can connect again from Home if you both like each other.`,
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                  text: 'Unmatch',
+                  text: 'Remove',
                   style: 'destructive',
                   onPress: async () => {
                     const uid = authService.getCurrentUser()?.uid;
@@ -121,41 +128,22 @@ export function MatchListScreen({ onNavigate }) {
             <HuzzPressable
               style={styles.matchRow}
               onPress={() => {
-                if (canChat) onNavigate('chat', { matchId: match.id, userId: otherUid });
+                if (canChat) openChat();
               }}
               haptic="light"
               disabled={!canChat}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.matchName}>{other?.name || 'Match'}</Text>
+                <Text style={styles.matchName}>{other?.name || 'Connection'}</Text>
                 <Text style={styles.matchMeta}>
-                  {status === 'pending'
-                    ? isReceiver
-                      ? 'Match request pending your approval'
-                      : 'Pending approval'
-                    : (() => {
-                        const p = getPresenceDisplay(other?.lastSeen);
-                        if (p && canChat) return p.label;
-                        return other?.categoryIntent || '';
-                      })()}
+                  {(() => {
+                    const p = getPresenceDisplay(other?.lastSeen);
+                    if (p && canChat) return p.label;
+                    return 'Tap to chat';
+                  })()}
                 </Text>
               </View>
-              {status === 'pending' && isReceiver ? (
-                <HuzzPressable
-                  style={styles.approveBtn}
-                  onPress={async () => {
-                    const uid = authService.getCurrentUser()?.uid;
-                    if (!uid) return;
-                    const { error } = await matchService.approveMatch(match.id, uid);
-                    if (!error) onNavigate('chat', { matchId: match.id, userId: otherUid });
-                  }}
-                  haptic="medium"
-                >
-                  <Text style={styles.approveText}>Approve</Text>
-                </HuzzPressable>
-              ) : (
-                <Text style={[styles.openChat, !canChat ? { opacity: 0.5 } : null]}>{canChat ? 'Chat →' : '⏳'}</Text>
-              )}
+              <Text style={[styles.openChat, !canChat ? { opacity: 0.5 } : null]}>{canChat ? 'Chat →' : '⏳'}</Text>
             </HuzzPressable>
           );
 
@@ -166,7 +154,7 @@ export function MatchListScreen({ onNavigate }) {
                 renderLeftActions={() => (
                   <View style={styles.unmatchAction}>
                     <HuzzPressable style={styles.unmatchBtn} onPress={handleUnmatch} haptic="medium">
-                      <Text style={styles.unmatchText}>Unmatch</Text>
+                      <Text style={styles.unmatchText}>Remove</Text>
                     </HuzzPressable>
                   </View>
                 )}
@@ -180,12 +168,13 @@ export function MatchListScreen({ onNavigate }) {
         ListEmptyComponent={
           loading ? null : (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyTitle}>No matches yet</Text>
-              <Text style={styles.emptyText}>Start liking profiles to get matches.</Text>
+              <Text style={styles.emptyTitle}>No chats yet</Text>
+              <Text style={styles.emptyText}>Like people on Home — when you both connect, your chat opens here.</Text>
             </View>
           )
         }
       />
+      <MainBottomNav active="matches" onNavigate={onNavigate} onLayout={setBottomNavH} />
     </SafeAreaView>
   );
 }

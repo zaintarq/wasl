@@ -6,6 +6,7 @@ node_modules/
 .expo-shared/
 web-build/
 dist/
+!dist/.gitkeep
 
 # Metro / React Native
 *.log
@@ -19,12 +20,19 @@ metro-cache/
 .idea/
 .vscode/
 
-# Env files
+# Env files (one root `.env` only — Expo + Functions read it)
 .env
 .env.*
+!.env.example
+functions/.env
 
 # Optional native folders (if you ever add them)
 ios/build/
 android/app/build/
 android/.gradle/
+android/keystore.properties
+android/UPLOAD_KEY_PASSWORD.txt
+android/app/huzz-upload.keystore
+android/app/*-upload.keystore
 
+*.bak.png

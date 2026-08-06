@@ -9,7 +9,6 @@ import { RetroButton } from '../../ui/components/RetroButton.native';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
-import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
 
 /** Soft light-blue sky — calm, easy on the eyes. */
 const WELCOME_BG = ['#F8FAFC', '#EFF6FF', '#DBEAFE'];
@@ -37,22 +36,8 @@ export function WelcomeScreen({ onNavigate }) {
                   return;
                 }
                 userService.getUserById(user.uid)
-                  .then((res) => {
-                    const profile = res?.data;
-                    const waliRole = String(profile?.role || '').toLowerCase().trim();
-                    if (waliRole === 'wali') {
-                      onNavigate('wali');
-                      return;
-                    }
-                    const prefsOk = profile && hasPreferencesComplete(profile);
-                    if (prefsOk) {
-                      onNavigate('home');
-                    } else {
-                      onNavigate('onboarding', {
-                        mode: 'signup',
-                        initialStep: getOnboardingInitialStep(profile || {}),
-                      });
-                    }
+                  .then(() => {
+                    onNavigate('home');
                   })
                   .catch(() => {
                     onNavigate('home');
@@ -60,16 +45,7 @@ export function WelcomeScreen({ onNavigate }) {
               })
               .catch(() => {
                 userService.getUserById(user.uid)
-                  .then((res) => {
-                    const profile = res?.data;
-                    const prefsOk = profile && hasPreferencesComplete(profile);
-                    if (prefsOk) onNavigate('home');
-                    else
-                      onNavigate('onboarding', {
-                        mode: 'signup',
-                        initialStep: getOnboardingInitialStep(profile || {}),
-                      });
-                  })
+                  .then(() => onNavigate('home'))
                   .catch(() => {
                     onNavigate('home');
                   });
@@ -133,7 +109,7 @@ export function WelcomeScreen({ onNavigate }) {
               fontsLoaded ? styles.heroTaglineKaushan : null,
             ]}
           >
-            Connect authentically. Date freely.
+            Connect authentically. Connect freely.
           </Text>
           <Text
             style={[

@@ -1,0 +1,55 @@
+=== SHORT DESCRIPTION (max 80 chars) — paste in Play Console ===
+
+18+ social app: connect freely — profiles, chat, voice notes & live video.
+
+
+=== FULL DESCRIPTION — must be DIFFERENT from short; paste in Play Console ===
+
+Huzz is an adults-only (18+) social connection app. Connect freely with people near you. This listing describes exactly what you can do inside the app.
+
+WHO IT IS FOR
+Huzz is for adults who want to meet new people, connect with others, chat privately, and optionally join short live video sessions. It is not for children.
+
+CORE FEATURES
+
+1) DISCOVER PROFILES
+• Scroll a home feed of user profile cards
+• See photos, name, age, city/region, and bio
+• Filter who you see by preferences such as location
+
+2) LIKE, CONNECT & MESSAGE
+• Like someone to show interest
+• Message someone directly from their profile
+• When you both like each other, a private chat opens automatically
+
+3) PRIVATE CHAT
+• Send text messages to your connections
+• Send voice notes
+• Block or report a user from chat options
+• Optional translation for received messages
+
+4) LIVE RANDOM (OPTIONAL)
+• Separate section for spontaneous live sessions with other signed-in users
+• Real-time text chat during the session
+• Optional camera and microphone when you choose to enable them
+• Skip or leave anytime; sessions are short and opt-in
+
+5) YOUR PROFILE & SETTINGS
+• Add and edit profile photos and bio
+• Manage notification preferences
+• Sign in with email/password or Google
+
+SAFETY
+• 18+ only
+• In-app block and report
+• Moderation and review of safety reports
+
+PERMISSIONS (WHY WE ASK)
+• Location — show your city/region in discovery
+• Camera & microphone — only for Live Random when you turn them on
+• Photos — add profile pictures and share images in chat
+• Contacts — safety features on device
+
+Support: support@huzz.com
+Privacy: https://zaintarq.github.io/huzz/privacy.html
+Child safety: https://zaintarq.github.io/huzz/child-safety.html

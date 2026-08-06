@@ -2,20 +2,27 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
-// Configure notification handler for in-app notifications
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true, // Enable badge count
-  }),
-});
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Configure notification handler for in-app notifications (dev / standalone builds)
+if (!isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
 
 /**
  * Register for push notifications
  * Works in both Expo Go and dev builds
  */
 export async function registerForPushNotificationsAsync() {
+  if (isExpoGo) {
+    return { token: null, status: 'expo_go', error: null };
+  }
   try {
     // Check existing permission
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -43,7 +50,7 @@ export async function registerForPushNotificationsAsync() {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'HUZZ Notifications',
-        description: 'Notifications for matches, messages, and updates',
+        description: 'Notifications for chats, messages, and updates',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',

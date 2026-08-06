@@ -1,0 +1,66 @@
+PLAY STORE — FIX "marketing illustrations instead of in-app experience"
+=======================================================================
+
+Google is NOT rejecting your description. They flagged your PHONE SCREENSHOTS.
+
+Wrong (do not upload as phone screenshots):
+  - App icon (512×512 banana logo)
+  - Feature graphic (1024×500 banner)
+  - Any designed promo art, mockups, or logo on a plain background
+
+Right (required for phone screenshots):
+  - Real pixels from the app running on a phone or emulator
+  - Status bar + app UI visible (Home, Chat, Profile, Live, Settings, Login)
+
+WHERE IN PLAY CONSOLE
+---------------------
+Play Console → Grow → Store presence → Main store listing
+Scroll to "Phone screenshots" (under Graphics)
+NOT the same as App icon or Feature graphic.
+
+WHAT TO UPLOAD (4–8 images)
+---------------------------
+Capture these screens on your Android phone after installing the app:
+
+  1. Home / discover feed (profile cards)
+  2. A profile card or match detail
+  3. Private chat (text or voice note UI)
+  4. Live Random lobby or session screen
+  5. Your profile / edit profile
+  6. Settings or sign-in screen (optional)
+
+HOW TO CAPTURE ON YOUR PHONE
+----------------------------
+1. Install the release APK or internal test build from Play Console.
+2. Sign in (or leave login screen — that still counts as in-app).
+3. Navigate to each screen above.
+4. Screenshot: Volume Down + Power (most Android phones).
+5. AirDrop / Google Drive / USB → copy files to your Mac.
+
+Image rules:
+  - PNG or JPEG
+  - Portrait 9:16 works best (e.g. 1080×1920 or 1080×2340)
+  - No borders, no marketing text overlays added in Photoshop
+
+HOW TO FIX IN CONSOLE
+---------------------
+1. Main store listing → Phone screenshots.
+2. DELETE every current screenshot (especially logo/banner art).
+3. Upload 4–8 new real in-app screenshots.
+4. Click Save (top right).
+5. Wait 2–5 minutes, then try "Send for review" again.
+
+KEEP THESE SEPARATE
+-------------------
+  App icon        → assets/play-store/icon-512-flat.png
+  Feature graphic → assets/play-store/feature-graphic-1024x500.png
+  Phone screenshots → ONLY real in-app UI (this doc)
+
+DESCRIPTION FIELDS (already correct — use PLAY_STORE_LISTING.txt)
+-----------------------------------------------------------------
+  Short description  → first block (~80 chars)
+  Full description   → second block (long bullet list)
+  Do NOT swap them.
+
+If it still blocks after real screenshots + Save, use "Proceed anyway" once —
+but real UI screenshots almost always clears this check.

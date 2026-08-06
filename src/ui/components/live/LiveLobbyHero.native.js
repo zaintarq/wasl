@@ -31,7 +31,7 @@ export function LiveLobbyHero() {
 
           <LiveText style={styles.headline}>Meet someone new</LiveText>
           <LiveText style={styles.sub}>
-            One-minute sessions with another Huzz member. Text chat today; video later. Skip or leave anytime.
+            Omegle-style random video + text with another Huzz member. 60 seconds per round — skip or leave anytime.
           </LiveText>
 
           <View style={styles.tilesArea}>

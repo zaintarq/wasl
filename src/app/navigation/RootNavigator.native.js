@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AppState } from 'react-native';
+import { AppState, Linking } from 'react-native';
 
 import { Routes } from './routes';
 
@@ -15,27 +15,29 @@ import { ContactsBlockScreen } from '../components/ContactsBlockScreen.native.js
 import { BlockedUsersScreen } from '../components/BlockedUsersScreen.native.js';
 import { MyProfileScreen } from '../components/MyProfileScreen.native.js';
 import { LiveRandomScreen } from '../components/LiveRandomScreen.native.js';
-import { WingmanScreen } from '../components/WingmanScreen.native.js';
-import { SpinBottleScreen } from '../components/SpinBottleScreen.native.js';
+import { ClubsScreen } from '../components/ClubsScreen.native.js';
+import { CreateClubScreen } from '../components/CreateClubScreen.native.js';
+import { ClubRoomScreen } from '../components/ClubRoomScreen.native.js';
 import { VerificationScreen } from '../components/VerificationScreen.native.js';
 import { DatePlanningScreen } from '../components/DatePlanningScreen.native.js';
-import { WaliScreen } from '../components/WaliScreen.native.js';
 import { StaffScreen } from '../components/StaffScreen.native.js';
 import { HomeStackNavigator } from './HomeStackNavigator.native.js';
-import { authService, userService, contactUploadService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { authService, userService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { db } from '../../services/firebase';
 import { collection, query, where, getDocs, doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { detectCountryCity } from '../../services/locationService.native.js';
 import { registerForPushNotificationsAsync, getNotificationListeners, setBadgeCountAsync } from '../../services/pushService.native';
-import { getDeviceHash } from '../../services/deviceService';
-import * as Contacts from 'expo-contacts';
+import { getDeviceHash, collectDeviceSnapshot } from '../../services/deviceService';
 import { vpnDetectionService } from '../../services/vpnDetectionService';
-import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
 import { PresenceHeartbeat } from '../components/PresenceHeartbeat.native';
 import {
   syncScreenCaptureToNavigationState,
   releaseScreenCaptureNavigation,
 } from '../../services/screenCaptureSensitive';
+import { LocationRequiredGate } from '../components/LocationRequiredGate.native';
+import { PermissionsRequiredGate } from '../components/PermissionsRequiredGate.native';
+import { AppUpdateAlertGate } from '../components/AppUpdateAlertGate.native';
+import { PLAY_STORE_WEB_URL } from '../../config/appStore';
 
 const RootStack = createNativeStackNavigator();
 
@@ -262,13 +264,17 @@ function handleNotificationTap(data) {
       type === 'match_request' ||
       type === 'match_approved' ||
       type === 'match_pending' ||
-      type === 'match_mutual'
+      type === 'match_mutual' ||
+      type === 'like_received'
     ) {
       navigationRef.navigate(Routes.TabMatches);
-    } else if (type === 'message' && matchId) {
+    } else if ((type === 'message' || type === 'message_new') && matchId) {
       navigationRef.navigate(Routes.ChatThread, { matchId });
     } else if (type === 'verification') {
       navigationRef.navigate(Routes.Verification);
+    } else if (type === 'app_update') {
+      const url = String(data?.playStoreUrl || '').trim() || PLAY_STORE_WEB_URL;
+      Linking.openURL(url).catch(() => {});
     } else {
       navigationRef.navigate(Routes.TabMatches);
     }
@@ -305,15 +311,6 @@ async function updateBadgeCount(uid) {
   }
 }
 
-function ContactUploadGate() {
-  // REMOVED: Automatic contact upload
-  // Contact upload is now OPTIONAL and only happens when user explicitly requests it
-  // Users can upload contacts from Settings -> Block Contacts screen
-  // This prevents permission errors and respects user privacy
-  
-  return null; // This gate no longer does anything automatically
-}
-
 function DeviceBanGate() {
   const runningRef = useRef(false);
 
@@ -323,13 +320,18 @@ function DeviceBanGate() {
     if (runningRef.current) return;
     runningRef.current = true;
     try {
-      const deviceHash = await getDeviceHash();
+      const snapshot = await collectDeviceSnapshot();
+      const deviceHash = snapshot?.deviceHash || (await getDeviceHash());
       if (deviceHash) {
-        // Store on profile (best-effort)
-        userService.updateUser(user.uid, { deviceHash }).catch(() => {});
+        userService
+          .updateUser(user.uid, {
+            deviceHash,
+            deviceSnapshot: snapshot,
+            lastDeviceSyncAt: new Date().toISOString(),
+          })
+          .catch(() => {});
         const { banned } = await deviceBanService.isBanned(deviceHash);
         if (banned) {
-          // Soft-gate: sign out immediately.
           await authService.signOutUser();
         }
       }
@@ -419,12 +421,6 @@ function useLegacyOnNavigate(navigation) {
         case 'blockedUsers':
           navigation.navigate(Routes.BlockedUsers);
           return;
-        case 'wingman':
-          navigation.navigate(Routes.Wingman);
-          return;
-        case 'spinBottle':
-          navigation.navigate(Routes.SpinBottle);
-          return;
         case 'verification':
           navigation.navigate(Routes.Verification);
           return;
@@ -434,13 +430,18 @@ function useLegacyOnNavigate(navigation) {
         case 'liveRandom':
           navigation.navigate(Routes.TabLive);
           return;
-        case 'wali':
-          navigation.dispatch(
-            CommonActions.reset({
-              index: 0,
-              routes: [{ name: Routes.Wali }],
-            })
-          );
+        case 'clubs':
+          navigation.navigate(Routes.TabClubs);
+          return;
+        case 'createClub':
+          navigation.navigate(Routes.CreateClub);
+          return;
+        case 'clubRoom':
+          if (arg && typeof arg === 'object' && arg.clubId) {
+            navigation.navigate(Routes.ClubRoom, { clubId: arg.clubId });
+          } else {
+            navigation.navigate(Routes.TabClubs);
+          }
           return;
         case 'staff':
           navigation.dispatch(
@@ -507,72 +508,20 @@ export function RootNavigator() {
                 
                 // Normal user - continue to check users collection
                 
-                // Not admin/staff, check users collection for wali or normal user
+                // Not admin/staff — route normal users to home
                 userService.getUserById(user.uid)
-                  .then((res) => {
-                    // Handle permission errors gracefully
-                    if (res?.error && (res.error.includes('permission') || res.error === 'Not logged in')) {
-                      // Permission denied or not logged in - default to home/onboarding
-                      setInitialRoute(Routes.TabHome);
-                      setIsReady(true);
-                      return;
-                    }
-                    
-                    const profile = res?.data;
-                    if (!profile) {
-                      setOnboardingParams({ mode: 'signup', initialStep: 3 });
-                      setInitialRoute(Routes.Onboarding);
-                      setIsReady(true);
-                      return;
-                    }
-                    
-                    const waliRole = String(profile?.role || '').toLowerCase().trim();
-                    const prefsOk = hasPreferencesComplete(profile);
-                    const needsOnboarding = !prefsOk;
-                    
-                    if (waliRole === 'wali' || needsOnboarding) {
-                      console.log('[RootNavigator] User profile:', { uid: user.uid, waliRole, prefsOk });
-                    }
-                    
-                    if (waliRole === 'wali') {
-                      setInitialRoute(Routes.Wali);
-                    } else if (!needsOnboarding) {
-                      setInitialRoute(Routes.TabHome);
-                    } else {
-                      setOnboardingParams({
-                        mode: 'signup',
-                        initialStep: getOnboardingInitialStep(profile),
-                      });
-                      setInitialRoute(Routes.Onboarding);
-                    }
+                  .then(() => {
+                    setInitialRoute(Routes.TabHome);
                     setIsReady(true);
                   })
                   .catch(() => {
-                    // Error getting profile - default to home
                     setInitialRoute(Routes.TabHome);
                     setIsReady(true);
                   });
               })
               .catch(() => {
-                userService.getUserById(user.uid)
-                  .then((res) => {
-                    const profile = res?.data;
-                    const prefsOk = profile && hasPreferencesComplete(profile);
-                    if (prefsOk) {
-                      setInitialRoute(Routes.TabHome);
-                    } else {
-                      setOnboardingParams({
-                        mode: 'signup',
-                        initialStep: getOnboardingInitialStep(profile || {}),
-                      });
-                      setInitialRoute(Routes.Onboarding);
-                    }
-                    setIsReady(true);
-                  })
-                  .catch(() => {
-                    setInitialRoute(Routes.TabHome);
-                    setIsReady(true);
-                  });
+                setInitialRoute(Routes.TabHome);
+                setIsReady(true);
               });
           } else {
             // No user logged in — clear stale onboarding params so "Log in" is not merged with initialStep: 3
@@ -636,10 +585,12 @@ export function RootNavigator() {
       onStateChange={(state) => syncScreenCaptureToNavigationState(state)}
     >
       <PresenceHeartbeat />
+      <LocationRequiredGate />
+      <PermissionsRequiredGate />
+      <AppUpdateAlertGate />
       <LocationSyncGate />
       <PushTokenGate />
       <DeviceBanGate />
-      <ContactUploadGate />
       <NotificationListener />
       <RootStack.Navigator
         screenOptions={screenOptionsBase()}
@@ -655,7 +606,6 @@ export function RootNavigator() {
               onNavigate={useLegacyOnNavigate(navigation)}
               mode={route?.params?.mode === 'login' ? 'login' : 'signup'}
               initialStep={typeof route?.params?.initialStep === 'number' ? route.params.initialStep : undefined}
-              waliEmail={route?.params?.email || null}
             />
           )}
         </RootStack.Screen>
@@ -685,6 +635,20 @@ export function RootNavigator() {
         <RootStack.Screen name={Routes.TabLive}>
           {({ navigation }) => <LiveRandomScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
+        <RootStack.Screen name={Routes.TabClubs}>
+          {({ navigation }) => <ClubsScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.CreateClub}>
+          {({ navigation }) => <CreateClubScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.ClubRoom}>
+          {({ navigation, route }) => (
+            <ClubRoomScreen
+              onNavigate={useLegacyOnNavigate(navigation)}
+              clubId={route?.params?.clubId || null}
+            />
+          )}
+        </RootStack.Screen>
         <RootStack.Screen name={Routes.TabSettings}>
           {({ navigation }) => <SettingsScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
@@ -697,17 +661,8 @@ export function RootNavigator() {
         <RootStack.Screen name={Routes.BlockedUsers}>
           {({ navigation }) => <BlockedUsersScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
-        <RootStack.Screen name={Routes.Wingman}>
-          {({ navigation }) => <WingmanScreen onNavigate={useLegacyOnNavigate(navigation)} />}
-        </RootStack.Screen>
-        <RootStack.Screen name={Routes.SpinBottle}>
-          {({ navigation }) => <SpinBottleScreen onNavigate={useLegacyOnNavigate(navigation)} />}
-        </RootStack.Screen>
         <RootStack.Screen name={Routes.Verification}>
           {({ navigation }) => <VerificationScreen onNavigate={useLegacyOnNavigate(navigation)} />}
-        </RootStack.Screen>
-        <RootStack.Screen name={Routes.Wali}>
-          {({ navigation }) => <WaliScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.Staff}>
           {({ navigation }) => <StaffScreen onNavigate={useLegacyOnNavigate(navigation)} />}

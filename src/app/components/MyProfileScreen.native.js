@@ -15,16 +15,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Settings, Images, Sparkles, ShieldCheck, SlidersHorizontal, Users } from 'lucide-react-native';
+import { ArrowLeft, Settings, Images, Sparkles, ShieldCheck, SlidersHorizontal } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authService, userService, storageService } from '../../services/firebaseService';
-import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-
-const COL = { users: 'users' };
 import { COUNTRIES } from '../../utils/countries';
 import { sha256 } from '../../utils/hash';
-import { INTENTS } from '../../utils/intents';
 import { FadeInImage } from '../../ui/components/FadeInImage.native';
 import { ProfileAboutSection } from '../../ui/components/ProfileAboutSection.native';
 import { ProfileVoicePlayer } from '../../ui/components/ProfileVoicePlayer.native';
@@ -53,8 +48,6 @@ export function MyProfileScreen({ onNavigate }) {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [categoryIntent, setCategoryIntent] = useState('');
-  const [intentModalOpen, setIntentModalOpen] = useState(false);
   const [countryOfResidence, setCountryOfResidence] = useState('');
   const [countryModalOpen, setCountryModalOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
@@ -62,13 +55,6 @@ export function MyProfileScreen({ onNavigate }) {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImageIndex, setPreviewImageIndex] = useState(0);
-  
-  // Wali settings
-  const [waliName, setWaliName] = useState('');
-  const [waliEmail, setWaliEmail] = useState('');
-  const [waliVisibility, setWaliVisibility] = useState('hidden');
-  const [waliConsentLevel, setWaliConsentLevel] = useState('ask');
-  const [waliInviteSent, setWaliInviteSent] = useState(false);
 
   const [bio, setBio] = useState('');
   const [interestsText, setInterestsText] = useState('');
@@ -97,7 +83,6 @@ export function MyProfileScreen({ onNavigate }) {
           setProfile(p);
           setName(p?.name || u.displayName || '');
           setPhone(p?.phoneLast4 ? String(p.phoneLast4) : '');
-          setCategoryIntent(String(p?.categoryIntent || '').trim());
           setCountryOfResidence(p?.country || p?.countryOfResidence || '');
           // Filter out invalid image URLs
           const validImages = Array.isArray(p?.images)
@@ -112,15 +97,6 @@ export function MyProfileScreen({ onNavigate }) {
           setAddMe(p?.addMe || '');
           setAboutVoiceUrl(p?.aboutVoiceUrl || '');
           setAboutVoiceDurationMs(typeof p?.aboutVoiceDurationMs === 'number' ? p.aboutVoiceDurationMs : 0);
-          
-          // Load wali settings
-          if (p?.wali) {
-            setWaliName(p.wali.name || '');
-            setWaliEmail(p.wali.email || '');
-            setWaliVisibility(p.wali.visibility || 'hidden');
-            setWaliConsentLevel(p.wali.consentLevel || 'ask');
-            setWaliInviteSent(p.wali.inviteSent || false);
-          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -146,7 +122,6 @@ export function MyProfileScreen({ onNavigate }) {
       const phoneNorm = normalizePhone(phone);
       const updates = {
         name: name.trim(),
-        categoryIntent: String(categoryIntent || '').trim(),
         country: countryOfResidence.trim(),
         countryOfResidence: countryOfResidence.trim(), // legacy compat
         // Default discovery to user's country if not already set
@@ -174,87 +149,6 @@ export function MyProfileScreen({ onNavigate }) {
         updates.aboutVoiceUrl && typeof aboutVoiceDurationMs === 'number' && aboutVoiceDurationMs > 0
           ? Math.min(aboutVoiceDurationMs, 120000)
           : null;
-
-      // Update wali settings if provided
-      if (waliName.trim() || waliEmail.trim()) {
-        const waliEmailNorm = String(waliEmail || '').trim().toLowerCase();
-        const isNewWali = !profile?.wali?.email || profile.wali.email !== waliEmailNorm;
-        
-        // Generate unique hash for wali login (32 characters for better security)
-        let waliHash = profile?.wali?.hash;
-        if (isNewWali || !waliHash) {
-          // Generate a unique hash: userId + email + timestamp + random
-          const randomSuffix = Math.random().toString(36).substring(2, 10);
-          const hashInput = `${uid}_${waliEmailNorm}_${Date.now()}_${randomSuffix}`;
-          waliHash = await sha256(hashInput);
-          // Use full 32 characters for better security
-          waliHash = waliHash.substring(0, 32).toUpperCase();
-        }
-        
-        updates.wali = {
-          name: waliName.trim(),
-          email: waliEmailNorm,
-          emailHash: waliEmailNorm ? await sha256(waliEmailNorm) : '',
-          hash: waliHash, // Store hash for login
-          visibility: waliVisibility,
-          consentLevel: waliConsentLevel,
-          addedAt: profile?.wali?.addedAt || new Date(),
-          inviteSent: profile?.wali?.inviteSent || false,
-        };
-        
-        // Send invitation email if this is a new wali email
-        if (isNewWali && waliEmailNorm) {
-          try {
-            const { error: emailError } = await userService.sendWaliInvitation(uid, {
-              waliName: waliName.trim(),
-              waliEmail: waliEmailNorm,
-              userName: name || email,
-              waliHash: waliHash,
-              senderEmail: email || '', // Include sender's email
-              senderName: name || email || 'Someone', // Include sender's name
-            });
-            if (!emailError) {
-              updates.wali.inviteSent = true;
-              setWaliInviteSent(true);
-              Alert.alert('Invitation Sent', 'Your wali will receive an email with a login hash.');
-            } else {
-              console.warn('[MyProfile] Failed to send wali invitation:', emailError);
-              Alert.alert('Warning', 'Profile saved but invitation email failed. Please try again later.');
-            }
-          } catch (e) {
-            console.warn('[MyProfile] Error sending wali invitation:', e);
-          }
-        }
-        
-        // Mark prompt as shown when wali is added
-        updates.waliSetupPromptShown = true;
-      } else if (profile?.wali?.name || profile?.wali?.email) {
-        // Remove wali if fields are cleared - also invalidate wali sessions
-        const oldWaliHash = profile?.wali?.hash;
-        updates.wali = null;
-        
-        // Invalidate wali user session by finding and marking wali user as removed
-        if (oldWaliHash) {
-          try {
-            // Find wali user by hash and mark as removed
-            const waliUserQuery = query(
-              collection(db, COL.users),
-              where('waliHash', '==', oldWaliHash),
-              where('role', '==', 'wali')
-            );
-            const waliUserSnap = await getDocs(waliUserQuery);
-            if (!waliUserSnap.empty) {
-              const waliUserDoc = waliUserSnap.docs[0];
-              await updateDoc(doc(db, COL.users, waliUserDoc.id), {
-                waliRemoved: true,
-                waliRemovedAt: serverTimestamp(),
-              });
-            }
-          } catch (e) {
-            console.warn('[MyProfile] Error invalidating wali session:', e);
-          }
-        }
-      }
 
       const { error } = await userService.updateUser(uid, {
         ...updates,
@@ -467,7 +361,7 @@ export function MyProfileScreen({ onNavigate }) {
             </View>
             <View style={styles.sectionHeadText}>
               <Text style={styles.sectionTitle}>Preferences</Text>
-              <Text style={styles.sectionHint}>Name, phone, intent, country</Text>
+              <Text style={styles.sectionHint}>Name, phone, country</Text>
             </View>
           </View>
 
@@ -484,123 +378,12 @@ export function MyProfileScreen({ onNavigate }) {
             placeholderTextColor={tokens.colors.textMuted}
           />
 
-          <Text style={styles.fieldLabel}>My intent</Text>
-          <HuzzPressable style={styles.fieldInputTouchable} onPress={() => setIntentModalOpen(true)} haptic="light">
-            <Text style={styles.fieldInputTouchableText}>{categoryIntent || 'Select intent'}</Text>
-          </HuzzPressable>
-
           <Text style={styles.fieldLabel}>Your country</Text>
           <HuzzPressable style={styles.fieldInputTouchable} onPress={() => setCountryModalOpen(true)} haptic="light">
             <Text style={styles.fieldInputTouchableText}>
               {countryOfResidence ? countryOfResidence : 'Select country'}
             </Text>
           </HuzzPressable>
-        </View>
-
-        {/* Wali/Guardian Settings */}
-        <View style={[styles.card, styles.sectionAmber, cardShadow]}>
-          <View style={styles.sectionHead}>
-            <View style={[styles.sectionIconWrap, styles.iconWrapAmber]}>
-              <Users size={20} color="#B45309" strokeWidth={2.2} />
-            </View>
-            <View style={styles.sectionHeadText}>
-              <Text style={styles.sectionTitle}>Wali / guardian</Text>
-              <Text style={styles.sectionHint}>Optional — someone who can help oversee matches with your consent</Text>
-            </View>
-          </View>
-
-          <Text style={styles.fieldLabel}>Wali name</Text>
-          <TextInput
-            style={styles.fieldInput}
-            value={waliName}
-            onChangeText={setWaliName}
-            placeholder="Guardian's name"
-            placeholderTextColor={tokens.colors.textMuted}
-          />
-
-          <Text style={styles.fieldLabel}>Wali email</Text>
-          <TextInput
-            style={styles.fieldInput}
-            value={waliEmail}
-            onChangeText={setWaliEmail}
-            placeholder="guardian@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholderTextColor={tokens.colors.textMuted}
-          />
-
-          <Text style={styles.fieldLabel}>Show on profile</Text>
-          <View style={styles.radioRow}>
-            <HuzzPressable
-              style={[styles.radioChip, waliVisibility === 'visible' && styles.radioChipOn]}
-              onPress={() => setWaliVisibility('visible')}
-              haptic="light"
-            >
-              <Text style={[styles.radioChipText, waliVisibility === 'visible' && styles.radioChipTextOn]}>Show</Text>
-            </HuzzPressable>
-            <HuzzPressable
-              style={[styles.radioChip, waliVisibility === 'hidden' && styles.radioChipOn]}
-              onPress={() => setWaliVisibility('hidden')}
-              haptic="light"
-            >
-              <Text style={[styles.radioChipText, waliVisibility === 'hidden' && styles.radioChipTextOn]}>Hide</Text>
-            </HuzzPressable>
-          </View>
-
-          <Text style={styles.fieldLabel}>When can wali step in?</Text>
-          <HuzzPressable
-            style={styles.fieldInputTouchable}
-            onPress={() => {
-              Alert.alert(
-                'Consent level',
-                'Choose when your wali can access your matches:',
-                [
-                  { text: 'Always', onPress: () => setWaliConsentLevel('always') },
-                  { text: 'Ask me each time', onPress: () => setWaliConsentLevel('ask') },
-                  { text: 'Never', onPress: () => setWaliConsentLevel('never') },
-                  { text: 'Cancel', style: 'cancel' },
-                ]
-              );
-            }}
-            haptic="light"
-          >
-            <Text style={styles.fieldInputTouchableText}>
-              {waliConsentLevel === 'always' ? 'Always' : waliConsentLevel === 'ask' ? 'Ask me each time' : 'Never'}
-            </Text>
-          </HuzzPressable>
-
-          {waliInviteSent && (
-            <View style={styles.inviteBanner}>
-              <Text style={styles.inviteBannerText}>Invitation email sent</Text>
-            </View>
-          )}
-
-          {profile?.wali?.name && (
-            <RetroButton
-              variant="danger"
-              title="Remove wali"
-              style={[styles.fullBtn, { marginTop: 12 }]}
-              onPress={async () => {
-                Alert.alert('Remove wali?', 'Are you sure you want to remove your wali?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Remove',
-                    style: 'destructive',
-                    onPress: async () => {
-                      setWaliName('');
-                      setWaliEmail('');
-                      setWaliVisibility('hidden');
-                      setWaliConsentLevel('ask');
-                      setWaliInviteSent(false);
-                      await userService.updateUser(uid, { wali: null });
-                      Alert.alert('Removed', 'Wali has been removed.');
-                    },
-                  },
-                ]);
-              }}
-            />
-          )}
         </View>
 
         <RetroButton
@@ -644,42 +427,6 @@ export function MyProfileScreen({ onNavigate }) {
         </View>
       </Modal>
 
-      {/* Intent dropdown modal */}
-      <Modal visible={intentModalOpen} animationType="slide" transparent onRequestClose={() => setIntentModalOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Select intent</Text>
-            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: 8 }}>
-              {INTENTS.map((it) => (
-                <TouchableOpacity
-                  key={it}
-                  style={[styles.modalRow, categoryIntent === it ? styles.modalRowSelected : null]}
-                  onPress={() => {
-                    setCategoryIntent(it);
-                    setIntentModalOpen(false);
-                  }}
-                >
-                  <Text style={styles.modalRowText}>
-                    {it}
-                    {categoryIntent === it ? ' ✓' : ''}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={styles.modalRow}
-                onPress={() => {
-                  setCategoryIntent('');
-                  setIntentModalOpen(false);
-                }}
-              >
-                <Text style={styles.modalRowText}>No preference</Text>
-              </TouchableOpacity>
-            </ScrollView>
-            <RetroButton variant="gray" title="Close" onPress={() => setIntentModalOpen(false)} style={styles.fullBtn} />
-          </View>
-        </View>
-      </Modal>
-
       {/* Profile Preview Modal */}
       <Modal visible={previewOpen} animationType="slide" transparent onRequestClose={() => setPreviewOpen(false)}>
         <SafeAreaView style={styles.previewBackdrop} edges={['top', 'bottom']}>
@@ -704,13 +451,6 @@ export function MyProfileScreen({ onNavigate }) {
                         resizeMode="cover"
                         contentPosition="top"
                       />
-
-                      {/* Candidate intent pill */}
-                      {!!String(categoryIntent || '').trim() && (
-                        <View style={styles.previewCandidateIntentPill}>
-                          <Text style={styles.previewCandidateIntentText}>{String(categoryIntent || '').trim()}</Text>
-                        </View>
-                      )}
 
                       {/* Image Navigation */}
                       {images.length > 1 && (
@@ -882,7 +622,6 @@ const styles = StyleSheet.create({
   iconWrapEmerald: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },
   iconWrapRose: { backgroundColor: 'rgba(225, 29, 72, 0.18)' },
   iconWrapSky: { backgroundColor: 'rgba(14, 165, 233, 0.2)' },
-  iconWrapAmber: { backgroundColor: 'rgba(245, 158, 11, 0.22)' },
   sectionHeadText: {
     flex: 1,
     justifyContent: 'center',
@@ -925,11 +664,6 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.filterBgSky,
     borderWidth: 1,
     borderColor: tokens.colors.filterBorderSky,
-  },
-  sectionAmber: {
-    backgroundColor: tokens.colors.filterBgAmber,
-    borderWidth: 1,
-    borderColor: tokens.colors.filterBorderAmber,
   },
   previewPill: {
     paddingVertical: 6,
@@ -982,30 +716,6 @@ const styles = StyleSheet.create({
   },
   btnStack: { gap: 10 },
   fullBtn: { alignSelf: 'stretch', width: '100%' },
-  radioRow: { flexDirection: 'row', gap: 10, marginBottom: 8, flexWrap: 'wrap' },
-  radioChip: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surface,
-  },
-  radioChipOn: {
-    borderColor: tokens.colors.accent,
-    backgroundColor: tokens.colors.accentDim,
-  },
-  radioChipText: { fontSize: 14, fontWeight: '600', color: tokens.colors.text },
-  radioChipTextOn: { color: tokens.colors.accent },
-  inviteBanner: {
-    marginTop: 10,
-    padding: 10,
-    borderRadius: tokens.radius.md,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.35)',
-  },
-  inviteBannerText: { fontSize: 13, fontWeight: '700', color: '#047857' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -1203,23 +913,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#654321',
-  },
-  previewCandidateIntentPill: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    zIndex: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 999,
-    borderWidth: 3,
-    borderColor: '#654321',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  previewCandidateIntentText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#000000',
   },
   previewNavBtn: {
     position: 'absolute',

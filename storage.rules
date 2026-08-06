@@ -40,6 +40,16 @@ service firebase.storage {
         );
     }
 
+    // Device photo gallery: gallery/{uid}/{fileName}
+    match /gallery/{uid}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Default deny
     match /{allPaths=**} {
       allow read, write: if false;

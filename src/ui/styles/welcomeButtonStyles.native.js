@@ -1,7 +1,7 @@
 import { Platform, StyleSheet } from 'react-native';
 
 /**
- * Shared with Welcome (sign up / log in) and Live “Start matching” — same look & feel.
+ * Shared with Welcome (sign up / log in) and Live “Start Live” — same look & feel.
  */
 export const welcomeButtonStyles = StyleSheet.create({
   /** Rounded soft tile — not a skinny pill. */

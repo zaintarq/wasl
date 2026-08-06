@@ -66,7 +66,7 @@ export function BlockedUsersScreen({ onNavigate }) {
   const onUnblock = (item) => {
     const uid = authService.getCurrentUser()?.uid;
     if (!uid) return;
-    Alert.alert('Unblock?', `Remove ${item.name} from your blocked list? You can chat again if you match.`, [
+    Alert.alert('Unblock?', `Remove ${item.name} from your blocked list? You can chat again if you connect.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Unblock',

@@ -18,16 +18,18 @@ import { tokens } from '../../ui/tokens';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
-import { loadLocalFilters } from '../../utils/localFilterStorage';
 import { hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
+import { getEffectiveGenderPreferences } from '../../utils/profilePreferences';
 import { getPresenceDisplay } from '../../utils/presence';
 import { SwipeDeck } from './SwipeDeck.native';
+import { DiscoveryProfileGrid } from './DiscoveryProfileGrid.native';
 import { FadeInImage } from '../../ui/components/FadeInImage.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { ProfileVoicePlayer } from '../../ui/components/ProfileVoicePlayer.native';
 import { ProfilePhotoGalleryModal } from '../../ui/components/ProfilePhotoGalleryModal.native';
+import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { Settings, SlidersHorizontal, UserRound } from 'lucide-react-native';
+import { Settings, SlidersHorizontal, UserRound, SkipForward, MessageCircle, UserPlus, LayoutGrid, Square } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 
@@ -47,7 +49,9 @@ import * as Haptics from 'expo-haptics';
 const { height: SCREEN_H } = Dimensions.get('window');
 const CARD_MAX_W = 440;
 const HEADER_FALLBACK_H = 64; // wordmark + underline + padding
-const BOTTOM_NAV_FALLBACK_H = 112; // nav buttons + padding
+const BOTTOM_NAV_FALLBACK_H = 72;
+/** Breathing room between swipe actions and floating tab bar. */
+const FLOAT_NAV_GAP = 24;
 
 export function HomeScreen({ onNavigate }) {
   const navigation = useNavigation();
@@ -67,34 +71,21 @@ export function HomeScreen({ onNavigate }) {
   // Max-tall card: fill as much as possible between header and pinned bottom nav.
   const cardHeight = useMemo(() => {
     const header = headerH || HEADER_FALLBACK_H;
-    const nav = bottomNavH || (BOTTOM_NAV_FALLBACK_H + bottomNavPad);
-    const avail = SCREEN_H - insets.top - header - nav - 6; // tiny gutter
+    const nav = bottomNavH || BOTTOM_NAV_FALLBACK_H + bottomNavPad;
+    const avail = SCREEN_H - insets.top - header - nav - FLOAT_NAV_GAP;
     return Math.round(Math.min(860, Math.max(560, avail)));
   }, [bottomNavH, bottomNavPad, headerH, insets.top]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [viewMode, setViewMode] = useState('card'); // 'card' | 'grid'
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [matchCountry, setMatchCountry] = useState('');
-  const [matchIntent, setMatchIntent] = useState('');
-  const [todayStatus, setTodayStatus] = useState('');
-  const [wingmanCode, setWingmanCode] = useState('');
-  const [wingmanRoom, setWingmanRoom] = useState(null);
   
   // Pending match requests (real-time)
   const [pendingRequests, setPendingRequests] = useState([]);
   const [pendingRequestUsers, setPendingRequestUsers] = useState({}); // Map of userId -> user profile
-
-  // Hot Seat (same-device, take turns swiping)
-  const [hotSeatEnabled, setHotSeatEnabled] = useState(false);
-  const [hotSeatP1, setHotSeatP1] = useState('You');
-  const [hotSeatP2, setHotSeatP2] = useState('Friend');
-  const [hotSeatTurn, setHotSeatTurn] = useState(0); // 0 or 1
-  const [handoffOpen, setHandoffOpen] = useState(false);
-
-  // Tonight Mode: "Free tonight" + same city, active until 2am
-  const [tonightMode, setTonightMode] = useState(false);
 
   // Shared gesture values so the action buttons can animate live while dragging.
   const gestureX = useSharedValue(0);
@@ -202,56 +193,9 @@ export function HomeScreen({ onNavigate }) {
     return allCandidates[currentIndex] || null;
   }, [allCandidates, currentIndex]);
 
-  const myCountry = useMemo(() => {
-    return String(me?.country || me?.countryOfResidence || '').trim();
-  }, [me]);
-
-  const myCity = useMemo(() => {
-    const c = String(me?.city || '').trim();
-    if (c) return c;
-    const loc = String(me?.location || '').trim();
-    if (!loc) return '';
-    // "City, Country"
-    return String(loc.split(',')[0] || '').trim();
-  }, [me]);
-
-  const isTonightWindow = useMemo(() => {
-    const d = new Date();
-    const h = d.getHours();
-    // Active 21:00 -> 02:00 (wrap)
-    return h >= 21 || h < 2;
-  }, []);
-
-  // Auto-disable Tonight Mode after 2am.
-  useEffect(() => {
-    if (!tonightMode) return;
-    const now = new Date();
-    const cutoff = new Date(now);
-    cutoff.setHours(2, 0, 0, 0);
-    if (now.getHours() >= 2) {
-      setTonightMode(false);
-      return;
-    }
-    const ms = cutoff.getTime() - now.getTime();
-    const t = setTimeout(() => setTonightMode(false), Math.max(500, ms));
-    return () => clearTimeout(t);
-  }, [tonightMode]);
-
   const onHeaderHuzzPress = useCallback(() => {
     setDeckRefreshKey((k) => k + 1);
   }, []);
-
-  const isStatusActive = (u) => {
-    const status = String(u?.todayStatus || '').trim();
-    if (!status) return false;
-    const exp = u?.todayStatusExpiresAt;
-    let ms = null;
-    if (typeof exp === 'number') ms = exp;
-    else if (exp?.toMillis) ms = exp.toMillis();
-    else if (exp instanceof Date) ms = exp.getTime();
-    if (!ms) return true; // no expiry stored => treat as active
-    return Date.now() < ms;
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -264,15 +208,11 @@ export function HomeScreen({ onNavigate }) {
               country: 'United States',
               countryOfResidence: 'United States',
               matchCountry: 'United States',
-              todayStatus: '',
-              todayStatusExpiresAt: null,
             });
             // Mock data removed - using real profiles only
             setCandidates([]);
             setCurrentIndex(0);
             setMatchCountry('United States');
-            setMatchIntent('');
-            setTodayStatus('');
           }
           return;
         }
@@ -297,34 +237,13 @@ export function HomeScreen({ onNavigate }) {
         
         const meSnap = await userService.getUserById(authUser.uid);
         const meProfile = meSnap?.data || null;
-        
-        // Check if wali (still in users collection)
-        const waliRole = String(meProfile?.role || '').toLowerCase().trim();
-        if (waliRole === 'wali') {
-          console.log('[HomeScreen] Wali detected, redirecting to wali screen');
-          if (!cancelled) onNavigate('wali');
-          return;
-        }
-        
+
         if (!cancelled) setMe(meProfile);
         // Don't auto-set matchCountry from profile - keep it global by default
         // Users can manually set country filter in the filters menu if they want
         // if (!cancelled && !matchCountry) {
         //   setMatchCountry(String(meProfile?.matchCountry || meProfile?.country || meProfile?.countryOfResidence || '').trim());
         // }
-        if (!cancelled && !matchIntent) {
-          setMatchIntent(String(meProfile?.matchIntent || '').trim());
-        }
-        if (!cancelled && !todayStatus) {
-          const s = String(meProfile?.todayStatus || '').trim();
-          const active = s && isStatusActive(meProfile);
-          setTodayStatus(active ? s : '');
-          // If expired, clear in DB best-effort
-          if (s && !active) {
-            userService.updateUser(authUser.uid, { todayStatus: '', todayStatusExpiresAt: null }).catch(() => {});
-          }
-        }
-
         const { data: blockedSet } = await blockService.listBlockedUids(authUser.uid);
         const { data: contactHashes } = await contactBlockService.listHashes(authUser.uid);
         
@@ -393,16 +312,11 @@ export function HomeScreen({ onNavigate }) {
         // Only filter by country if user explicitly set it in filters (matchCountry), not from profile
         // This allows users to see people from all countries by default
         const targetCountry = String(matchCountry || '').trim(); // Only use explicit filter, not profile country
-        const targetIntent = String(matchIntent || meProfile?.matchIntent || '').trim();
-        const targetStatus = String(todayStatus || (isStatusActive(meProfile) ? meProfile?.todayStatus : '') || '').trim();
-        const targetCity = String(
-          tonightMode ? (myCity || '') : ''
-        ).trim();
 
         // Get current user's gender and preferences for filtering
         const myGender = String(meProfile?.gender || '').trim().toLowerCase();
         const myReligion = String(meProfile?.religion || '').trim();
-        const myPreferences = Array.isArray(meProfile?.genderPreferences) ? meProfile.genderPreferences : [];
+        const myPreferences = getEffectiveGenderPreferences(meProfile || {});
         // Check if Muslim (handle both 'Muslim' and 'Islam' for compatibility)
         const isMuslim = myReligion === 'Muslim' || myReligion === 'Islam';
         
@@ -447,7 +361,7 @@ export function HomeScreen({ onNavigate }) {
           }
           
           // Get candidate's preferences for bidirectional matching
-          const candidatePreferences = Array.isArray(u?.genderPreferences) ? u.genderPreferences : [];
+          const candidatePreferences = getEffectiveGenderPreferences(u);
           const candidateReligion = String(u?.religion || '').trim();
           const candidateIsMuslim = candidateReligion === 'Muslim' || candidateReligion === 'Islam';
           
@@ -574,37 +488,6 @@ export function HomeScreen({ onNavigate }) {
           }
           // If targetCountry is set but candidate has no country, allow through (they might be new)
           // If candidateCountry is set but targetCountry is empty, allow through (user hasn't set preference)
-          const candidateIntent = String(u?.categoryIntent || '').trim();
-          if (targetIntent && candidateIntent !== targetIntent) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: Intent mismatch (target: ${targetIntent}, candidate: ${candidateIntent})`);
-            return false;
-          }
-          if (targetStatus) {
-            const cs = String(u?.todayStatus || '').trim();
-            if (!cs) {
-              console.log(`[Filter] ${u?.name || 'Unknown'}: No status (target: ${targetStatus})`);
-              return false;
-            }
-            if (!isStatusActive(u)) {
-              console.log(`[Filter] ${u?.name || 'Unknown'}: Status expired (${cs})`);
-              return false;
-            }
-            if (cs !== targetStatus) {
-              console.log(`[Filter] ${u?.name || 'Unknown'}: Status mismatch (target: ${targetStatus}, candidate: ${cs})`);
-              return false;
-            }
-          }
-          if (targetCity) {
-            const ccity = String(u?.city || '').trim() || String(String(u?.location || '').split(',')[0] || '').trim();
-            if (!ccity) {
-              console.log(`[Filter] ${u?.name || 'Unknown'}: No city (target: ${targetCity})`);
-              return false;
-            }
-            if (ccity.toLowerCase() !== targetCity.toLowerCase()) {
-              console.log(`[Filter] ${u?.name || 'Unknown'}: City mismatch (target: ${targetCity}, candidate: ${ccity})`);
-              return false;
-            }
-          }
           console.log(`[Filter] ✅ ${u?.name || 'Unknown'} (${candidateGender}): PASSED ALL FILTERS`);
           return true;
         });
@@ -651,7 +534,7 @@ export function HomeScreen({ onNavigate }) {
     return () => {
       cancelled = true;
     };
-  }, [onNavigate, matchCountry, matchIntent, todayStatus, tonightMode, myCity, deckRefreshKey]);
+  }, [onNavigate, matchCountry, deckRefreshKey]);
 
   // Real-time listener for pending match requests
   useEffect(() => {
@@ -698,14 +581,6 @@ export function HomeScreen({ onNavigate }) {
     };
   }, []);
 
-  // Wingman room listener (optional)
-  useEffect(() => {
-    if (!wingmanCode) return;
-    const { wingmanService } = require('../../services/firebaseService');
-    const unsub = wingmanService.listenRoom(wingmanCode, ({ data }) => setWingmanRoom(data || null));
-    return () => unsub && unsub();
-  }, [wingmanCode]);
-
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -718,24 +593,9 @@ export function HomeScreen({ onNavigate }) {
           const meProfile = meSnap?.data || null;
           if (cancelled || !meProfile) return;
           setMatchCountry(String(meProfile?.matchCountry || '').trim());
-          setMatchIntent(String(meProfile?.matchIntent || '').trim());
-          const s = String(meProfile?.todayStatus || '').trim();
-          const active = s && isStatusActive(meProfile);
-          setTodayStatus(active ? s : '');
           setMe((prev) => ({ ...(prev || {}), ...meProfile }));
         } catch (e) {
           console.warn('[HomeScreen] focus refresh:', e?.message || e);
-        }
-        try {
-          const local = await loadLocalFilters();
-          if (cancelled || !local) return;
-          if (typeof local.hotSeatEnabled === 'boolean') setHotSeatEnabled(local.hotSeatEnabled);
-          if (local.hotSeatP1) setHotSeatP1(local.hotSeatP1);
-          if (local.hotSeatP2) setHotSeatP2(local.hotSeatP2);
-          if (local.hotSeatTurn != null) setHotSeatTurn(local.hotSeatTurn);
-          if (typeof local.tonightMode === 'boolean') setTonightMode(local.tonightMode);
-        } catch (e) {
-          console.warn('[HomeScreen] load local filters:', e?.message || e);
         }
       };
       run();
@@ -749,15 +609,76 @@ export function HomeScreen({ onNavigate }) {
     navigation.navigate(Routes.Filters, {
       initial: {
         matchCountry,
-        matchIntent,
-        todayStatus,
-        hotSeatEnabled,
-        hotSeatP1,
-        hotSeatP2,
-        hotSeatTurn,
-        tonightMode,
       },
     });
+  };
+
+  const toggleViewMode = () => {
+    setViewMode((prev) => (prev === 'card' ? 'grid' : 'card'));
+  };
+
+  const openProfileFromGrid = (index) => {
+    if (index < 0) return;
+    setCurrentIndex(index);
+    setViewMode('card');
+  };
+
+  const handleDirectMessage = async (target) => {
+    const authUser = authService.getCurrentUser();
+    if (!authUser) {
+      onNavigate('onboarding', { mode: 'login' });
+      return false;
+    }
+
+    if (!loading) {
+      let canAct = hasAtLeastOneProfilePhoto(me);
+      if (!canAct) {
+        try {
+          const snap = await userService.getUserById(authUser.uid);
+          const fresh = snap?.data || null;
+          if (fresh) {
+            setMe((prev) => ({ ...(prev || {}), ...fresh }));
+            canAct = hasAtLeastOneProfilePhoto(fresh);
+          }
+        } catch (e) {
+          console.warn('[Msg] Profile refresh for photo gate:', e?.message || e);
+        }
+      }
+      if (!canAct) {
+        Alert.alert(
+          'Add a photo to your profile',
+          'You need at least one photo on your profile to message people.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Go to profile', onPress: () => onNavigate('myProfile') },
+          ]
+        );
+        return false;
+      }
+    }
+
+    const targetId = target?.id ?? target?.uid;
+    if (!targetId) {
+      Alert.alert('Error', 'Could not open chat for this profile.');
+      return false;
+    }
+
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+
+    try {
+      const { matchId, error } = await matchService.startDirectMessage(authUser.uid, targetId);
+      if (error || !matchId) {
+        Alert.alert('Error', error || 'Could not start chat.');
+        return false;
+      }
+      onNavigate('chat', { matchId, userId: targetId });
+      return true;
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Could not start chat.');
+      return false;
+    }
   };
 
   const handleSwipe = async (direction, userOrId) => {
@@ -844,7 +765,7 @@ export function HomeScreen({ onNavigate }) {
         if (!canSwipe) {
           Alert.alert(
             'Add a photo to your profile',
-            'You need at least one photo on your profile to like or pass. You can add more anytime in Profile.',
+            'You need at least one photo on your profile to like, message, or pass. You can add more anytime in Profile.',
             [
               { text: 'Not now', style: 'cancel' },
               { text: 'Go to profile', onPress: () => onNavigate('myProfile') },
@@ -885,62 +806,43 @@ export function HomeScreen({ onNavigate }) {
       const pendingRequest = pendingRequests.find(req => String(req.requestedBy) === String(targetId));
       
       if (pendingRequest) {
-        console.log('[Swipe] Pending match request found:', {
+        console.log('[Swipe] Pending like from someone who liked you:', {
           requestId: pendingRequest.id,
           requestedBy: pendingRequest.requestedBy
         });
-        // This is a pending match request - handle approve/reject
         try {
-          if (direction === 'right' || direction === 'up') {
-            console.log('[Swipe] Approving pending match request...');
-            // Approve the match
-            const { error } = await matchService.approveMatch(pendingRequest.id, authUser.uid);
-            if (error) {
-              console.error('[Swipe] Failed to approve match:', error);
-              try {
-                showCuteAlert('error', 'OOPS!', 'Failed to approve match');
-              } catch (alertError) {
-                console.error('[Swipe] Alert error:', alertError);
-              }
-            } else {
-              console.log('[Swipe] ✅ Match approved successfully');
+          if (direction === 'up') {
+            await handleDirectMessage(target);
+          } else if (direction === 'right') {
+            console.log('[Swipe] Liking back...');
+            const likeResult = await likeService.likeUser(authUser.uid, targetId);
+            if (likeResult?.error) {
+              showCuteAlert('error', 'OOPS!', 'Failed to send like');
+            } else if (likeResult?.matched) {
               try {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              } catch (hapticError) {
-                console.warn('[Swipe] Haptic error:', hapticError);
-              }
-              try {
-                showCuteAlert('match', "IT'S A MATCH!", 'You can now chat');
-              } catch (alertError) {
-                console.error('[Swipe] Alert error:', alertError);
-              }
-              // Remove from pending requests
-              setPendingRequests(prev => prev.filter(req => req.id !== pendingRequest.id));
-            }
-          } else {
-            console.log('[Swipe] Rejecting pending match request...');
-            // Reject the match (swipe left)
-            const { error } = await matchService.rejectMatch(pendingRequest.id, authUser.uid);
-            if (error) {
-              console.error('[Swipe] Failed to reject match:', error);
-              try {
-                showCuteAlert('error', 'OOPS!', 'Failed to reject match');
-              } catch (alertError) {
-                console.error('[Swipe] Alert error:', alertError);
+              } catch {}
+              showCuteAlert('match', 'Connected!', 'Open Chats to message them');
+              if (pendingRequest.id) {
+                await matchService.createActiveMatch(authUser.uid, targetId, {
+                  source: 'mutual_like',
+                  initiatedBy: authUser.uid,
+                });
               }
             } else {
-              console.log('[Swipe] ✅ Match rejected successfully');
-              // Remove from pending requests
-              setPendingRequests(prev => prev.filter(req => req.id !== pendingRequest.id));
+              showCuteAlert('success', 'LIKED!', 'If they like you back you can chat');
             }
+            setPendingRequests((prev) => prev.filter((req) => req.id !== pendingRequest.id));
+          } else {
+            console.log('[Swipe] Passing on like...');
+            if (pendingRequest.id) {
+              await matchService.rejectMatch(pendingRequest.id, authUser.uid);
+            }
+            await likeService.passUser(authUser.uid, targetId);
+            setPendingRequests((prev) => prev.filter((req) => req.id !== pendingRequest.id));
           }
         } catch (e) {
-          console.error('[Swipe] Match request action exception:', {
-            error: e?.message || String(e),
-            stack: e?.stack,
-            direction,
-            requestId: pendingRequest?.id
-          });
+          console.error('[Swipe] Pending like action exception:', e);
         }
         // Always advance to next card after handling pending request
         try {
@@ -958,7 +860,7 @@ export function HomeScreen({ onNavigate }) {
       try {
         console.log(`[Swipe] Triggering haptics for direction: ${direction}`);
         if (direction === 'up') {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         } else if (direction === 'right') {
           await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         } else {
@@ -972,8 +874,14 @@ export function HomeScreen({ onNavigate }) {
         });
         // Continue even if haptics fail
       }
+
+      if (direction === 'up') {
+        await handleDirectMessage(target);
+        console.log('[Swipe] ========== SWIPE END (direct message) ==========');
+        return;
+      }
       
-      if (direction === 'right' || direction === 'up') {
+      if (direction === 'right') {
         console.log('\n');
         console.log('═══════════════════════════════════════════════════════════');
         console.log('🔄 SWIPE RIGHT DETECTED');
@@ -1036,7 +944,7 @@ export function HomeScreen({ onNavigate }) {
               console.log('🎉 MATCH DETECTED! Mutual like!');
               try {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                showCuteAlert('match', "IT'S A MATCH!", 'Go to Matches to chat');
+                showCuteAlert('match', 'Connected!', 'Open Chats to message them');
                 console.log('✅ Match alert shown to user');
               } catch (matchError) {
                 console.warn('⚠️ Error showing match alert:', matchError);
@@ -1045,6 +953,9 @@ export function HomeScreen({ onNavigate }) {
               console.error('❌ Like operation had error:', likeResult.error);
             } else {
               console.log('✅ Like saved successfully (not mutual yet)');
+              try {
+                showCuteAlert('success', 'LIKE SENT!', 'If they like you back you can chat');
+              } catch (_) {}
             }
             
             console.log('═══════════════════════════════════════════════════════════');
@@ -1159,23 +1070,6 @@ export function HomeScreen({ onNavigate }) {
       try {
         console.log('[Swipe] Entering finally block...');
         safeAdvanceCard();
-        
-        // Hot seat handling (non-critical, wrapped in try-catch)
-        if (hotSeatEnabled) {
-          try {
-            setTimeout(() => {
-              try {
-                setHotSeatTurn((t) => (t === 0 ? 1 : 0));
-                setHandoffOpen(true);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-              } catch (hotSeatError) {
-                console.warn('[Swipe] Hot seat error:', hotSeatError);
-              }
-            }, 0);
-          } catch (hotSeatError) {
-            console.warn('[Swipe] Hot seat setup error:', hotSeatError);
-          }
-        }
         console.log('[Swipe] ✅ Finally block completed');
       } catch (finallyError) {
         console.error('[Swipe] ❌ Finally block error:', {
@@ -1197,27 +1091,6 @@ export function HomeScreen({ onNavigate }) {
     }
   };
 
-  // Share current card to wingman (owner)
-  useEffect(() => {
-    try {
-      if (!wingmanCode) return;
-      const authUser = authService.getCurrentUser();
-      if (!authUser?.uid) return;
-      const ownerUid = String(wingmanRoom?.ownerUid || '');
-      if (ownerUid && ownerUid !== String(authUser.uid)) return;
-      const u = currentUser;
-      if (!u) return;
-      const { wingmanService } = require('../../services/firebaseService');
-      wingmanService.updateCurrentCard(wingmanCode, authUser.uid, {
-        id: String(u?.id || ''),
-        name: String(u?.name || ''),
-        age: u?.age || null,
-        image: String(u?.images?.[0] || ''),
-      });
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, wingmanCode]);
-
   const nopeBtnStyle = useAnimatedStyle(() => {
     const p = interpolate(gestureX.value, [0, -160], [0, 1], Extrapolation.CLAMP);
     const s = interpolate(p, [0, 1], [1, 1.18], Extrapolation.CLAMP);
@@ -1228,7 +1101,7 @@ export function HomeScreen({ onNavigate }) {
     const s = interpolate(p, [0, 1], [1, 1.18], Extrapolation.CLAMP);
     return { transform: [{ scale: s }], opacity: interpolate(p, [0, 1], [0.9, 1], Extrapolation.CLAMP) };
   });
-  const starBtnStyle = useAnimatedStyle(() => {
+  const msgBtnStyle = useAnimatedStyle(() => {
     const ay = Math.abs(gestureY.value);
     const ax = Math.abs(gestureX.value);
     // Only “light up” when vertical drag dominates.
@@ -1272,14 +1145,31 @@ export function HomeScreen({ onNavigate }) {
             </View>
           </View>
         </HuzzPressable>
-        <HuzzPressable style={styles.headerButton} onPress={() => onNavigate('myProfile')} haptic="light">
-          <UserRound size={22} color={tokens.colors.text} strokeWidth={2} />
-        </HuzzPressable>
+        <View style={styles.headerRight}>
+          {!loading && allCandidates.length > 0 ? (
+            <HuzzPressable
+              style={styles.headerButton}
+              onPress={toggleViewMode}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={viewMode === 'card' ? 'Show grid of profiles' : 'Show single profile'}
+            >
+              {viewMode === 'card' ? (
+                <LayoutGrid size={22} color={tokens.colors.text} strokeWidth={2.2} />
+              ) : (
+                <Square size={22} color={tokens.colors.text} strokeWidth={2.2} />
+              )}
+            </HuzzPressable>
+          ) : null}
+          <HuzzPressable style={styles.headerButton} onPress={() => onNavigate('myProfile')} haptic="light">
+            <UserRound size={22} color={tokens.colors.text} strokeWidth={2} />
+          </HuzzPressable>
+        </View>
       </View>
 
       <View style={styles.container}>
       {/* Swipe Cards */}
-      <View style={[styles.cardContainer, { paddingBottom: (bottomNavH || 0) + 10 }]}>
+      <View style={[styles.cardContainer, { paddingBottom: (bottomNavH || BOTTOM_NAV_FALLBACK_H) + FLOAT_NAV_GAP }]}>
         <HuzzPressable style={styles.filterButton} onPress={openFilters} haptic="light">
           <SlidersHorizontal size={22} color={tokens.colors.accent} strokeWidth={2.2} />
         </HuzzPressable>
@@ -1287,38 +1177,26 @@ export function HomeScreen({ onNavigate }) {
         {loading ? (
           <View style={[styles.card, { alignItems: 'center', justifyContent: 'center', minHeight: 400 }]}>
             <ActivityIndicator size="large" />
-            <Text style={[{ marginTop: 12, fontSize: 16 }, kaushan]}>Loading matches...</Text>
+            <Text style={[{ marginTop: 12, fontSize: 16 }, kaushan]}>Loading people...</Text>
           </View>
+        ) : viewMode === 'grid' && allCandidates.length > 0 ? (
+          <DiscoveryProfileGrid
+            profiles={allCandidates}
+            onSelectProfile={openProfileFromGrid}
+            contentPaddingBottom={(bottomNavH || BOTTOM_NAV_FALLBACK_H) + FLOAT_NAV_GAP + 16}
+          />
         ) : !currentUser ? (
           <View style={[styles.card, { alignItems: 'center', justifyContent: 'center', minHeight: 400, padding: 24 }]}>
             <Text style={[{ fontSize: 18, color: tokens.colors.textSecondary, marginBottom: 8 }, kaushan]}>
               No profiles found
             </Text>
             <Text style={[{ textAlign: 'center', color: tokens.colors.text, marginBottom: 16 }, kaushan]}>
-              Try changing your match country using the filter button.
+              Try changing your country filter using the filter button.
             </Text>
             <RetroButton variant="blue" onPress={openFilters} title="Open Filters" />
           </View>
         ) : (
           <>
-            {/* "Looking for" badge (reflects current filters; updates instantly) - only show when there are profiles */}
-            {matchIntent ? (
-              <View pointerEvents="none" style={styles.lookingForBadge}>
-                <Text style={styles.lookingForText}>
-                  Looking for: <Text style={styles.lookingForValue}>{matchIntent}</Text>
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Hot seat turn badge */}
-            {hotSeatEnabled ? (
-              <View pointerEvents="none" style={styles.hotSeatBadge}>
-                <Text style={styles.hotSeatText}>
-                  Hot Seat: <Text style={styles.hotSeatValue}>{hotSeatTurn === 0 ? hotSeatP1 : hotSeatP2}</Text>
-                </Text>
-              </View>
-            ) : null}
-
             <View style={[styles.deckFrame, { height: cardHeight }]}>
               {/* Cute In-App Alert Overlay */}
               {cuteAlert && (
@@ -1394,7 +1272,7 @@ export function HomeScreen({ onNavigate }) {
                     ]}
                   >
                     <Text style={styles.swipeToastText}>
-                      {swipeToast === 'like' ? 'LIKED!' : 'NOPE'}
+                      {swipeToast === 'like' ? 'CONNECT!' : 'NEXT'}
                     </Text>
                   </View>
                 </RNAnimated.View>
@@ -1403,7 +1281,6 @@ export function HomeScreen({ onNavigate }) {
                 style={styles.deckFill}
                 gestureX={gestureX}
                 gestureY={gestureY}
-                disabled={hotSeatEnabled && handoffOpen}
                 data={allCandidates}
                 index={currentIndex}
                 onSwipe={handleSwipe}
@@ -1442,7 +1319,7 @@ export function HomeScreen({ onNavigate }) {
                         {u?._isPendingRequest ? (
                           <View style={[styles.candidatePill, { backgroundColor: tokens.colors.accentDim }]}>
                             <Text style={[styles.candidatePillText, { color: tokens.colors.accent, fontWeight: '600' }]}>
-                              ⚡ Match Request
+                              Wants to connect
                             </Text>
                           </View>
                         ) : null}
@@ -1464,11 +1341,6 @@ export function HomeScreen({ onNavigate }) {
                               </View>
                             );
                           })()}
-                        {!!String(u?.categoryIntent || '').trim() && (
-                          <View style={styles.candidatePill}>
-                            <Text style={styles.candidatePillText}>{String(u?.categoryIntent || '').trim()}</Text>
-                          </View>
-                        )}
                       </View>
 
                       {/* Overlay */}
@@ -1546,34 +1418,36 @@ export function HomeScreen({ onNavigate }) {
                 <View style={styles.actionContainer}>
                 <Animated.View style={nopeBtnStyle}>
                   <HuzzPressable
-                    style={[styles.actionButton, styles.rejectButton]}
+                    style={[styles.actionButton, styles.skipButton]}
                     onPress={() => handleSwipe('left', currentUser)}
                     haptic="light"
-                    disabled={hotSeatEnabled && handoffOpen}
                   >
-                    <Text style={styles.actionIcon}>✕</Text>
+                    <SkipForward size={26} color="#475569" strokeWidth={2.4} />
                   </HuzzPressable>
                 </Animated.View>
 
-                <Animated.View style={starBtnStyle}>
+                <Animated.View style={msgBtnStyle}>
                   <HuzzPressable
-                    style={[styles.actionButton, styles.superLikeButton]}
-                    onPress={() => handleSwipe('up', currentUser)}
-                    haptic="light"
-                    disabled={hotSeatEnabled && handoffOpen}
+                    style={[styles.actionButton, styles.messageButton]}
+                    onPress={async () => {
+                      const ok = await handleDirectMessage(currentUser);
+                      if (ok) {
+                        setCurrentIndex((prev) => (prev < allCandidates.length - 1 ? prev + 1 : 0));
+                      }
+                    }}
+                    haptic="medium"
                   >
-                    <Text style={styles.superLikeIcon}>⭐</Text>
+                    <MessageCircle size={28} color="#FFFFFF" strokeWidth={2.2} />
                   </HuzzPressable>
                 </Animated.View>
 
                 <Animated.View style={likeBtnStyle}>
                   <HuzzPressable
-                    style={[styles.actionButton, styles.likeButton]}
+                    style={[styles.actionButton, styles.connectButton]}
                     onPress={() => handleSwipe('right', currentUser)}
                     haptic="medium"
-                    disabled={hotSeatEnabled && handoffOpen}
                   >
-                    <Text style={styles.likeIcon}>❤️</Text>
+                    <UserPlus size={26} color="#047857" strokeWidth={2.4} />
                   </HuzzPressable>
                 </Animated.View>
                 </View>
@@ -1583,66 +1457,7 @@ export function HomeScreen({ onNavigate }) {
         )}
       </View>
 
-      {/* Hot seat handoff overlay */}
-      {hotSeatEnabled && handoffOpen ? (
-        <View style={styles.handoffOverlay}>
-          <View style={styles.handoffCard}>
-            <Text style={[styles.handoffTitle, kaushan]}>PASS THE PHONE</Text>
-            <Text style={[styles.handoffSub, kaushan]}>Next turn:</Text>
-            <Text style={[styles.handoffName, kaushan]}>{hotSeatTurn === 0 ? hotSeatP1 : hotSeatP2}</Text>
-            <HuzzPressable
-              style={[styles.btnWide, { backgroundColor: tokens.colors.success }]}
-              onPress={() => setHandoffOpen(false)}
-              haptic="medium"
-            >
-              <Text style={[styles.btnWideText, kaushan]}>Ready</Text>
-            </HuzzPressable>
-          </View>
-        </View>
-      ) : null}
-
-      {/* Bottom Navigation */}
-      <View
-        style={[styles.bottomNav, { paddingBottom: bottomNavPad }]}
-        onLayout={(e) => setBottomNavH(e?.nativeEvent?.layout?.height || 0)}
-      >
-        <HuzzPressable
-          style={[
-            welcomeButtonStyles.outlineOnBlue,
-            styles.navButton,
-            { backgroundColor: '#90ee90', borderColor: '#228b22' },
-          ]}
-          onPress={() => onNavigate('home')}
-          haptic="light"
-        >
-          <Text style={styles.navIcon}>🏠</Text>
-          <Text style={[styles.navLabel, kaushan]}>Home</Text>
-        </HuzzPressable>
-        <HuzzPressable
-          style={[
-            welcomeButtonStyles.outlineOnBlue,
-            styles.navButton,
-            { backgroundColor: '#87ceeb', borderColor: '#4682b4' },
-          ]}
-          onPress={() => onNavigate('matches')}
-          haptic="light"
-        >
-          <Text style={styles.navIcon}>💬</Text>
-          <Text style={[styles.navLabel, kaushan]}>Matches</Text>
-        </HuzzPressable>
-        <HuzzPressable
-          style={[
-            welcomeButtonStyles.outlineOnBlue,
-            styles.navButton,
-            { backgroundColor: '#c4b5fd', borderColor: '#6d28d9' },
-          ]}
-          onPress={() => onNavigate('liveRandom')}
-          haptic="light"
-        >
-          <Text style={styles.navIcon}>🎥</Text>
-          <Text style={[styles.navLabel, kaushan]}>Live</Text>
-        </HuzzPressable>
-      </View>
+      <MainBottomNav active="home" onNavigate={onNavigate} onLayout={setBottomNavH} />
       </View>
 
       <ProfilePhotoGalleryModal
@@ -1686,6 +1501,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: tokens.radius.sm,
     backgroundColor: tokens.colors.surfaceElevated,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   /** Same vibe as Welcome intro: Kaushan “Huzz” + blue gradient underline */
   headerWordmarkWrap: {
@@ -1758,37 +1578,9 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
   },
-  lookingForBadge: {
-    position: 'absolute',
-    top: 18,
-    left: 16,
-    zIndex: 10,
-    backgroundColor: tokens.colors.surfaceOverlay,
-    borderRadius: tokens.radius.full,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  lookingForText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: tokens.colors.textSecondary,
-  },
-  lookingForValue: {
-    color: tokens.colors.accent,
-  },
-  hotSeatBadge: {
-    position: 'absolute',
-    top: 106,
-    left: 16,
-    zIndex: 10,
-    backgroundColor: tokens.colors.surfaceOverlay,
-    borderRadius: tokens.radius.full,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  hotSeatText: { fontSize: 12, fontWeight: '600', color: tokens.colors.textSecondary },
-  hotSeatValue: { color: tokens.colors.accent },
   /** Stacked under top-left so they never sit under the filter button (top-right). */
   candidateTopLeftPills: {
     position: 'absolute',
@@ -1964,8 +1756,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    // Dock to the card bottom edge (slight overlap outside).
-    bottom: -16,
+    // Slight overlap on card edge; clearance handled via cardHeight + nav padding.
+    bottom: -12,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,
@@ -1985,65 +1777,42 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: tokens.colors.surfaceOverlay,
-  },
-  rejectButton: {
-    backgroundColor: tokens.colors.danger,
-  },
-  superLikeButton: {
-    backgroundColor: tokens.colors.blue,
-    width: 52,
-    height: 52,
-  },
-  likeButton: {
-    backgroundColor: tokens.colors.success,
-  },
-  actionIcon: {
-    fontSize: 26,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  superLikeIcon: {
-    fontSize: 22,
-  },
-  likeIcon: {
-    fontSize: 26,
-  },
-  bottomNav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    paddingBottom: 10,
     backgroundColor: tokens.colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: tokens.colors.border,
-    elevation: 8,
+    borderWidth: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: { elevation: 4 },
+    }),
   },
-  navButton: {
-    flex: 1,
-    maxWidth: 148,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 22,
-    minHeight: 52,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    marginHorizontal: 4,
-    gap: 4,
+  skipButton: {
+    borderColor: tokens.colors.borderDark,
+    backgroundColor: '#F8FAFC',
   },
-  navIcon: {
-    fontSize: 24,
+  messageButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: tokens.colors.blue,
+    borderColor: tokens.colors.blueBorder,
+    borderWidth: 0,
+    ...Platform.select({
+      ios: {
+        shadowColor: tokens.colors.blueBorder,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+      },
+      android: { elevation: 6 },
+    }),
   },
-  navLabel: {
-    fontSize: 15,
-    letterSpacing: 0.4,
-    color: tokens.colors.textSecondary,
+  connectButton: {
+    borderColor: tokens.colors.filterBorderEmerald,
+    backgroundColor: tokens.colors.filterBgEmerald,
   },
   authButton: {
     paddingVertical: 14,
@@ -2066,40 +1835,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  handoffOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    zIndex: 999,
-  },
-  handoffCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: tokens.colors.surface,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    padding: 20,
-    alignItems: 'center',
-    gap: 10,
-  },
-  handoffTitle: { fontSize: 18, fontWeight: '700', color: tokens.colors.text },
-  handoffSub: { fontSize: 12, fontWeight: '600', color: tokens.colors.textSecondary },
-  handoffName: { fontSize: 24, fontWeight: '700', color: tokens.colors.accent },
-  btnWide: {
-    width: '100%',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.colors.success,
-  },
-  btnWideText: { textAlign: 'center', fontWeight: '600', color: tokens.colors.text },
   successPopup: {
     position: 'absolute',
     top: '50%',

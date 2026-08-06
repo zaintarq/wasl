@@ -2,6 +2,12 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 const path = require('path');
+try {
+  require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+} catch (e) {
+  // Root .env only (no functions/.env).
+}
+const { AccessToken } = require('livekit-server-sdk');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
@@ -459,180 +465,6 @@ const getEmailTransporter = () => {
     },
   });
 };
-
-/**
- * Cloud Function to send wali invitation email
- * 
- * Setup instructions:
- * 1. Install dependencies: cd functions && npm install
- * 2. Deploy: firebase deploy --only functions
- * 
- * Email is configured to use Gmail SMTP (noreplyonlystream@gmail.com)
- */
-exports.sendWaliInvitation = functions.region('us-central1').https.onRequest(async (req, res) => {
-  // Enable CORS
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
-    return;
-  }
-
-  if (req.method === 'GET') {
-    // Helpful message for browser access
-    res.status(200).json({ 
-      message: 'Wali Invitation Email Service',
-      description: 'This endpoint sends wali invitation emails. Use POST method with required fields.',
-      requiredFields: ['to', 'waliName', 'userName', 'appDownloadLink', 'waliHash'],
-      example: {
-        to: 'wali@example.com',
-        waliName: 'Guardian Name',
-        userName: 'User Name',
-        appDownloadLink: 'https://expo.dev/...',
-        waliHash: 'ABC123XYZ456'
-      }
-    });
-    return;
-  }
-
-      if (req.method !== 'POST') {
-        res.status(405).json({ error: 'Method not allowed. Use POST or GET.' });
-        return;
-      }
-
-      try {
-        const { to, waliName, userName, appDownloadLink, waliHash, senderEmail, senderName } = req.body;
-
-        if (!to || !waliName || !userName || !appDownloadLink || !waliHash) {
-          res.status(400).json({ error: 'Missing required fields' });
-          return;
-        }
-
-        // Use provided sender info or fallback to userName
-        const finalSenderName = senderName || userName || 'Someone';
-        const finalSenderEmail = senderEmail || '';
-
-    const transporter = getEmailTransporter();
-    if (!transporter) {
-      res.status(500).json({ error: 'Email service not configured' });
-      return;
-    }
-
-    // Email content
-    const emailSubject = `${userName} wants to add you as a Wali (Guardian)`;
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background-color: #800020; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { background-color: #f5f5dc; padding: 30px; border: 3px solid #8b4513; border-top: none; }
-          .button { display: inline-block; padding: 14px 28px; background-color: #800020; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 5px; border: 3px solid #654321; }
-          .button-secondary { background-color: #87ceeb; color: #000; border-color: #4682b4; }
-          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>🛡️ Wali Invitation</h1>
-          </div>
-          <div class="content">
-            <p>Hello ${waliName},</p>
-            
-            <p><strong>${finalSenderName}</strong>${finalSenderEmail ? ` (${finalSenderEmail})` : ''} wants to add you as their Wali (Guardian) on HUZZ.</p>
-            
-            ${finalSenderEmail ? `<p style="font-size: 12px; color: #666; margin-top: 10px;"><em>This invitation was sent from: ${finalSenderEmail}</em></p>` : ''}
-            
-            <p>As a Wali, you can help oversee their matches and conversations with their consent.</p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${appDownloadLink}" class="button">📱 Download HUZZ App</a>
-            </div>
-            
-            <p>After downloading, open the app and use this login hash:</p>
-            
-            <div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fff; border: 3px solid #654321; border-radius: 8px;">
-              <p style="font-size: 18px; font-weight: bold; color: #800020; margin: 0; letter-spacing: 2px; font-family: monospace;">
-                ${waliHash}
-              </p>
-            </div>
-            
-            <p style="margin-top: 20px; font-size: 14px;">
-              <strong>How to login:</strong><br>
-              1. Open the HUZZ app<br>
-              2. Click "Log In" button<br>
-              3. Scroll down and click "Wali-hash login"<br>
-              4. Enter the hash above: <strong>${waliHash}</strong>
-            </p>
-            
-            <p style="margin-top: 20px;">
-              <strong>What is a Wali?</strong><br>
-              A Wali is a trusted guardian who can help oversee matches and conversations. 
-              You'll have access to a special Wali dashboard where you can view your ward's information 
-              and help guide them with their consent.
-            </p>
-          </div>
-          <div class="footer">
-            <p>This invitation was sent from HUZZ. If you didn't expect this email, you can ignore it.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    const emailText = `
-Hello ${waliName},
-
-${finalSenderName}${finalSenderEmail ? ` (${finalSenderEmail})` : ''} wants to add you as their Wali (Guardian) on HUZZ.
-
-${finalSenderEmail ? `This invitation was sent from: ${finalSenderEmail}\n` : ''}
-
-As a Wali, you can help oversee their matches and conversations with their consent.
-
-Download the app: ${appDownloadLink}
-
-LOGIN HASH: ${waliHash}
-
-How to login:
-1. Open the HUZZ app
-2. Click "Log In" button
-3. Scroll down and click "Wali-hash login"
-4. Enter the hash: ${waliHash}
-
-What is a Wali?
-A Wali is a trusted guardian who can help oversee matches and conversations. 
-You'll have access to a special Wali dashboard where you can view your ward's information 
-and help guide them with their consent.
-
-This invitation was sent from HUZZ. If you didn't expect this email, you can ignore it.
-    `;
-
-    // Use the Gmail account as sender
-    const smtpSenderEmail = 'noreplyonlystream@gmail.com';
-
-        const mailOptions = {
-          from: `HUZZ <${smtpSenderEmail}>`,
-      to: to,
-      subject: emailSubject,
-      text: emailText,
-      html: emailHtml,
-    };
-
-    await transporter.sendMail(mailOptions);
-    
-    console.log(`[sendWaliInvitation] Email sent successfully to ${to}`);
-    res.status(200).json({ success: true, message: 'Email sent successfully' });
-  } catch (error) {
-    console.error('[sendWaliInvitation] Error sending email:', error);
-    res.status(500).json({ error: error.message || 'Failed to send email' });
-  }
-});
 
 /**
  * Profile image NSFW moderation (NSFWJS) — Cloud Functions Gen1 storage trigger.
@@ -1273,6 +1105,135 @@ exports.translateChatMessage = functions.region('us-central1').https.onCall(asyn
   }
 });
 
+/** Mint LiveKit JWT — only participants in an active liveRandomSessions doc may join. */
+function getLiveKitServerConfig() {
+  const url = String(process.env.LIVEKIT_URL || process.env.EXPO_PUBLIC_LIVEKIT_URL || '').trim();
+  const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
+  return { url, apiKey, apiSecret };
+}
+
+exports.getLiveKitToken = functions
+  .runWith({ secrets: ['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'] })
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  const sessionId = typeof data?.sessionId === 'string' ? data.sessionId.trim() : '';
+  if (!sessionId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing sessionId.');
+  }
+  const uid = context.auth.uid;
+  const { url, apiKey, apiSecret } = getLiveKitServerConfig();
+  if (!url || !apiKey || !apiSecret) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'LiveKit is not configured. Set LIVEKIT_URL (or EXPO_PUBLIC_LIVEKIT_URL), LIVEKIT_API_KEY, LIVEKIT_API_SECRET.'
+    );
+  }
+
+  const snap = await db.collection('liveRandomSessions').doc(sessionId).get();
+  if (!snap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Session not found.');
+  }
+  const d = snap.data() || {};
+  const uids = Array.isArray(d.uids) ? d.uids.map(String) : [];
+  if (!uids.includes(uid)) {
+    throw new functions.https.HttpsError('permission-denied', 'Not part of this Live session.');
+  }
+  if (d.status !== 'active') {
+    throw new functions.https.HttpsError('failed-precondition', 'Session is not active.');
+  }
+
+  const roomName = `lr_${sessionId}`;
+  const at = new AccessToken(apiKey, apiSecret, {
+    identity: uid,
+    ttl: 15 * 60,
+    name: uid,
+  });
+  at.addGrant({
+    roomJoin: true,
+    room: roomName,
+    canPublish: true,
+    canSubscribe: true,
+  });
+  const token = await at.toJwt();
+  return { token, url, roomName };
+});
+
+exports.checkUsernameAvailable = functions.region('us-central1').https.onCall(async (data) => {
+  const username = String(data?.username || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, '');
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+    return { available: false, reason: 'invalid' };
+  }
+  const snap = await db.collection('usernames').doc(username).get();
+  return { available: !snap.exists };
+});
+
+exports.getClubLiveKitToken = functions
+  .runWith({ secrets: ['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'] })
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+    }
+    const clubId = typeof data?.clubId === 'string' ? data.clubId.trim() : '';
+    if (!clubId) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing clubId.');
+    }
+    const uid = context.auth.uid;
+    const { url, apiKey, apiSecret } = getLiveKitServerConfig();
+    if (!url || !apiKey || !apiSecret) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'LiveKit is not configured.'
+      );
+    }
+
+    const memberSnap = await db.collection('clubs').doc(clubId).collection('members').doc(uid).get();
+    if (!memberSnap.exists) {
+      throw new functions.https.HttpsError('permission-denied', 'Not a member of this club.');
+    }
+    const member = memberSnap.data() || {};
+    const clubSnap = await db.collection('clubs').doc(clubId).get();
+    if (!clubSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Club not found.');
+    }
+    const club = clubSnap.data() || {};
+    const role = String(member.role || 'member');
+    const micMode = String(club.micMode || 'request');
+
+    let canPublish = false;
+    if (role === 'owner' || role === 'admin') {
+      canPublish = true;
+    } else if (micMode === 'open') {
+      canPublish = true;
+    } else if (micMode === 'request' && member.canSpeak === true) {
+      canPublish = true;
+    } else if (micMode === 'admin_only') {
+      canPublish = false;
+    }
+
+    const roomName = `club_${clubId}`;
+    const at = new AccessToken(apiKey, apiSecret, {
+      identity: uid,
+      ttl: 60 * 60,
+      name: uid,
+    });
+    at.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish,
+      canSubscribe: true,
+    });
+    const token = await at.toJwt();
+    return { token, url, roomName, canPublish };
+  });
+
 exports.generateChatSuggestions = functions.region('us-central1').https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
@@ -1330,7 +1291,7 @@ exports.generateChatSuggestions = functions.region('us-central1').https.onCall(a
       .join('\n');
 
     const systemPrompt = [
-      'You write short, respectful dating-chat suggestions for a Muslim-focused app.',
+      'You write short, respectful social-chat suggestions for a connection-focused app.',
       'Never generate sexual, manipulative, deceptive, or coercive language.',
       'Keep suggestions warm, natural, and concise.',
       'Return strict JSON in the form {"suggestions":["...", "...", "..."]}.',
@@ -1706,12 +1667,20 @@ exports.finalizeSignupWithSession = functions.region('us-central1').https.onCall
   const sessionId = typeof data?.sessionId === 'string' ? data.sessionId.trim() : '';
   const password = typeof data?.password === 'string' ? data.password : '';
   const name = typeof data?.name === 'string' ? data.name.trim() : '';
+  const usernameRaw = typeof data?.username === 'string' ? data.username.trim() : '';
 
   if (!sessionId || sessionId.length < 64) {
     throw new functions.https.HttpsError('invalid-argument', 'Invalid session.');
   }
   if (!name || name.length < 1) {
     throw new functions.https.HttpsError('invalid-argument', 'Please enter your name.');
+  }
+  const username = String(usernameRaw || '').trim().toLowerCase().replace(/^@+/, '');
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Username must be 3–20 characters: letters, numbers, underscore only.'
+    );
   }
   if (password.length < 6) {
     throw new functions.https.HttpsError('invalid-argument', 'Password must be at least 6 characters.');
@@ -1747,25 +1716,35 @@ exports.finalizeSignupWithSession = functions.region('us-central1').https.onCall
 
   const uid = userRecord.uid;
 
-  await db.collection(COL.users).doc(uid).set({
-    id: uid,
-    email,
-    name,
-    age: null,
-    bio: '',
-    images: [],
-    interests: [],
-    location: '',
-    country: '',
-    countryOfResidence: '',
-    matchCountry: '',
-    categoryIntent: '',
-    emailVerified: false,
-    profileComplete: false,
-    approvalStatus: 'approved',
-    isDisabled: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  const usernameRef = db.collection('usernames').doc(username);
+  const existingUsername = await usernameRef.get();
+  if (existingUsername.exists) {
+    await admin.auth().deleteUser(uid);
+    throw new functions.https.HttpsError('already-exists', 'That username is taken. Try another.');
+  }
+
+  await db.runTransaction(async (tx) => {
+    tx.set(usernameRef, { uid, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    tx.set(db.collection(COL.users).doc(uid), {
+      id: uid,
+      email,
+      name,
+      username,
+      age: null,
+      bio: '',
+      images: [],
+      interests: [],
+      location: '',
+      country: '',
+      countryOfResidence: '',
+      matchCountry: '',
+      emailVerified: false,
+      profileComplete: false,
+      approvalStatus: 'approved',
+      isDisabled: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   });
 
   await sref.delete();
@@ -1971,4 +1950,112 @@ exports.finalizePasswordResetWithSession = functions.region('us-central1').https
 
   const customToken = await admin.auth().createCustomToken(userRecord.uid);
   return { customToken };
+});
+
+const ANDROID_PACKAGE = 'com.huzz.app';
+const PLAY_STORE_WEB_URL = `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
+
+async function sendExpoPushBatch(messages = []) {
+  if (!Array.isArray(messages) || !messages.length) return { ok: true, sent: 0 };
+  const res = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(messages),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Expo push failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  return { ok: true, sent: messages.length };
+}
+
+exports.broadcastAppUpdate = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin only.');
+  }
+
+  const title = String(data?.title || 'Update Huzz').trim() || 'Update Huzz';
+  const body = String(
+    data?.body || 'A new version is available. Update from the Play Store to keep using Huzz.'
+  ).trim();
+  const minVersion = String(data?.minVersion || '').trim();
+  const playStoreUrl = String(data?.playStoreUrl || PLAY_STORE_WEB_URL).trim() || PLAY_STORE_WEB_URL;
+  const alertId = `alert_${Date.now()}`;
+
+  await db.collection('appAlerts').doc('current').set({
+    active: true,
+    alertId,
+    title,
+    body,
+    minVersion: minVersion || null,
+    forceUpdate: true,
+    playStoreUrl,
+    androidPackage: ANDROID_PACKAGE,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdByUid: context.auth.uid,
+    pushSentCount: 0,
+  });
+
+  const usersSnap = await db.collection('users').get();
+  const tokens = [];
+  usersSnap.forEach((userDoc) => {
+    const token = String(userDoc.data()?.expoPushToken || '').trim();
+    if (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken[')) {
+      tokens.push(token);
+    }
+  });
+
+  let pushSent = 0;
+  for (let i = 0; i < tokens.length; i += 100) {
+    const chunk = tokens.slice(i, i + 100);
+    const messages = chunk.map((to) => ({
+      to,
+      sound: 'default',
+      title,
+      body,
+      priority: 'high',
+      data: {
+        type: 'app_update',
+        alertId,
+        playStoreUrl,
+      },
+    }));
+    await sendExpoPushBatch(messages);
+    pushSent += chunk.length;
+  }
+
+  await db.collection('appAlerts').doc('current').update({ pushSentCount: pushSent });
+
+  return {
+    alertId,
+    pushSent,
+    totalUsers: usersSnap.size,
+    tokensFound: tokens.length,
+  };
+});
+
+exports.clearAppUpdateAlert = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin only.');
+  }
+
+  await db.collection('appAlerts').doc('current').set(
+    {
+      active: false,
+      clearedAt: admin.firestore.FieldValue.serverTimestamp(),
+      clearedByUid: context.auth.uid,
+    },
+    { merge: true }
+  );
+
+  return { cleared: true };
 });

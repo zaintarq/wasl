@@ -8,7 +8,7 @@ const ANGRY_DISPLAY_MS = 1000;
 const EMERGE_FROM_SCALE = 0.34;
 
 /**
- * Banana mascot with the same tap animation as the welcome screen (emerge + angry art).
+ * Tap mascot: default couple art → angry “don’t touch” art (emerge + shake + auto-return).
  */
 export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
   const [mascotAngry, setMascotAngry] = useState(false);
@@ -98,8 +98,8 @@ export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
       onPress={handleMascotPress}
       haptic="light"
       accessibilityRole="imagebutton"
-      accessibilityLabel="Huzz banana mascot"
-      accessibilityHint="Tap to see a reaction"
+      accessibilityLabel="Huzz mascot"
+      accessibilityHint="Tap to see the angry reaction"
       style={[styles.pressable, compact && styles.pressableCompact]}
     >
       <Animated.View

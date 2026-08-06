@@ -1,22 +1,28 @@
 /**
- * Religion, gender, and who you want to match with must be set before the profile is usable.
- * Muslim: genderPreferences auto-filled to opposite sex; still stored as non-empty array.
+ * Discovery preferences live in Settings — not onboarding.
+ * Default discovery is men ↔ women when no custom prefs are set.
  */
-export function hasPreferencesComplete(profile) {
-  if (!profile || typeof profile !== 'object') return false;
-  const religion = String(profile.religion || '').trim();
-  if (!religion) return false;
-  const gender = String(profile.gender || '').trim();
-  if (!gender) return false;
-  const gp = Array.isArray(profile.genderPreferences) ? profile.genderPreferences : [];
-  if (gp.length === 0) return false;
+
+export function hasPreferencesComplete(_profile) {
   return true;
 }
 
-/**
- * Onboarding only for missing preferences (step 3). Photos / interests are completed from Profile.
- */
-export function getOnboardingInitialStep(profile) {
-  if (!hasPreferencesComplete(profile)) return 3;
+export function getOnboardingInitialStep(_profile) {
   return 2;
+}
+
+/** Effective "connect with" list; empty profile prefs → default from gender. */
+export function getEffectiveGenderPreferences(profile) {
+  const gp = Array.isArray(profile?.genderPreferences) ? profile.genderPreferences.filter(Boolean) : [];
+  if (gp.length > 0) return gp;
+
+  const g = String(profile?.gender || '').trim().toLowerCase();
+  if (g === 'male') return ['girls'];
+  if (g === 'female') return ['boys'];
+  return [];
+}
+
+export function usesStraightDefaultMatching(profile) {
+  const gp = Array.isArray(profile?.genderPreferences) ? profile.genderPreferences : [];
+  return gp.length === 0;
 }

@@ -4,7 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { tokens } from '../../ui/tokens';
-import { adminService, authService, deviceBanService, moderationNoticeService, userService, verificationService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { adminService, appUpdateService, authService, deviceBanService, moderationNoticeService, userService, verificationService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { PLAY_STORE_WEB_URL } from '../../config/appStore';
 import { exportService } from '../../services/exportService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Linking } from 'react-native';
@@ -12,6 +13,7 @@ import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
+import { AdminUserDirectory } from './AdminUserDirectory.native';
 
 const cardShadow =
   Platform.OS === 'ios'
@@ -28,6 +30,38 @@ function shortId(value) {
   if (!text) return '-';
   if (text.length <= 14) return text;
   return `${text.slice(0, 6)}...${text.slice(-4)}`;
+}
+
+function formatTimestamp(value) {
+  if (!value) return '—';
+  try {
+    const ms =
+      typeof value?.toMillis === 'function'
+        ? value.toMillis()
+        : typeof value === 'number'
+          ? value
+          : Date.parse(String(value));
+    if (!ms || Number.isNaN(ms)) return '—';
+    return new Date(ms).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function formatPhone(user) {
+  const last4 = String(user?.phoneLast4 || '').trim();
+  if (last4) return `•••• ${last4}`;
+  return 'Not on file';
+}
+
+function formatUserLocation(user) {
+  const city = String(user?.city || '').trim();
+  const country = String(user?.country || user?.countryOfResidence || '').trim();
+  if (city && country) return `${city}, ${country}`;
+  return city || country || user?.location || '';
 }
 
 function getPrimaryImage(user) {
@@ -59,7 +93,7 @@ export function AdminScreen({ onNavigate }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [reports, setReports] = useState([]);
   const [verifs, setVerifs] = useState([]);
-  const [tab, setTab] = useState('reports'); // 'reports' | 'safety' | 'verifications' | 'users' | 'vulgar'
+  const [tab, setTab] = useState('reports'); // 'reports' | 'safety' | 'verifications' | 'users' | 'vulgar' | 'update'
   const [vulgarAttempts, setVulgarAttempts] = useState([]);
   const [vulgarLoading, setVulgarLoading] = useState(false);
   const [usersById, setUsersById] = useState({});
@@ -94,6 +128,14 @@ export function AdminScreen({ onNavigate }) {
   const [createUserName, setCreateUserName] = useState('');
   const [createUserRole, setCreateUserRole] = useState('user'); // 'user' | 'staff'
   const [creatingUser, setCreatingUser] = useState(false);
+  const [updateAlertTitle, setUpdateAlertTitle] = useState('Update Huzz');
+  const [updateAlertBody, setUpdateAlertBody] = useState(
+    'A new version is available. Update from the Play Store to keep using Huzz.'
+  );
+  const [updateAlertMinVersion, setUpdateAlertMinVersion] = useState('');
+  const [currentUpdateAlert, setCurrentUpdateAlert] = useState(null);
+  const [broadcastingUpdate, setBroadcastingUpdate] = useState(false);
+  const [clearingUpdate, setClearingUpdate] = useState(false);
   const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
   const insets = useSafeAreaInsets();
   const safetyProfilesByUid = useMemo(
@@ -110,12 +152,16 @@ export function AdminScreen({ onNavigate }) {
     const userId = String(uid || '').trim();
     if (!userId) return null;
     const user = usersById[userId] || {};
-    const fallbackName = userId ? `User ${shortId(userId)}` : 'Unknown user';
+    const displayName = String(user.name || '').trim();
+    const fallbackName = displayName || (user.email ? String(user.email).split('@')[0] : `User ${shortId(userId)}`);
     return {
       uid: userId,
-      name: String(user.name || fallbackName),
+      name: fallbackName,
+      email: String(user.email || '').trim() || 'No email on file',
+      phone: formatPhone(user),
+      location: formatUserLocation(user),
       imageUrl: getPrimaryImage(user),
-      hasResolvedProfile: !!String(user.name || '').trim(),
+      hasResolvedProfile: !!(displayName || user.email),
     };
   };
 
@@ -127,6 +173,60 @@ export function AdminScreen({ onNavigate }) {
     } finally {
       setVulgarLoading(false);
     }
+  };
+
+  const handleBroadcastAppUpdate = () => {
+    Alert.alert(
+      'Send update alert?',
+      'Everyone using the app will get a push notification and a blocking screen until you clear this alert or they update.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send to all users',
+          style: 'destructive',
+          onPress: async () => {
+            setBroadcastingUpdate(true);
+            try {
+              const res = await appUpdateService.broadcastAppUpdate({
+                title: updateAlertTitle,
+                body: updateAlertBody,
+                minVersion: updateAlertMinVersion,
+              });
+              if (res?.error) {
+                Alert.alert('Failed', res.error);
+                return;
+              }
+              Alert.alert(
+                'Update alert sent',
+                `Push sent to ${res.pushSent || 0} devices (${res.tokensFound || 0} tokens found).`
+              );
+            } finally {
+              setBroadcastingUpdate(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearAppUpdate = () => {
+    Alert.alert('Clear update alert?', 'Users will be able to use the app again without updating.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear alert',
+        onPress: async () => {
+          setClearingUpdate(true);
+          try {
+            const res = await appUpdateService.clearAppUpdateAlert();
+            if (res?.error) {
+              Alert.alert('Failed', res.error);
+            }
+          } finally {
+            setClearingUpdate(false);
+          }
+        },
+      },
+    ]);
   };
 
   const loadSafetyProfiles = async () => {
@@ -416,6 +516,13 @@ export function AdminScreen({ onNavigate }) {
   }, []);
 
   useEffect(() => {
+    if (!isAdmin) return undefined;
+    return appUpdateService.listenCurrentAlert(({ data }) => {
+      setCurrentUpdateAlert(data || null);
+    });
+  }, [isAdmin]);
+
+  useEffect(() => {
     if (tab === 'safety' && safetyProfiles.length === 0 && !safetyLoading) {
       loadSafetyProfiles();
     }
@@ -458,6 +565,14 @@ export function AdminScreen({ onNavigate }) {
         vulgarList.forEach((attempt) => {
           if (attempt?.userId) userIds.add(String(attempt.userId));
           if (attempt?.matchId) matchIds.add(String(attempt.matchId));
+        });
+
+        (Array.isArray(verifs) ? verifs : []).forEach((v) => {
+          if (v?.uid) userIds.add(String(v.uid));
+        });
+
+        (Array.isArray(safetyProfiles) ? safetyProfiles : []).forEach((p) => {
+          if (p?.uid) userIds.add(String(p.uid));
         });
 
         const resolvedMessageAuthors = {};
@@ -517,7 +632,7 @@ export function AdminScreen({ onNavigate }) {
     return () => {
       cancelled = true;
     };
-  }, [reports, vulgarAttempts]);
+  }, [reports, vulgarAttempts, verifs, safetyProfiles]);
 
   const renderUserMiniCard = (label, user, { subtle = false } = {}) => {
     if (!user) return null;
@@ -535,7 +650,14 @@ export function AdminScreen({ onNavigate }) {
         )}
         <View style={styles.personTextWrap}>
           <Text style={styles.personName}>{user.name}</Text>
-          <Text style={styles.personMeta}>UID: {shortId(user.uid)}</Text>
+          <Text style={styles.personDetail} selectable>
+            {user.email}
+          </Text>
+          <Text style={styles.personDetail}>Phone: {user.phone}</Text>
+          {user.location ? <Text style={styles.personDetail}>{user.location}</Text> : null}
+          <Text style={styles.personMeta} selectable>
+            UID: {user.uid}
+          </Text>
         </View>
       </View>
     );
@@ -662,8 +784,104 @@ export function AdminScreen({ onNavigate }) {
             >
               <Text style={styles.tabText}>Chat safety</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabBtn, tab === 'update' ? styles.tabBtnOn : null]}
+              onPress={() => setTab('update')}
+            >
+              <Text style={styles.tabText}>App update</Text>
+            </TouchableOpacity>
           </View>
           </View>
+
+          {tab === 'update' && (
+            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+              <View style={styles.sectionHead}>
+                <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
+                  <Text style={styles.sectionEmoji}>📲</Text>
+                </View>
+                <View style={styles.sectionHeadText}>
+                  <Text style={styles.sectionTitle}>App update broadcast</Text>
+                  <Text style={styles.sectionHint}>
+                    Push an update alert to every user. They get a notification and a blocking screen with a Play Store button.
+                  </Text>
+                </View>
+              </View>
+
+              {currentUpdateAlert?.active ? (
+                <View style={styles.updateStatusBox}>
+                  <Text style={styles.updateStatusTitle}>Alert is LIVE</Text>
+                  <Text style={styles.updateStatusText}>
+                    {String(currentUpdateAlert.title || 'Update Huzz')}
+                  </Text>
+                  <Text style={styles.updateStatusMeta}>
+                    Sent to {currentUpdateAlert.pushSentCount ?? 0} devices ·{' '}
+                    {formatTimestamp(currentUpdateAlert.createdAt)}
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.updateStatusBox, styles.updateStatusIdle]}>
+                  <Text style={styles.updateStatusTitle}>No active alert</Text>
+                  <Text style={styles.updateStatusText}>Users can use the app normally.</Text>
+                </View>
+              )}
+
+              <Text style={styles.label}>Notification title</Text>
+              <TextInput
+                style={styles.input}
+                value={updateAlertTitle}
+                onChangeText={setUpdateAlertTitle}
+                placeholder="Update Huzz"
+              />
+
+              <Text style={styles.label}>Message</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={updateAlertBody}
+                onChangeText={setUpdateAlertBody}
+                placeholder="Tell users why they should update..."
+                multiline
+              />
+
+              <Text style={styles.label}>Minimum version (optional)</Text>
+              <TextInput
+                style={styles.input}
+                value={updateAlertMinVersion}
+                onChangeText={setUpdateAlertMinVersion}
+                placeholder="e.g. 1.0.2 — leave blank to alert everyone"
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.sectionHint}>
+                Play Store: {PLAY_STORE_WEB_URL}
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnEmerald, broadcastingUpdate && styles.actionBtnDisabled]}
+                onPress={handleBroadcastAppUpdate}
+                disabled={broadcastingUpdate}
+              >
+                {broadcastingUpdate ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.actionText}>Send update alert to all users</Text>
+                )}
+              </TouchableOpacity>
+
+              {currentUpdateAlert?.active ? (
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionBtnNeutral, clearingUpdate && styles.actionBtnDisabled]}
+                  onPress={handleClearAppUpdate}
+                  disabled={clearingUpdate}
+                >
+                  {clearingUpdate ? (
+                    <ActivityIndicator color="#0f172a" />
+                  ) : (
+                    <Text style={styles.actionTextDark}>Clear alert (stop blocking users)</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )}
 
           {tab === 'users' && (
             <View style={[styles.card, styles.sectionSky, styles.userManagementBox, cardShadow]}>
@@ -791,6 +1009,7 @@ export function AdminScreen({ onNavigate }) {
                   </View>
                 </View>
               )}
+              <AdminUserDirectory cardShadow={cardShadow} />
             </View>
           )}
 
@@ -1072,12 +1291,22 @@ export function AdminScreen({ onNavigate }) {
                     <Text style={styles.emptyText}>Safety profiles will appear here once events are recorded.</Text>
                   </View>
                 ) : (
-                  safetyProfiles.map((profile) => (
+                  safetyProfiles.map((profile) => {
+                    const safetyUser = getUserCardData(profile.uid);
+                    return (
                     <View key={profile.uid || profile.id} style={[styles.reportCard, cardShadow]}>
                       <View style={styles.safetyCardHeader}>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.reportTitle}>USER SAFETY</Text>
-                          <Text style={styles.safetyUserName}>{profile.userName || profile.uid || 'Unknown user'}</Text>
+                          <Text style={styles.safetyUserName}>
+                            {safetyUser?.name || profile.userName || profile.uid || 'Unknown user'}
+                          </Text>
+                          {safetyUser ? (
+                            <>
+                              <Text style={styles.reportMeta}>{safetyUser.email}</Text>
+                              <Text style={styles.reportMeta}>Phone: {safetyUser.phone}</Text>
+                            </>
+                          ) : null}
                           <Text style={styles.reportMeta}>UID: {profile.uid || '-'}</Text>
                         </View>
                         <View
@@ -1125,7 +1354,8 @@ export function AdminScreen({ onNavigate }) {
                         </TouchableOpacity>
                       </View>
                     </View>
-                  ))
+                    );
+                  })
                 )}
               </>
             )
@@ -1259,10 +1489,15 @@ export function AdminScreen({ onNavigate }) {
                 <Text style={styles.emptyText}>You’re all caught up.</Text>
               </View>
             ) : (
-              verifs.map((v) => (
+              verifs.map((v) => {
+                const verUser = getUserCardData(v.uid);
+                return (
                 <View key={v.id} style={[styles.reportCard, cardShadow]}>
                   <Text style={styles.reportTitle}>VERIFICATION</Text>
-                  <Text style={styles.reportMeta}>User: {v.uid}</Text>
+                  <Text style={styles.reportMeta}>Submitted: {formatTimestamp(v.createdAt)}</Text>
+                  {verUser ? renderUserMiniCard('User', verUser, { subtle: true }) : (
+                    <Text style={styles.reportMeta}>User UID: {v.uid || '—'}</Text>
+                  )}
                   <Text style={styles.reportMeta}>Language: {v.language || '-'}</Text>
                   <Text style={styles.reportMeta}>Status: {String(v.status || '').toUpperCase()}</Text>
                   {v.transcript ? <Text style={styles.details}>“{String(v.transcript).slice(0, 220)}”</Text> : null}
@@ -1333,7 +1568,8 @@ export function AdminScreen({ onNavigate }) {
                     </TouchableOpacity>
                   </View>
                 </View>
-              ))
+                );
+              })
             )
           ) : reports.length === 0 ? (
             <View style={[styles.card, styles.sectionRose, styles.emptyBox, cardShadow]}>
@@ -1371,6 +1607,7 @@ export function AdminScreen({ onNavigate }) {
                 <View style={styles.safetyCardHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.reportTitle}>{String(r.targetType || 'report').toUpperCase()}</Text>
+                    <Text style={styles.reportMeta}>Reported: {formatTimestamp(r.createdAt)}</Text>
                     <Text style={styles.reportMeta}>Reason: {r.reason || '-'}</Text>
                     <Text style={styles.reportMeta}>
                       Categories: {Array.isArray(r.categories) && r.categories.length ? r.categories.join(', ') : '-'}
@@ -1403,12 +1640,18 @@ export function AdminScreen({ onNavigate }) {
                     <View style={[styles.personRow, styles.personRowSubtle]}>
                       <Text style={styles.personLabel}>Match</Text>
                       <View style={styles.matchContextWrap}>
-                        <Text style={styles.personName}>
-                          {matchUsers.length
-                            ? matchUsers.map((user) => user.name).join(' + ')
-                            : shortId(r.matchId)}
-                        </Text>
-                        <Text style={styles.personMeta}>Match ID: {shortId(r.matchId)}</Text>
+                        {matchUsers.length ? (
+                          matchUsers.map((mu) => (
+                            <View key={mu.uid} style={{ marginBottom: 6 }}>
+                              <Text style={styles.personName}>{mu.name}</Text>
+                              <Text style={styles.personDetail}>{mu.email}</Text>
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={styles.personName}>Match participants loading…</Text>
+                        )}
+                        <Text style={styles.personMeta}>Match ID: {r.matchId}</Text>
+                        <Text style={styles.personMeta}>Report ID: {r.id}</Text>
                       </View>
                     </View>
                   ) : null}
@@ -1426,10 +1669,10 @@ export function AdminScreen({ onNavigate }) {
                 ) : null}
 
                 {r.autoFlagged ? <Text style={styles.badge}>AUTO-FLAGGED</Text> : null}
-                {r.details ? <Text style={styles.details}>“{String(r.details).slice(0, 240)}”</Text> : null}
+                {r.details ? <Text style={styles.details}>Message: “{String(r.details)}”</Text> : null}
                 <Text style={styles.timelineMeta}>
-                  Report ID: {shortId(r.id)}
-                  {resolvedTargetUid ? ` · Target UID: ${shortId(resolvedTargetUid)}` : ''}
+                  Opened {formatTimestamp(r.createdAt)}
+                  {r.status ? ` · Status: ${String(r.status).toUpperCase()}` : ''}
                 </Text>
 
                 <View style={styles.actions}>
@@ -1976,6 +2219,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: tokens.colors.text,
   },
+  personDetail: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.colors.textSecondary,
+    lineHeight: 18,
+  },
   personMeta: {
     marginTop: 2,
     fontSize: 12,
@@ -2388,6 +2638,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 12,
+  },
+  textArea: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+  },
+  updateStatusBox: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderEmerald,
+    borderRadius: tokens.radius.md,
+    padding: 12,
+    marginBottom: 14,
+  },
+  updateStatusIdle: {
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    borderColor: tokens.colors.border,
+  },
+  updateStatusTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: tokens.colors.text,
+    marginBottom: 4,
+  },
+  updateStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tokens.colors.textSecondary,
+    lineHeight: 20,
+  },
+  updateStatusMeta: {
+    fontSize: 12,
+    color: tokens.colors.textMuted,
+    marginTop: 6,
+  },
+  actionBtnDisabled: {
+    opacity: 0.6,
+  },
+  actionTextDark: {
+    fontWeight: '700',
+    color: tokens.colors.text,
+    fontSize: 13,
   },
 });
 

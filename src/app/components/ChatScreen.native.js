@@ -27,7 +27,6 @@ import {
   reportService,
   blockService,
   userService,
-  waliService,
   translationService,
   aiSuggestionService,
 } from '../../services/firebaseService';
@@ -251,7 +250,7 @@ function MessageBubbleRow({
   );
 }
 
-export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo = null }) {
+export function ChatScreen({ onNavigate, matchId }) {
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState(() => messageCache.get(matchId) || []);
   const [text, setText] = useState('');
@@ -369,6 +368,15 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
     return () => unsub && unsub();
   }, [matchId]);
 
+  // Legacy pending matches from older builds — open chat immediately without approval.
+  useEffect(() => {
+    if (!matchId || !meUid || String(match?.status || '') !== 'pending') return;
+    const parts = String(matchId).split('_');
+    const otherUid = parts.find((p) => p && p !== meUid) || null;
+    if (!otherUid) return;
+    matchService.createActiveMatch(meUid, otherUid, { initiatedBy: meUid }).catch(() => {});
+  }, [matchId, meUid, match?.status]);
+
   // Restore messages from cache when switching to this chat (instant load)
   useEffect(() => {
     if (!matchId) return;
@@ -378,10 +386,8 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
 
   useEffect(() => {
     if (!matchId) return;
-    // Gate messages until match is active.
-    if (String(match?.status || 'active') !== 'active') {
-      setLoading(false);
-      setMessages([]);
+    if (String(match?.status || 'active') === 'pending') {
+      setLoading(true);
       return;
     }
     const unsub = messageService.listenMessages(matchId, ({ data, error }) => {
@@ -434,10 +440,6 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
   const showAiStarterTools = useMemo(
     () => isActive && !loading && Array.isArray(messages) && messages.length === 0,
     [isActive, loading, messages]
-  );
-  const isReceiver = useMemo(
-    () => !!meUid && String(match?.requestedTo || '') === String(meUid),
-    [match?.requestedTo, meUid]
   );
 
   const otherUid = useMemo(() => {
@@ -736,9 +738,9 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
     return (
       <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
         <Text style={styles.title}>Chat</Text>
-        <Text style={styles.subtitle}>No match selected.</Text>
+        <Text style={styles.subtitle}>No chat selected.</Text>
         <HuzzPressable style={styles.headerBtn} onPress={() => onNavigate('matches')} haptic="light">
-          <Text style={styles.headerBtnText}>Back to matches</Text>
+          <Text style={styles.headerBtnText}>Back to chats</Text>
         </HuzzPressable>
       </View>
     );
@@ -754,11 +756,6 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
           <View style={{ flex: 1, alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={styles.title}>{otherUser?.name || 'Chat'}</Text>
-              {waliViewMode && waliInfo && (
-                <View style={styles.waliBadge}>
-                  <Text style={styles.waliBadgeText}>👁️ Wali</Text>
-                </View>
-              )}
             </View>
             <Text
               style={[
@@ -769,35 +766,28 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
               {(() => {
                 const p = getPresenceDisplay(otherUser?.lastSeen);
                 if (p) return p.label;
-                return otherUser?.categoryIntent || '';
+                return otherUser?.location || otherUser?.countryOfResidence || '';
               })()}
             </Text>
-            {waliViewMode && (
-              <Text style={[styles.subtitle, { color: tokens.colors.accent, marginTop: 2 }]}>
-                {waliInfo?.name || 'Wali'} is viewing
+            <HuzzPressable
+              style={styles.langChip}
+              onPress={() => {
+                setLangSearch('');
+                setLangModalOpen(true);
+              }}
+              haptic="light"
+            >
+              <Text style={styles.langChipText}>
+                🌐 Translate to: {getChatLanguageLabel(chatTranslateLang)}
               </Text>
-            )}
-            {!waliViewMode ? (
-              <HuzzPressable
-                style={styles.langChip}
-                onPress={() => {
-                  setLangSearch('');
-                  setLangModalOpen(true);
-                }}
-                haptic="light"
-              >
-                <Text style={styles.langChipText}>
-                  🌐 Translate to: {getChatLanguageLabel(chatTranslateLang)}
-                </Text>
-              </HuzzPressable>
-            ) : null}
+            </HuzzPressable>
           </View>
           <HuzzPressable
             style={styles.headerBtn}
             onPress={() => {
               Alert.alert('Options', 'What do you want to do?', [
                 {
-                  text: '📅 Plan Date',
+                  text: '📅 Plan Together',
                   onPress: () => {
                     onNavigate('datePlanning', { matchId });
                   },
@@ -846,33 +836,6 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
             <Text style={styles.headerBtnText}>⋯</Text>
           </HuzzPressable>
         </View>
-
-        <View style={{ flex: 1, minHeight: 0 }}>
-        {!isActive ? (
-          <View style={styles.pendingBox}>
-            <Text style={styles.pendingTitle}>Match pending</Text>
-            <Text style={styles.pendingText}>
-              {isReceiver ? 'Approve this match to start chatting.' : 'Waiting for the other person to approve.'}
-            </Text>
-            {isReceiver ? (
-              <HuzzPressable
-                style={styles.approveBtn}
-                onPress={async () => {
-                  const uid = authService.getCurrentUser()?.uid;
-                  if (!uid) return;
-                  const { error } = await matchService.approveMatch(matchId, uid);
-                  if (!error) {
-                    const res = await matchService.getMatchById(matchId);
-                    setMatch(res?.data || null);
-                  }
-                }}
-                haptic="medium"
-              >
-                <Text style={styles.approveText}>Approve match</Text>
-              </HuzzPressable>
-            ) : null}
-          </View>
-        ) : null}
 
         <View style={{ flex: 1, minHeight: 0 }}>
         <FlatList
@@ -1238,7 +1201,6 @@ export function ChatScreen({ onNavigate, matchId, waliViewMode = false, waliInfo
             </View>
           </View>
         </Modal>
-        </View>
       </KeyboardAwareLayout>
     </SafeAreaView>
   );
@@ -1718,17 +1680,6 @@ const styles = StyleSheet.create({
   },
   dateModeTitle: { ...tokens.typography.label, color: tokens.colors.accent },
   dateModeTimer: { ...tokens.typography.bodySmall, color: tokens.colors.text },
-  waliBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: tokens.radius.xs,
-    backgroundColor: tokens.colors.accent,
-  },
-  waliBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
   continueBtn: {
     alignSelf: 'flex-start',
     paddingVertical: 10,

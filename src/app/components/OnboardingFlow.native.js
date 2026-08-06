@@ -25,15 +25,7 @@ import { COUNTRIES } from '../../utils/countries';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { RetroInput } from '../../ui/components/RetroInput.native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
-import Constants from 'expo-constants';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Crypto from 'expo-crypto';
-import { hasPreferencesComplete, getOnboardingInitialStep } from '../../utils/profilePreferences';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
-
-WebBrowser.maybeCompleteAuthSession();
 
 const WRONG_PASSWORD_IMG = require('../../../assets/images/wrong-password.png');
 /** Same stop-touching art as Home header press (transparent BG — not .bak) */
@@ -43,13 +35,7 @@ const WELCOME_BG = ['#F8FAFC', '#EFF6FF', '#DBEAFE'];
 const WELCOME_BG_LOCATIONS = [0, 0.45, 1];
 const WELCOME_BG_FALLBACK = '#EFF6FF';
 
-/** Titles match Welcome / step 2 — Kaushan + soft blue card */
-const ONBOARDING_STEP_COPY = {
-  3: {
-    title: 'Set your preferences',
-    subtitle: 'Then you can browse profiles — add a photo in Profile to swipe',
-  },
-};
+/** Step 2 only — auth (email / OTP / password). Match prefs → Settings. */
 
 export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initialStepProp }) {
   const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
@@ -58,11 +44,10 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameHint, setUsernameHint] = useState('');
   const [countryOfResidence, setCountryOfResidence] = useState('');
   const [city, setCity] = useState('');
-  const [gender, setGender] = useState(''); // 'Male', 'Female', 'Other'
-  const [religion, setReligion] = useState(''); // 'Muslim', 'Non-Muslim', or other
-  const [genderPreferences, setGenderPreferences] = useState([]); // ['boys'], ['girls'], or ['boys', 'girls']
   const [isLogin, setIsLogin] = useState(false);
   /** Step 2 substeps: email → otp (signup only) → password */
   const [authSubStep, setAuthSubStep] = useState('email');
@@ -74,7 +59,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
   const [loading, setLoading] = useState(false);
   const [countryModalOpen, setCountryModalOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
-  const [manualLocationOpen, setManualLocationOpen] = useState(false);
   const mountedRef = useRef(true);
   const authInFlightRef = useRef(false);
   /** Same pattern as Home: two opacity values + parallel timing (readable crossfade) */
@@ -86,32 +70,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
   const [showWrongPasswordScreen, setShowWrongPasswordScreen] = useState(false);
   /** Mirrors Home `headerLogoVariant`: wrong → stop-touching (same 220ms + shake + auto-return) */
   const [wrongPwLogoVariant, setWrongPwLogoVariant] = useState('wrong'); // 'wrong' | 'stopTouching'
-
-  const googleAuthCfg = Constants?.expoConfig?.extra?.googleAuth || Constants?.manifest?.extra?.googleAuth || {};
-  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
-    expoClientId: googleAuthCfg.expoClientId,
-    iosClientId: googleAuthCfg.iosClientId,
-    androidClientId: googleAuthCfg.androidClientId,
-    webClientId: googleAuthCfg.webClientId,
-    scopes: ['profile', 'email'],
-    prompt: 'select_account',
-  });
-
-  const [appleAvailable, setAppleAvailable] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const ok = Platform.OS === 'ios' ? await AppleAuthentication.isAvailableAsync() : false;
-        if (!cancelled) setAppleAvailable(!!ok);
-      } catch {
-        if (!cancelled) setAppleAvailable(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -193,87 +151,23 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
     }, 1100);
   }, [wrongPwLogoVariant]);
 
-  // Welcome / navigation: mode + optional initialStep (3–6 = resume after auth, skip login card)
+  // Welcome / navigation: mode only (auth step)
   useEffect(() => {
     setIsLogin(mode === 'login');
     setLoading(false);
     authInFlightRef.current = false;
-    const resumeStep =
-      typeof initialStepProp === 'number' && initialStepProp === 3 ? 3 : 2;
-    setStep(resumeStep);
-    if (resumeStep === 2) {
-      setEmail('');
-      setPassword('');
-      setName('');
-      setShowPassword(false);
-      setAuthSubStep('email');
-      setSignupSessionId('');
-      setOtpCode('');
-      setForgotPasswordActive(false);
-      setResetSessionId('');
-      setShowWrongPasswordScreen(false);
-    }
+    setStep(2);
+    setEmail('');
+    setPassword('');
+    setName('');
+    setShowPassword(false);
+    setAuthSubStep('email');
+    setSignupSessionId('');
+    setOtpCode('');
+    setForgotPasswordActive(false);
+    setResetSessionId('');
+    setShowWrongPasswordScreen(false);
   }, [mode, initialStepProp]);
-
-  // Prefill profile when opening at step 3 (returning user)
-  useEffect(() => {
-    if (initialStepProp !== 3) return;
-    const uid = authService.getCurrentUser()?.uid;
-    if (!uid) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await userService.getUserById(uid);
-        const p = res?.data;
-        if (!p || cancelled) return;
-        if (p.name) setName(String(p.name));
-        if (p.gender) setGender(String(p.gender));
-        if (p.religion) setReligion(String(p.religion));
-        if (Array.isArray(p.genderPreferences)) setGenderPreferences(p.genderPreferences);
-        if (p.countryOfResidence) setCountryOfResidence(String(p.countryOfResidence));
-        if (p.city) setCity(String(p.city));
-      } catch (e) {
-        console.warn('[OnboardingFlow] Prefill profile:', e?.message || e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialStepProp]);
-
-  // Auto-redirect admins/staff/wali when on preferences step (after auth)
-  useEffect(() => {
-    if (step === 3) {
-      const checkRoleAndRedirect = async () => {
-        try {
-          const user = authService.getCurrentUser();
-          if (user?.uid) {
-            // Check role from admin collection FIRST
-            const roleCheck = await checkUserRoleFromAdminCollection(user.uid);
-            if (roleCheck.isAdmin) {
-              onNavigate('admin');
-              return;
-            } else if (roleCheck.isStaff) {
-              onNavigate('staff');
-              return;
-            }
-            
-            // Check if wali (still in users collection)
-            const profileRes = await userService.getUserById(user.uid);
-            const profile = profileRes?.data || {};
-            const waliRole = String(profile?.role || '').toLowerCase().trim();
-            if (waliRole === 'wali') {
-              onNavigate('wali');
-              return;
-            }
-          }
-        } catch (e) {
-          console.warn('[OnboardingFlow] Role check error:', e);
-        }
-      };
-      checkRoleAndRedirect();
-    }
-  }, [step]);
 
   const withTimeout = async (promise, ms = 20000) => {
     let t;
@@ -330,13 +224,10 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
         if (res.country) setCountryOfResidence(res.country);
         if (res.city) setCity(res.city);
       } else {
-        // Don't log permission denied - it's expected if user hasn't granted permission
         const updateResult = await userService.updateMyLocation(u.uid, { locationPermission: res.permission });
         if (updateResult.error && !updateResult.error.includes('permission') && !updateResult.error.includes('not authenticated')) {
           console.error('[OnboardingFlow] Location permission update error:', updateResult.error);
         }
-        // Manual fallback UI if denied.
-        setManualLocationOpen(true);
       }
     } catch (err) {
       console.error('[OnboardingFlow] Location sync error:', err);
@@ -346,11 +237,8 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
 
   const handleAuth = async (authType) => {
     if (authType === 'email') {
-      setStep(2); // Go to email login/signup
+      setStep(2);
       setIsLogin(false);
-    } else {
-      // Other auth methods (Google, Apple, Phone) - implement later
-      Alert.alert('Coming Soon', 'This authentication method will be available soon!');
     }
   };
 
@@ -490,22 +378,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
       return;
     }
 
-    const profileRes = await userService.getUserById(user.uid);
-    const profile = profileRes?.data || {};
-    const waliRole = String(profile?.role || '').toLowerCase().trim();
-    if (waliRole === 'wali') {
-      onNavigate('wali');
-      return;
-    }
-
     await authService.refreshCurrentUser();
-    const profileRes2 = await userService.getUserById(user.uid);
-    const p2 = profileRes2?.data || {};
-    if (!hasPreferencesComplete(p2)) {
-      const initialStep = getOnboardingInitialStep(p2);
-      onNavigate('onboarding', { mode: 'login', initialStep });
-      return;
-    }
     onNavigate('home');
   };
 
@@ -604,10 +477,24 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
     setAuthSubStep('name');
   };
 
-  /** Sign up: name step → create account (after OTP + password). */
+  /** Sign up: name step → username step. */
   const handleSignupNameSubmit = async () => {
     if (!String(name || '').trim()) {
       Alert.alert('Error', 'Please enter your name');
+      return;
+    }
+    setAuthSubStep('username');
+  };
+
+  /** Sign up: username step → create account. */
+  const handleSignupUsernameSubmit = async () => {
+    const uname = String(username || '').trim();
+    if (!uname) {
+      Alert.alert('Error', 'Please pick a username');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(uname)) {
+      Alert.alert('Error', 'Username must be 3–20 characters: letters, numbers, underscore only.');
       return;
     }
     if (!signupSessionId) {
@@ -618,10 +505,20 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
     authInFlightRef.current = true;
     setLoading(true);
     try {
+      const avail = await authService.checkUsernameAvailable(uname);
+      if (avail.error) {
+        Alert.alert('Could not check username', avail.error);
+        return;
+      }
+      if (!avail.available) {
+        Alert.alert('Username taken', 'Try a different username.');
+        return;
+      }
       const { error, verificationEmailSent } = await authService.finalizeSignupWithSession(
         signupSessionId,
         password,
-        name.trim()
+        name.trim(),
+        uname
       );
       if (error) {
         Alert.alert('Sign Up Failed', error);
@@ -631,17 +528,17 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
       Alert.alert(
         'Success',
         verificationEmailSent
-          ? 'Account created! Next, set your preferences.'
-          : 'Account created! Next, set your preferences.'
+          ? 'Account created! Check your email to verify, then start browsing.'
+          : 'Account created! You can start browsing.'
       );
-      setStep(3);
+      await routeAfterEmailAuthSuccess();
     } catch (error) {
       console.warn('Signup finalize error:', error?.message || error);
       if (isTimeoutError(error)) {
         const maybeUser = authService.getCurrentUser();
         if (maybeUser) {
-          Alert.alert('Success', 'Account created! Now add your photos.');
-          setStep(3);
+          Alert.alert('Success', 'Account created!');
+          await routeAfterEmailAuthSuccess();
           return;
         }
       }
@@ -659,117 +556,9 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
     if (authSubStep === 'email') return handleAuthEmailContinue();
     if (authSubStep === 'otp') return handleAuthOtpVerify();
     if (authSubStep === 'name') return handleSignupNameSubmit();
+    if (authSubStep === 'username') return handleSignupUsernameSubmit();
     return handleAuthPasswordSubmit();
   };
-
-  const finishSocialAuth = async (user) => {
-    try {
-      if (!user?.uid) return;
-      syncLocationAfterAuth();
-      const res = await userService.getUserById(user.uid);
-      const p = res?.data || null;
-      if (hasPreferencesComplete(p || {})) {
-        onNavigate('home');
-        return;
-      }
-      setStep(getOnboardingInitialStep(p || {}));
-    } catch {
-      onNavigate('home');
-    }
-  };
-
-  useEffect(() => {
-    (async () => {
-      if (googleResponse?.type !== 'success') return;
-      if (authInFlightRef.current) return;
-      authInFlightRef.current = true;
-      setLoading(true);
-      try {
-        const idToken = googleResponse?.authentication?.idToken || googleResponse?.params?.id_token;
-        const accessToken = googleResponse?.authentication?.accessToken || googleResponse?.params?.access_token;
-        const { user, error } = await authService.signInWithGoogle({ idToken, accessToken });
-        if (error) Alert.alert('Google sign-in failed', error);
-        else await finishSocialAuth(user);
-      } finally {
-        authInFlightRef.current = false;
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleResponse]);
-
-  const handleAppleSignIn = async () => {
-    if (!appleAvailable) return;
-    if (authInFlightRef.current) return;
-    authInFlightRef.current = true;
-    setLoading(true);
-    try {
-      const rawNonce = Crypto.randomUUID();
-      const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
-      const res = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: hashedNonce,
-      });
-      const { user, error } = await authService.signInWithApple({
-        identityToken: res.identityToken,
-        rawNonce,
-        fullName: res.fullName,
-      });
-      if (error) Alert.alert('Apple sign-in failed', error);
-      else await finishSocialAuth(user);
-    } catch (e) {
-      Alert.alert('Apple sign-in failed', e?.message || 'Failed to sign in with Apple.');
-    } finally {
-      authInFlightRef.current = false;
-      setLoading(false);
-    }
-  };
-
-  const nextStep = async () => {
-    if (step !== 3) return;
-
-    if (!religion) {
-      Alert.alert('Required', 'Please select your religion.');
-      return;
-    }
-    if (!gender) {
-      Alert.alert('Required', 'Please select your gender.');
-      return;
-    }
-    if (religion !== 'Muslim' && genderPreferences.length === 0) {
-      Alert.alert('Required', 'Please select at least one preference.');
-      return;
-    }
-    const user = authService.getCurrentUser();
-    if (!user?.uid) {
-      Alert.alert('Required', 'Sign in first to save your preferences.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const { error: saveErr } = await userService.updateUser(user.uid, {
-        gender: String(gender || '').trim(),
-        religion: String(religion || '').trim(),
-        genderPreferences: Array.isArray(genderPreferences) ? genderPreferences : [],
-        genderPreferencesSet: true,
-      });
-      if (saveErr) {
-        Alert.alert('Could not save', saveErr);
-        return;
-      }
-      await authService.refreshCurrentUser();
-      onNavigate('home');
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  };
-
-  // Steps: 2 = auth, 3 = preferences → home (photos & rest of profile from Profile tab)
-  const FLOW_LAST_STEP = 3;
-  const progress = ((Math.min(step, FLOW_LAST_STEP) - 2) / (FLOW_LAST_STEP - 2)) * 100;
 
   const kFont = fontsLoaded ? { fontFamily: 'KaushanScript_400Regular' } : { fontWeight: '700' };
 
@@ -777,19 +566,9 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
     <View style={{ flex: 1, backgroundColor: WELCOME_BG_FALLBACK }}>
       <LinearGradient colors={WELCOME_BG} locations={WELCOME_BG_LOCATIONS} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={[styles.container, styles.containerOnGradient]} edges={['top', 'bottom']}>
-        {step !== 2 && (
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: `${progress}%` }]} />
-          </View>
-        )}
-
         <HuzzKeyboardAwareScrollView
           style={styles.scrollView}
-          contentContainerStyle={[
-            styles.scrollContent,
-            step === 2 && styles.scrollContentStep2,
-            step !== 2 && styles.scrollContentOnboard,
-          ]}
+          contentContainerStyle={[styles.scrollContent, styles.scrollContentStep2]}
         >
           {/* Step 2: matches Welcome — mascot, Huzz, light blue, Kaushan, back */}
           {step === 2 && (
@@ -909,6 +688,10 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                         return;
                       }
                     }
+                    if (authSubStep === 'username') {
+                      setAuthSubStep('name');
+                      return;
+                    }
                     if (authSubStep === 'name') {
                       setAuthSubStep('password');
                       return;
@@ -966,6 +749,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                 {!forgotPasswordActive && authSubStep === 'otp' && 'Check your email'}
                 {!forgotPasswordActive && authSubStep === 'password' && (isLogin ? 'Welcome back' : 'Almost there')}
                 {authSubStep === 'name' && 'What’s your name?'}
+                {authSubStep === 'username' && 'Pick a username'}
               </Text>
               <Text style={[styles.step2ScreenSub, kFont, { fontSize: 17 }]}>
                 {forgotPasswordActive && authSubStep === 'email' &&
@@ -985,6 +769,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                   authSubStep === 'password' &&
                   (isLogin ? 'Enter your password' : 'Create a secure password for your account')}
                 {authSubStep === 'name' && 'This is how you’ll appear on Huzz'}
+                {authSubStep === 'username' && 'Unique handle for clubs and adding friends — letters, numbers, underscore'}
               </Text>
 
               <View style={styles.step2Card}>
@@ -1071,6 +856,26 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                       />
                     </>
                   )}
+
+                  {authSubStep === 'username' && !isLogin && (
+                    <>
+                      <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Username</Text>
+                      <RetroInput
+                        placeholder="e.g. zain_huzz"
+                        value={username}
+                        onChangeText={(t) => {
+                          setUsername(t.replace(/\s/g, ''));
+                          setUsernameHint('');
+                        }}
+                        style={styles.step2Input}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {usernameHint ? (
+                        <Text style={[styles.step2Hint, kFont]}>{usernameHint}</Text>
+                      ) : null}
+                    </>
+                  )}
                 </View>
               </View>
 
@@ -1087,7 +892,9 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                         : authSubStep === 'otp'
                           ? 'Verify'
                           : authSubStep === 'name'
-                            ? 'Sign Up'
+                            ? 'Continue'
+                            : authSubStep === 'username'
+                              ? 'Sign Up'
                             : forgotPasswordActive
                               ? 'Update password'
                               : isLogin
@@ -1105,6 +912,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                       setEmail('');
                       setPassword('');
                       setName('');
+                      setUsername('');
                       setOtpCode('');
                       setSignupSessionId('');
                       setAuthSubStep('email');
@@ -1119,173 +927,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
             )
           )}
 
-          {step !== 2 && (
-        <View style={styles.step2Outer}>
-          <View style={styles.step2Header}>
-            <HuzzPressable
-              onPress={() => {
-                if (step === 3) setStep(2);
-              }}
-              style={styles.step2BackHit}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <ArrowLeft size={26} color={tokens.colors.text} strokeWidth={2.25} />
-            </HuzzPressable>
-          </View>
-
-          <WelcomeMascotBlock maxWidth={200} />
-
-          <View style={styles.step2BrandBlock}>
-            <Text style={[styles.step2Huzz, fontsLoaded && { fontFamily: 'KaushanScript_400Regular' }]}>Huzz</Text>
-            <View style={styles.step2UnderlineTrack}>
-              <LinearGradient
-                colors={['#1D4ED8', '#2563EB', '#3B82F6']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={StyleSheet.absoluteFill}
-              />
-            </View>
-          </View>
-
-          {step === 3 && (
-            <>
-              <Text style={[styles.step2ScreenTitle, kFont, { fontSize: 28, marginBottom: 6 }]}>
-                {ONBOARDING_STEP_COPY[3].title}
-              </Text>
-              <Text style={[styles.step2ScreenSub, kFont, { fontSize: 17 }]}>
-                {ONBOARDING_STEP_COPY[3].subtitle}
-              </Text>
-            </>
-          )}
-
-          <View style={styles.step2Card}>
-          {/* Step 3: Gender/Religion/Sexuality Preferences */}
-          {step === 3 && (
-            <View style={styles.stepContainer}>
-              <View style={styles.form}>
-                {/* Religion Selection */}
-                <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Religion *</Text>
-                <View style={styles.radioGroup}>
-                  <TouchableOpacity
-                    style={[styles.radioOption, religion === 'Muslim' && styles.radioOptionSelected]}
-                    onPress={() => {
-                      setReligion('Muslim');
-                      // Auto-set gender preferences to opposite sex only for Muslims
-                      if (gender === 'Male') {
-                        setGenderPreferences(['girls']);
-                      } else if (gender === 'Female') {
-                        setGenderPreferences(['boys']);
-                      }
-                    }}
-                  >
-                    <Text style={[styles.radioText, religion === 'Muslim' && styles.radioTextSelected]}>Muslim</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.radioOption, religion === 'Non-Muslim' && styles.radioOptionSelected]}
-                    onPress={() => setReligion('Non-Muslim')}
-                  >
-                    <Text style={[styles.radioText, religion === 'Non-Muslim' && styles.radioTextSelected]}>Non-Muslim</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Gender Selection */}
-                <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Gender *</Text>
-                <View style={styles.radioGroup}>
-                  <TouchableOpacity
-                    style={[styles.radioOption, gender === 'Male' && styles.radioOptionSelected]}
-                    onPress={() => {
-                      setGender('Male');
-                      // Auto-update preferences for Muslims
-                      if (religion === 'Muslim') {
-                        setGenderPreferences(['girls']);
-                      }
-                    }}
-                  >
-                    <Text style={[styles.radioText, gender === 'Male' && styles.radioTextSelected]}>Male</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.radioOption, gender === 'Female' && styles.radioOptionSelected]}
-                    onPress={() => {
-                      setGender('Female');
-                      // Auto-update preferences for Muslims
-                      if (religion === 'Muslim') {
-                        setGenderPreferences(['boys']);
-                      }
-                    }}
-                  >
-                    <Text style={[styles.radioText, gender === 'Female' && styles.radioTextSelected]}>Female</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.radioOption, gender === 'Other' && styles.radioOptionSelected]}
-                    onPress={() => setGender('Other')}
-                  >
-                    <Text style={[styles.radioText, gender === 'Other' && styles.radioTextSelected]}>Other</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Gender Preferences */}
-                {religion === 'Muslim' ? (
-                  <View>
-                    <View style={styles.islamicNote}>
-                      <Text style={styles.islamicNoteTitle}>Islamic Guidance</Text>
-                      <Text style={styles.islamicNoteText}>
-                        "And of His signs is that He created for you from yourselves mates that you may find tranquility in them; and He placed between you affection and mercy." (Quran 30:21)
-                      </Text>
-                      <Text style={styles.islamicNoteText}>
-                        In accordance with Islamic teachings, Muslims are matched with the opposite gender only.
-                      </Text>
-                    </View>
-                    <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Interested in (auto-set for Muslims)</Text>
-                    <View style={styles.preferencesGroup}>
-                      <View style={[styles.preferenceOption, styles.preferenceOptionSelected]}>
-                        <Text style={styles.preferenceTextSelected}>
-                          {gender === 'Male' ? 'Girls' : gender === 'Female' ? 'Boys' : 'Opposite Gender'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                ) : (
-                  <View>
-                    <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Interested in *</Text>
-                    <View style={styles.preferencesGroup}>
-                      <TouchableOpacity
-                        style={[styles.preferenceOption, genderPreferences.includes('boys') && styles.preferenceOptionSelected]}
-                        onPress={() => {
-                          if (genderPreferences.includes('boys')) {
-                            setGenderPreferences(genderPreferences.filter(p => p !== 'boys'));
-                          } else {
-                            setGenderPreferences([...genderPreferences, 'boys']);
-                          }
-                        }}
-                      >
-                        <Text style={[styles.preferenceText, genderPreferences.includes('boys') && styles.preferenceTextSelected]}>Boys</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.preferenceOption, genderPreferences.includes('girls') && styles.preferenceOptionSelected]}
-                        onPress={() => {
-                          if (genderPreferences.includes('girls')) {
-                            setGenderPreferences(genderPreferences.filter(p => p !== 'girls'));
-                          } else {
-                            setGenderPreferences([...genderPreferences, 'girls']);
-                          }
-                        }}
-                      >
-                        <Text style={[styles.preferenceText, genderPreferences.includes('girls') && styles.preferenceTextSelected]}>Girls</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {genderPreferences.length === 0 && (
-                      <Text style={[styles.hintText, kFont]}>Please select at least one preference</Text>
-                    )}
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
-          </View>
-        </View>
-          )}
       </HuzzKeyboardAwareScrollView>
 
       {/* Country dropdown modal */}
@@ -1325,63 +966,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
         </View>
       </Modal>
 
-      {/* Manual location fallback modal (only if permission denied) */}
-      <Modal visible={manualLocationOpen} animationType="slide" transparent onRequestClose={() => setManualLocationOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Set your location</Text>
-            <Text style={{ fontWeight: 'bold', color: '#000000', marginBottom: 10 }}>
-              Enable location for nearby matches. If you can’t, enter your city + country.
-            </Text>
-
-            <Text style={styles.label}>City</Text>
-            <RetroInput placeholder="City" value={city} onChangeText={setCity} />
-
-            <Text style={styles.label}>Country</Text>
-            <TouchableOpacity style={[styles.input, styles.dropdownButton]} onPress={() => setCountryModalOpen(true)}>
-              <Text style={styles.dropdownText}>{countryOfResidence ? countryOfResidence : 'Select country'}</Text>
-            </TouchableOpacity>
-
-            <View style={styles.buttonList}>
-              <RetroButton
-                variant="blue"
-                title="Save"
-                onPress={async () => {
-                  try {
-                    const u = authService.getCurrentUser();
-                    if (!u?.uid) return;
-                    await userService.updateMyLocation(u.uid, {
-                      country: countryOfResidence,
-                      city,
-                      locationPermission: 'denied',
-                    });
-                    setManualLocationOpen(false);
-                  } catch (e) {
-                    Alert.alert('Error', e?.message || 'Failed to save.');
-                  }
-                }}
-              />
-              <RetroButton variant="gray" title="Not now" onPress={() => setManualLocationOpen(false)} />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Next — same Retro primary as sign-up step */}
-      {step !== 2 && (
-        <View style={styles.footer}>
-          <RetroButton
-            variant="primary"
-            onPress={nextStep}
-            disabled={loading}
-            title={
-              loading ? 'Saving...' : 'Discover people'
-            }
-            style={[styles.step2BtnShape, styles.step2PrimaryShadow]}
-            textStyle={[styles.step2BtnLabel, kFont, { fontSize: 19 }]}
-          />
-        </View>
-      )}
+      {/* Manual location entry removed — location permission is required app-wide */}
     </SafeAreaView>
     </View>
   );
@@ -1539,6 +1124,12 @@ const styles = StyleSheet.create({
   step2Label: {
     marginBottom: 6,
     color: '#0f172a',
+  },
+  step2Hint: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 6,
+    marginBottom: 4,
   },
   step2Input: {
     borderRadius: 14,

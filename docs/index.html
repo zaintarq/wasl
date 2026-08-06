@@ -2,12 +2,154 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="refresh" content="0; url=privacy.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Huzz</title>
+  <title>Huzz — Connect freely</title>
+  <meta name="description" content="Huzz is a mobile social app for discovery, chat, clubs, and live voice spaces. Connect freely with real people." />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #0a0a0a;
+      --card: #141414;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59, 130, 246, 0.15);
+      --border: #262626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--text);
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, #1e3a5f 0%, var(--bg) 55%);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 20px 64px;
+    }
+    .logo {
+      font-size: 2.5rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      margin: 0 0 8px;
+    }
+    .tagline {
+      font-size: 1.25rem;
+      color: var(--muted);
+      margin: 0 0 32px;
+      font-weight: 500;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+      font-weight: 800;
+    }
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .features {
+      display: grid;
+      gap: 12px;
+      margin: 28px 0;
+    }
+    .feature {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      background: var(--accent-soft);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 14px;
+      font-size: 0.92rem;
+      color: var(--text);
+    }
+    .feature strong { color: var(--accent); min-width: 72px; }
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    a.btn {
+      display: inline-block;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    a.btn:hover { opacity: 0.88; }
+    a.btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    a.btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    footer {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); }
+  </style>
 </head>
 <body>
-  <p><a href="privacy.html">Huzz Privacy Policy</a></p>
-  <p><a href="child-safety.html">Huzz Child Safety Standards</a></p>
+  <main>
+    <h1 class="logo">Huzz</h1>
+    <p class="tagline">Connect freely with real people.</p>
+
+    <div class="card">
+      <h2>What is Huzz?</h2>
+      <p>
+        Huzz is a mobile social app for discovery, mutual connections, private chats,
+        voice clubs, and live sessions. Browse profiles, connect when interest is mutual,
+        and join club spaces to chat and hang out with your community.
+      </p>
+    </div>
+
+    <div class="features">
+      <div class="feature"><strong>Discover</strong> Browse and connect with people near you</div>
+      <div class="feature"><strong>Chats</strong> Message after a mutual connection</div>
+      <div class="feature"><strong>Clubs</strong> Join public or private spaces with voice chat</div>
+      <div class="feature"><strong>Live</strong> Short random live sessions when you want spontaneity</div>
+    </div>
+
+    <div class="card">
+      <h2>Download</h2>
+      <p>
+        Android app package: <code style="color:var(--accent)">com.huzz.app</code>.
+        Available on Google Play when published.
+      </p>
+    </div>
+
+    <div class="links">
+      <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=com.huzz.app">Google Play</a>
+      <a class="btn btn-outline" href="privacy.html">Privacy Policy</a>
+      <a class="btn btn-outline" href="child-safety.html">Child Safety</a>
+    </div>
+
+    <footer>
+      <p>Support: <a href="mailto:support@huzz.com">support@huzz.com</a></p>
+      <p>© Huzz · Last updated July 2026</p>
+    </footer>
+  </main>
 </body>
 </html>

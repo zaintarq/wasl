@@ -1,11 +1,19 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Timer, MessageCircle, Shuffle } from 'lucide-react-native';
+import { Timer, MessageCircle, Shuffle, Video } from 'lucide-react-native';
 import { tokens } from '../../tokens';
 import { LiveContentWidth } from './LiveContentWidth.native';
 import { LiveText } from './LiveTypography.native';
 
 const ITEMS = [
+  {
+    key: 'v',
+    Icon: Video,
+    title: 'Live video',
+    caption: 'Face-to-face',
+    circleBg: tokens.colors.filterBgViolet,
+    iconColor: '#7c3aed',
+  },
   {
     key: 't',
     Icon: Timer,
@@ -62,10 +70,13 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   cell: {
-    flex: 1,
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '46%',
     backgroundColor: tokens.colors.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,

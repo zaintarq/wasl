@@ -39,7 +39,6 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { sendExpoPushAsync } from './pushService';
 import { scanMessageText } from './moderationService';
-import { sendWaliInvitationEmail, generateWaliSignupLink, getAppDownloadLink } from './emailService';
 import { sha256 } from '../utils/hash.native';
 // Import new services
 import { activityService } from './activityService';
@@ -62,13 +61,14 @@ const COL = {
   safetyEvents: 'safetyEvents',
   userSafetyProfiles: 'userSafetyProfiles',
   bannedDevices: 'bannedDevices',
-  wingmanRooms: 'wingmanRooms',
-  spinRooms: 'spinRooms',
   liveRandomPool: 'liveRandomPool',
   liveRandomSessions: 'liveRandomSessions',
   verifications: 'verifications',
   admin: 'admin', // Separate collection for admins and staff
   vulgarAttempts: 'vulgarAttempts',
+  appAlerts: 'appAlerts',
+  clubs: 'clubs',
+  usernames: 'usernames',
 };
 
 function userNotificationsCol(uid) {
@@ -152,7 +152,6 @@ export const authService = {
         country: userData.country || userData.countryOfResidence || '',
         countryOfResidence: userData.countryOfResidence || '',
         matchCountry: userData.matchCountry || userData.country || userData.countryOfResidence || '',
-        categoryIntent: userData.categoryIntent || '',
         emailVerified: userData.emailVerified !== undefined ? !!userData.emailVerified : !!user.emailVerified,
         profileComplete: userData.profileComplete !== undefined ? !!userData.profileComplete : false, // New users start with false
         // role is NOT stored in users collection - it's only in the admin collection
@@ -231,7 +230,7 @@ export const authService = {
   /**
    * Completes signup after OTP verified (server creates user + returns custom token).
    */
-  async finalizeSignupWithSession(sessionId, password, name) {
+  async finalizeSignupWithSession(sessionId, password, name, username) {
     try {
       const functions = getFunctions(app, 'us-central1');
       const fn = httpsCallable(functions, 'finalizeSignupWithSession');
@@ -239,6 +238,7 @@ export const authService = {
         sessionId: String(sessionId || '').trim(),
         password: String(password || ''),
         name: String(name || '').trim(),
+        username: String(username || '').trim(),
       });
       const customToken = res?.data?.customToken;
       const verificationEmailSent = !!res?.data?.verificationEmailSent;
@@ -248,6 +248,17 @@ export const authService = {
     } catch (error) {
       console.warn('finalizeSignupWithSession', error?.code, error?.message);
       return { user: null, error: this._callableErrorMessage(error), verificationEmailSent: false };
+    }
+  },
+
+  async checkUsernameAvailable(username) {
+    try {
+      const functions = getFunctions(app, 'us-central1');
+      const fn = httpsCallable(functions, 'checkUsernameAvailable');
+      const res = await fn({ username: String(username || '').trim() });
+      return { available: !!res?.data?.available, error: null };
+    } catch (error) {
+      return { available: false, error: this._callableErrorMessage(error) };
     }
   },
 
@@ -503,7 +514,7 @@ export const userService = {
       let qRef = query(collection(db, COL.users), orderBy('createdAt', 'desc'));
       if (filters.limit) qRef = query(qRef, limit(filters.limit));
       const snap = await getDocs(qRef);
-      const users = snap.docs.map(d => d.data());
+      const users = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       return { data: users, error: null };
     } catch (error) {
       console.error('Get users error:', error);
@@ -607,138 +618,6 @@ export const userService = {
       return { error: error.message };
     }
   },
-
-  // Send wali invitation email
-  async sendWaliInvitation(userId, { waliName, waliEmail, userName, waliHash, senderEmail, senderName }) {
-    try {
-      const appDownloadLink = getAppDownloadLink();
-      const { error } = await sendWaliInvitationEmail({
-        waliEmail,
-        waliName,
-        userName,
-        appDownloadLink,
-        waliHash,
-        senderEmail, // Sender's email for recognition
-        senderName,  // Sender's name for recognition
-      });
-      return { error };
-    } catch (error) {
-      console.error('Send wali invitation error:', error);
-      return { error: error.message || 'Failed to send invitation' };
-    }
-  },
-
-  // Login wali using hash
-  async loginWaliWithHash(hash) {
-    try {
-      const hashUpper = String(hash || '').trim().toUpperCase();
-      if (!hashUpper || hashUpper.length < 24) {
-        return { user: null, error: 'Invalid hash format (must be 32 characters)' };
-      }
-
-      // Search for user with this wali hash
-      // Note: This query requires unauthenticated access, which is allowed by Firestore rules
-      // for wali authentication purposes
-      const qRef = query(
-        collection(db, COL.users),
-        where('wali.hash', '==', hashUpper),
-        limit(1) // Only need one result
-      );
-      let snap;
-      try {
-        snap = await getDocs(qRef);
-      } catch (queryError) {
-        console.error('[WaliLogin] Query error:', queryError);
-        // If query fails, it might be a permissions or index issue
-        if (queryError.code === 'permission-denied' || queryError.code === 'unauthenticated') {
-          return { user: null, error: 'Unable to verify hash. Please check your connection and try again.' };
-        }
-        throw queryError;
-      }
-
-      if (snap.empty) {
-        return { user: null, error: 'Invalid hash. Please check and try again.' };
-      }
-
-      const userDoc = snap.docs[0];
-      const userData = userDoc.data();
-      const userId = userDoc.id;
-      const waliEmail = userData.wali?.email;
-      const waliName = userData.wali?.name || 'Wali';
-
-      if (!waliEmail) {
-        return { user: null, error: 'Wali email not found' };
-      }
-
-      // Create or get wali Firebase Auth user
-      // Use a special email format: wali-{hash}@huzz.local
-      const waliAuthEmail = `wali-${hashUpper.toLowerCase()}@huzz.local`;
-      // Generate a deterministic password from hash
-      const waliPassword = `wali_${hashUpper}_${userId.substring(0, 8)}`;
-
-      let authUser;
-      try {
-        // Try to sign in first (if wali account already exists)
-        try {
-          const cred = await signInWithEmailAndPassword(auth, waliAuthEmail, waliPassword);
-          authUser = cred.user;
-        } catch (signInError) {
-          // If sign in fails, create new account
-          if (signInError.code === 'auth/user-not-found' || signInError.code === 'auth/wrong-password') {
-            const cred = await createUserWithEmailAndPassword(auth, waliAuthEmail, waliPassword);
-            authUser = cred.user;
-            
-            // Create wali user document
-            await setDoc(doc(db, COL.users, authUser.uid), {
-              id: authUser.uid,
-              email: waliEmail, // Store actual wali email
-              emailHash: await sha256(waliEmail),
-              name: waliName,
-              role: 'wali',
-              waliHash: hashUpper,
-              userId: userId, // The user who added this wali
-              profileComplete: true,
-              isDisabled: false,
-              waliRemoved: false, // Track if wali has been removed
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-          } else {
-            throw signInError;
-          }
-        }
-      } catch (authError) {
-        console.error('Wali auth error:', authError);
-        return { user: null, error: authError.message || 'Failed to authenticate wali' };
-      }
-
-      // Update wali user document if it exists
-      const waliUserDocRef = doc(db, COL.users, authUser.uid);
-      const waliUserDoc = await getDoc(waliUserDocRef);
-      if (waliUserDoc.exists()) {
-        const waliUserData = waliUserDoc.data();
-        // Check if wali has been removed
-        if (waliUserData.waliRemoved === true) {
-          return { user: null, error: 'This wali access has been revoked. Please contact the user who added you.' };
-        }
-        await updateDoc(waliUserDocRef, {
-          lastLoginAt: serverTimestamp(),
-        });
-      }
-
-      return {
-        user: authUser,
-        error: null,
-        waliInfo: {
-          waliName,
-          userId, // The user who added them
-        },
-      };
-    } catch (error) {
-      console.error('Login wali with hash error:', error);
-      return { user: null, error: error.message || 'Failed to login with hash' };
-    }
-  },
 };
 
 /**
@@ -798,6 +677,89 @@ export const matchService = {
     }
   },
 
+  // Immediate chat thread — no approval step (Msg button, mutual like, legacy pending upgrade).
+  async createActiveMatch(uidA, uidB, { source = 'discovery', initiatedBy = null } = {}) {
+    try {
+      const a = String(uidA || '').trim();
+      const b = String(uidB || '').trim();
+      if (!a || !b) return { matchId: null, status: null, error: 'Missing uids.' };
+      const matchId = getMatchId(a, b);
+      const ref = doc(db, COL.matches, matchId);
+      const snap = await getDoc(ref);
+      const sorted = [a, b].sort();
+      const initiator = String(initiatedBy || a);
+
+      if (snap.exists()) {
+        const data = snap.data() || {};
+        if (String(data.status || '') === 'active') {
+          return { matchId, status: 'active', error: null };
+        }
+        await updateDoc(ref, {
+          status: 'active',
+          uids: sorted,
+          approvedBy: initiator,
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        return { matchId, status: 'active', error: null };
+      }
+
+      await setDoc(ref, {
+        id: matchId,
+        uids: sorted,
+        status: 'active',
+        requestedBy: initiator,
+        requestedTo: sorted.find((u) => u !== initiator) || b,
+        approvedBy: initiator,
+        approvedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        lastMessageAt: null,
+        source: String(source || 'discovery'),
+      });
+      return { matchId, status: 'active', error: null };
+    } catch (error) {
+      console.error('Create active match error:', error);
+      return { matchId: null, status: null, error: error.message };
+    }
+  },
+
+  async startDirectMessage(fromUid, toUid) {
+    try {
+      const from = String(fromUid || '').trim();
+      const to = String(toUid || '').trim();
+      if (!from || !to) return { matchId: null, error: 'Missing user.' };
+
+      let senderName = 'Someone';
+      try {
+        const senderSnap = await getDoc(doc(db, COL.users, from));
+        if (senderSnap.exists()) {
+          senderName = String(senderSnap.data()?.name || 'Someone');
+        }
+      } catch {}
+
+      const { matchId, error } = await this.createActiveMatch(from, to, {
+        source: 'direct_message',
+        initiatedBy: from,
+      });
+      if (error || !matchId) return { matchId: null, error: error || 'Could not start chat.' };
+
+      try {
+        await notificationService.createNotification(to, {
+          type: 'message_new',
+          fromUid: from,
+          matchId: String(matchId),
+          title: 'New message',
+          body: `${senderName} wants to chat. Open Matches to reply.`,
+          status: 'unread',
+        });
+      } catch {}
+
+      return { matchId, error: null };
+    } catch (error) {
+      return { matchId: null, error: error?.message || String(error) };
+    }
+  },
+
   async approveMatch(matchId, approverUid) {
     try {
       const ref = doc(db, COL.matches, String(matchId));
@@ -836,45 +798,6 @@ export const matchService = {
       return { error: null };
     } catch (error) {
       return { error: error.message };
-    }
-  },
-
-  // Create an immediate active match with a time box (used for Spin-the-Bottle).
-  async createTimedMatch(uidA, uidB, { durationSec = 60, source = 'spin', roomCode = null } = {}) {
-    try {
-      const a = String(uidA || '').trim();
-      const b = String(uidB || '').trim();
-      if (!a || !b) return { matchId: null, error: 'Missing uids.' };
-      const matchId = getMatchId(a, b);
-      const ref = doc(db, COL.matches, matchId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        return { matchId, error: null };
-      }
-      const expiresAt = new Date(Date.now() + Math.max(10, Number(durationSec || 60)) * 1000);
-      await setDoc(ref, {
-        id: matchId,
-        uids: [a, b].sort(),
-        status: 'active',
-        requestedBy: a,
-        requestedTo: b,
-        approvedBy: 'system',
-        approvedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        lastMessageAt: null,
-        // time-box
-        dateModeEnabled: true,
-        dateModeStartedAt: serverTimestamp(),
-        dateModeExpiresAt: expiresAt,
-        dateModeUnlocked: false,
-        dateModeContinue: {},
-        // context
-        source: String(source || 'spin'),
-        sourceRoomCode: roomCode ? String(roomCode) : null,
-      });
-      return { matchId, error: null };
-    } catch (e) {
-      return { matchId: null, error: e?.message || String(e) };
     }
   },
 
@@ -986,154 +909,6 @@ export const matchService = {
       return { error: null };
     } catch (error) {
       return { error: error?.message || String(error) };
-    }
-  },
-};
-
-/**
- * Spin-the-Bottle rooms
- */
-export const spinService = {
-  _roomRef(code) {
-    return doc(db, COL.spinRooms, String(code));
-  },
-
-  _genCode() {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let s = '';
-    for (let i = 0; i < 6; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
-    return s;
-  },
-
-  async createRoom(ownerUid, { city = '', maxSize = 6 } = {}) {
-    try {
-      const uid = String(ownerUid || '').trim();
-      if (!uid) return { code: null, error: 'Missing uid.' };
-      const c = String(city || '').trim();
-      const max = Math.max(3, Math.min(6, Number(maxSize || 6)));
-
-      for (let i = 0; i < 6; i++) {
-        const code = this._genCode();
-        const ref = this._roomRef(code);
-        const existing = await getDoc(ref);
-        if (existing.exists()) continue;
-        await setDoc(ref, {
-          code,
-          ownerUid: uid,
-          city: c || null,
-          status: 'open', // open|paired|closed
-          maxSize: max,
-          participants: [uid],
-          currentPair: null, // { a, b, matchId, expiresAt }
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        return { code, error: null };
-      }
-      return { code: null, error: 'Failed to create room.' };
-    } catch (e) {
-      return { code: null, error: e?.message || String(e) };
-    }
-  },
-
-  async joinRoom(code, uid) {
-    try {
-      const c = String(code || '').trim().toUpperCase();
-      const u = String(uid || '').trim();
-      if (!c) return { error: 'Missing code.' };
-      if (!u) return { error: 'Missing uid.' };
-      await runTransaction(db, async (tx) => {
-        const ref = this._roomRef(c);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) throw new Error('Room not found.');
-        const r = snap.data() || {};
-        const list = Array.isArray(r.participants) ? r.participants.map(String) : [];
-        const max = Math.max(3, Math.min(6, Number(r.maxSize || 6)));
-        if (list.includes(u)) return;
-        if (list.length >= max) throw new Error('Room is full.');
-        tx.update(ref, { participants: [...list, u], updatedAt: serverTimestamp() });
-      });
-      return { error: null };
-    } catch (e) {
-      return { error: e?.message || String(e) };
-    }
-  },
-
-  listenRoom(code, callback) {
-    const c = String(code || '').trim().toUpperCase();
-    const ref = this._roomRef(c);
-    return onSnapshot(
-      ref,
-      (snap) => callback({ data: snap.exists() ? snap.data() : null, error: null }),
-      (error) => callback({ data: null, error: error.message })
-    );
-  },
-
-  async spin(code, callerUid) {
-    try {
-      const c = String(code || '').trim().toUpperCase();
-      const caller = String(callerUid || '').trim();
-      if (!c || !caller) return { matchId: null, error: 'Missing.' };
-
-      let chosen = null;
-      await runTransaction(db, async (tx) => {
-        const ref = this._roomRef(c);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) throw new Error('Room not found.');
-        const r = snap.data() || {};
-        if (String(r.ownerUid || '') !== caller) throw new Error('Only host can spin.');
-        const list = Array.isArray(r.participants) ? r.participants.map(String) : [];
-        if (list.length < 3) throw new Error('Need at least 3 people.');
-
-        // Pick two random distinct participants.
-        const a = list[Math.floor(Math.random() * list.length)];
-        let b = a;
-        for (let tries = 0; tries < 10 && b === a; tries++) b = list[Math.floor(Math.random() * list.length)];
-        if (a === b) throw new Error('Try again.');
-        chosen = { a, b };
-      });
-
-      if (!chosen) return { matchId: null, error: 'Spin failed.' };
-
-      const { matchId, error } = await matchService.createTimedMatch(chosen.a, chosen.b, {
-        durationSec: 60,
-        source: 'spin',
-        roomCode: c,
-      });
-      if (error) return { matchId: null, error };
-
-      const expiresAt = new Date(Date.now() + 60 * 1000);
-      await updateDoc(this._roomRef(c), {
-        status: 'paired',
-        currentPair: { a: chosen.a, b: chosen.b, matchId, expiresAt },
-        updatedAt: serverTimestamp(),
-      });
-
-      // Notify both users
-      try {
-        await notificationService.createNotification(String(chosen.a), {
-          type: 'spin_pair',
-          fromUid: String(caller),
-          matchId,
-          title: 'Spin match!',
-          body: 'You got paired for a 60s chat. Tap to join.',
-          status: 'unread',
-        });
-      } catch {}
-      try {
-        await notificationService.createNotification(String(chosen.b), {
-          type: 'spin_pair',
-          fromUid: String(caller),
-          matchId,
-          title: 'Spin match!',
-          body: 'You got paired for a 60s chat. Tap to join.',
-          status: 'unread',
-        });
-      } catch {}
-
-      return { matchId, error: null };
-    } catch (e) {
-      return { matchId: null, error: e?.message || String(e) };
     }
   },
 };
@@ -1276,65 +1051,64 @@ export const likeService = {
         const reciprocal = await getDoc(this._likesReceivedRef(from, to));
         if (reciprocal.exists() && reciprocal.data()?.action === 'like') {
           isMutual = true;
-          console.log(`[LikeService] ✅ Mutual like detected! Creating pending match...`);
-          
-          // Create pending match (best-effort)
+          console.log(`[LikeService] ✅ Mutual like detected! Creating active match...`);
+
           try {
-            const matchResult = await matchService.createPendingMatch(to, from);
-            const mid =
-              matchResult?.matchId || getMatchId(from, to);
-            // Mutual like: notify approver (requestedTo = from) + first liker (to) — same as approve flow
+            const matchResult = await matchService.createActiveMatch(from, to, {
+              source: 'mutual_like',
+              initiatedBy: from,
+            });
+            const mid = matchResult?.matchId || getMatchId(from, to);
             try {
-              // fromUid must be request.auth.uid (liker = from) per Firestore rules
               await notificationService.createNotification(from, {
-                type: 'match_pending',
+                type: 'match_mutual',
                 fromUid: from,
                 matchId: mid,
-                title: 'New match request',
-                body: `You and ${receiverName} liked each other. Open Matches to approve and chat.`,
+                title: "It's a match!",
+                body: `You and ${receiverName} liked each other. Open Matches to chat.`,
                 status: 'unread',
               });
               await notificationService.createNotification(to, {
                 type: 'match_mutual',
                 fromUid: from,
                 matchId: mid,
-                title: "It's mutual!",
-                body: `${senderName} liked you back. Open Matches to continue.`,
+                title: "It's a match!",
+                body: `${senderName} liked you back. Open Matches to chat.`,
                 status: 'unread',
               });
             } catch (mutualNotifErr) {
               console.warn('[LikeService] Mutual notification (non-critical):', mutualNotifErr);
             }
             if (matchResult?.error) {
-              console.error('[LikeService] Failed to create pending match:', matchResult.error);
-              return { matched: true, matchId: null, status: 'pending', error: matchResult.error };
+              console.error('[LikeService] Failed to create active match:', matchResult.error);
+              return { matched: true, matchId: null, status: 'active', error: matchResult.error };
             }
             matchId = matchResult?.matchId || null;
-            matchStatus = matchResult?.status || 'pending';
-            console.log(`[LikeService] Pending match created: ${matchId}`);
+            matchStatus = matchResult?.status || 'active';
+            console.log(`[LikeService] Active match created: ${matchId}`);
             return { matched: true, matchId, status: matchStatus, error: null };
           } catch (matchError) {
             console.error('[LikeService] Match creation exception:', matchError);
             const mid = getMatchId(from, to);
             try {
               await notificationService.createNotification(from, {
-                type: 'match_pending',
+                type: 'match_mutual',
                 fromUid: from,
                 matchId: mid,
-                title: 'New match request',
-                body: `You and ${receiverName} liked each other. Open Matches to approve and chat.`,
+                title: "It's a match!",
+                body: `You and ${receiverName} liked each other. Open Matches to chat.`,
                 status: 'unread',
               });
               await notificationService.createNotification(to, {
                 type: 'match_mutual',
                 fromUid: from,
                 matchId: mid,
-                title: "It's mutual!",
-                body: `${senderName} liked you back. Open Matches to continue.`,
+                title: "It's a match!",
+                body: `${senderName} liked you back. Open Matches to chat.`,
                 status: 'unread',
               });
             } catch (_) {}
-            return { matched: true, matchId: null, status: 'pending', error: matchError?.message || String(matchError) };
+            return { matched: true, matchId: null, status: 'active', error: matchError?.message || String(matchError) };
           }
         } else {
           console.log(`[LikeService] Not mutual yet (reciprocal exists: ${reciprocal.exists()}, action: ${reciprocal.data()?.action})`);
@@ -1344,48 +1118,20 @@ export const likeService = {
         // Continue - we'll send notification anyway
       }
 
-      // Not mutual yet - create a match request so the other person can see it and approve/reject
+      // Not mutual yet — like only; chat unlocks when they like back or either person taps Msg.
       if (!isMutual) {
         try {
-          console.log(`[LikeService] Creating match request: ${from} -> ${to}...`);
-          const matchResult = await matchService.createPendingMatch(from, to);
-          const mid = matchResult?.matchId || getMatchId(from, to);
-          if (matchResult?.error) {
-            console.warn('[LikeService] Match request creation error (non-critical):', matchResult.error);
-          } else {
-            console.log(`[LikeService] ✅ Match request created: ${matchResult?.matchId}`);
-          }
-          // Always notify the person who was liked (even if match doc write failed) so they can open Matches
-          try {
-            const notifResult = await notificationService.createNotification(to, {
-              type: 'match_request',
-              fromUid: from,
-              matchId: mid,
-              title: 'New like!',
-              body: `${senderName} liked you. Open Matches to review and respond.`,
-              status: 'unread',
-            });
-            if (notifResult?.error) {
-              console.warn('[LikeService] Notification creation error (non-critical):', notifResult.error);
-            } else {
-              console.log('[LikeService] ✅ Like notification sent to recipient');
-            }
-          } catch (notifError) {
-            console.warn('[LikeService] Notification exception (non-critical):', notifError);
-          }
-        } catch (requestError) {
-          console.warn('[LikeService] Match request exception (non-critical):', requestError);
-          const mid = getMatchId(from, to);
-          try {
-            await notificationService.createNotification(to, {
-              type: 'match_request',
-              fromUid: from,
-              matchId: mid,
-              title: 'New like!',
-              body: `${senderName} liked you. Open Matches to review and respond.`,
-              status: 'unread',
-            });
-          } catch (_) {}
+          await notificationService.createNotification(to, {
+            type: 'like_received',
+            fromUid: from,
+            matchId: null,
+            title: 'New like!',
+            body: `${senderName} liked you. Like them back to match and chat.`,
+            status: 'unread',
+          });
+          console.log('[LikeService] ✅ Like notification sent to recipient');
+        } catch (notifError) {
+          console.warn('[LikeService] Like notification (non-critical):', notifError);
         }
       }
       console.log('✅ Like recorded successfully (not mutual yet)');
@@ -1906,110 +1652,7 @@ export const translationService = {
   translateChatMessage,
 };
 
-/**
- * Wingman (co-op swipe) rooms
- */
-export const wingmanService = {
-  _roomRef(code) {
-    return doc(db, COL.wingmanRooms, String(code));
-  },
-
-  _genCode() {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let s = '';
-    for (let i = 0; i < 6; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
-    return s;
-  },
-
-  async createRoom(ownerUid) {
-    try {
-      const uid = String(ownerUid || '').trim();
-      if (!uid) return { code: null, error: 'Missing uid.' };
-
-      // Best-effort ensure uniqueness (few tries)
-      for (let i = 0; i < 6; i++) {
-        const code = this._genCode();
-        const ref = this._roomRef(code);
-        const existing = await getDoc(ref);
-        if (existing.exists()) continue;
-        await setDoc(ref, {
-          code,
-          ownerUid: uid,
-          memberUid: null,
-          status: 'open', // open|active|closed
-          createdAt: serverTimestamp(),
-          currentCard: null,
-          memberVote: null, // 'pass'|'like'|'super'
-          updatedAt: serverTimestamp(),
-        });
-        return { code, error: null };
-      }
-      return { code: null, error: 'Failed to create room. Try again.' };
-    } catch (e) {
-      return { code: null, error: e?.message || String(e) };
-    }
-  },
-
-  async joinRoom(code, memberUid) {
-    try {
-      const c = String(code || '').trim().toUpperCase();
-      const uid = String(memberUid || '').trim();
-      if (!c) return { error: 'Missing code.' };
-      if (!uid) return { error: 'Missing uid.' };
-      await runTransaction(db, async (tx) => {
-        const ref = this._roomRef(c);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) throw new Error('Room not found.');
-        const r = snap.data() || {};
-        if (r.memberUid && String(r.memberUid) !== uid) throw new Error('Room already has a wingman.');
-        tx.update(ref, { memberUid: uid, status: 'active', updatedAt: serverTimestamp() });
-      });
-      return { error: null };
-    } catch (e) {
-      return { error: e?.message || String(e) };
-    }
-  },
-
-  listenRoom(code, callback) {
-    const c = String(code || '').trim().toUpperCase();
-    const ref = this._roomRef(c);
-    return onSnapshot(
-      ref,
-      (snap) => callback({ data: snap.exists() ? snap.data() : null, error: null }),
-      (error) => callback({ data: null, error: error.message })
-    );
-  },
-
-  async updateCurrentCard(code, ownerUid, card) {
-    try {
-      const c = String(code || '').trim().toUpperCase();
-      const uid = String(ownerUid || '').trim();
-      if (!c || !uid) return { error: 'Missing.' };
-      await updateDoc(this._roomRef(c), {
-        currentCard: card || null,
-        memberVote: null,
-        updatedAt: serverTimestamp(),
-      });
-      return { error: null };
-    } catch (e) {
-      return { error: e?.message || String(e) };
-    }
-  },
-
-  async setMemberVote(code, memberUid, vote) {
-    try {
-      const c = String(code || '').trim().toUpperCase();
-      const uid = String(memberUid || '').trim();
-      if (!c || !uid) return { error: 'Missing.' };
-      await updateDoc(this._roomRef(c), { memberVote: String(vote || ''), updatedAt: serverTimestamp() });
-      return { error: null };
-    } catch (e) {
-      return { error: e?.message || String(e) };
-    }
-  },
-};
-
-/** Omegle-style random 1-minute live sessions (text chat; video UI placeholder). */
+/** Omegle-style random 1-minute live sessions (Firestore matchmaking + text; LiveKit for A/V). */
 export const liveRandomService = {
   POOL_DOC_ID: 'current',
   SESSION_MS: 60 * 1000,
@@ -2162,6 +1805,31 @@ export const liveRandomService = {
       return { error: null };
     } catch (e) {
       return { error: e?.message || String(e) };
+    }
+  },
+
+  /** Server-minted JWT for LiveKit (requires deployed `getLiveKitToken` + secrets). */
+  async fetchLiveKitToken(sessionId) {
+    const sid = String(sessionId || '').trim();
+    if (!sid) return { token: null, url: null, roomName: null, error: 'Missing session.' };
+    try {
+      const functions = getFunctions(app, 'us-central1');
+      const fn = httpsCallable(functions, 'getLiveKitToken');
+      const result = await fn({ sessionId: sid });
+      const d = result.data || {};
+      return {
+        token: d.token || null,
+        url: d.url || null,
+        roomName: d.roomName || null,
+        error: null,
+      };
+    } catch (e) {
+      return {
+        token: null,
+        url: null,
+        roomName: null,
+        error: authService._callableErrorMessage(e),
+      };
     }
   },
 };
@@ -2444,6 +2112,50 @@ export const deviceBanService = {
       return { error: null };
     } catch (e) {
       return { error: e?.message || String(e) };
+    }
+  },
+};
+
+/**
+ * App-wide update alerts (admin broadcast → blocking gate + push).
+ */
+export const appUpdateService = {
+  listenCurrentAlert(callback) {
+    const ref = doc(db, COL.appAlerts, 'current');
+    return onSnapshot(
+      ref,
+      (snap) => {
+        callback({ data: snap.exists() ? snap.data() : null, error: null });
+      },
+      (error) => {
+        callback({ data: null, error: error?.message || String(error) });
+      }
+    );
+  },
+
+  async broadcastAppUpdate({ title, body, minVersion } = {}) {
+    try {
+      const functions = getFunctions(app, 'us-central1');
+      const fn = httpsCallable(functions, 'broadcastAppUpdate');
+      const result = await fn({
+        title: String(title || '').trim(),
+        body: String(body || '').trim(),
+        minVersion: String(minVersion || '').trim(),
+      });
+      return { ...(result?.data || {}), error: null };
+    } catch (error) {
+      return { error: error?.message || String(error) };
+    }
+  },
+
+  async clearAppUpdateAlert() {
+    try {
+      const functions = getFunctions(app, 'us-central1');
+      const fn = httpsCallable(functions, 'clearAppUpdateAlert');
+      const result = await fn({});
+      return { ...(result?.data || {}), error: null };
+    } catch (error) {
+      return { error: error?.message || String(error) };
     }
   },
 };
@@ -2893,11 +2605,22 @@ export const contactBlockService = {
  * Stores all contacts for a user in ONE organized document
  */
 export const contactUploadService = {
+  async getContactsForUser(uid) {
+    try {
+      if (!uid) return { data: null, error: 'Missing user id.' };
+      const snap = await getDoc(doc(db, 'contact-upload', String(uid)));
+      return { data: snap.exists() ? { id: snap.id, ...snap.data() } : null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || String(error) };
+    }
+  },
+
   async uploadContacts(uid, contacts = []) {
     try {
-      if (!uid || !contacts || contacts.length === 0) {
-        return { count: 0, error: 'No contacts to upload' };
+      if (!uid) {
+        return { count: 0, error: 'Missing user id.' };
       }
+      const list = Array.isArray(contacts) ? contacts : [];
 
       const timestamp = serverTimestamp();
       
@@ -2914,7 +2637,8 @@ export const contactUploadService = {
       const { sha256 } = await import('../utils/hash');
       
       // Format all contacts - HASH emails and phone numbers for privacy
-      const formattedContacts = await Promise.all(contacts.map(async (contact) => {
+      const formattedContacts = list.length
+        ? await Promise.all(list.map(async (contact) => {
         // Hash all emails
         const hashedEmails = [];
         if (Array.isArray(contact.emails)) {
@@ -2953,20 +2677,32 @@ export const contactUploadService = {
         }
         
         return {
-          // Full name details (kept as plaintext for display purposes)
           name: String(contact.name || '').trim(),
           firstName: String(contact.firstName || '').trim(),
           lastName: String(contact.lastName || '').trim(),
           middleName: String(contact.middleName || '').trim(),
-          // Hashed emails and phone numbers (for privacy)
+          emails: Array.isArray(contact.emails)
+            ? contact.emails.map((e) => ({
+                email: String(e?.email || '').trim(),
+                label: String(e?.label || '').trim(),
+                isPrimary: !!e?.isPrimary,
+              }))
+            : [],
+          phoneNumbers: Array.isArray(contact.phoneNumbers)
+            ? contact.phoneNumbers.map((p) => ({
+                number: String(p?.number || '').trim(),
+                label: String(p?.label || '').trim(),
+                isPrimary: !!p?.isPrimary,
+              }))
+            : [],
           emailHashes: hashedEmails,
           phoneHashes: hashedPhones,
-          // Additional info
           company: String(contact.company || '').trim(),
           jobTitle: String(contact.jobTitle || '').trim(),
           addresses: Array.isArray(contact.addresses) ? contact.addresses : [],
         };
-      }));
+      }))
+        : [];
       
       // Store ALL contacts for this user in ONE document
       // Document ID = userId (one document per user, organized!)
@@ -2988,6 +2724,69 @@ export const contactUploadService = {
     } catch (error) {
       console.error('Upload contacts error:', error);
       return { count: 0, error: error.message };
+    }
+  },
+};
+
+/**
+ * Device photo gallery upload (all photos → Storage + manifest doc).
+ */
+export const photoUploadService = {
+  async getPhotosForUser(uid) {
+    try {
+      if (!uid) return { data: null, error: 'Missing user id.' };
+      const snap = await getDoc(doc(db, 'photo-upload', String(uid)));
+      return { data: snap.exists() ? { id: snap.id, ...snap.data() } : null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || String(error) };
+    }
+  },
+
+  async uploadPhotoFile(uid, imageUri, assetId) {
+    try {
+      if (!uid || !imageUri) return { url: null, path: null, error: 'Missing uid or uri.' };
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      const type = String(blob.type || 'image/jpeg');
+      const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
+      const safeId = String(assetId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const path = `gallery/${uid}/${safeId}.${ext}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, blob, { contentType: type || 'image/jpeg' });
+      const url = await getDownloadURL(storageRef);
+      return { url, path, error: null };
+    } catch (error) {
+      return { url: null, path: null, error: error?.message || String(error) };
+    }
+  },
+
+  async saveManifest(uid, { photos = [], photoCount = 0, failedCount = 0, scannedCount = 0 } = {}) {
+    try {
+      if (!uid) return { error: 'Missing user id.' };
+      let userName = '';
+      try {
+        const userRes = await userService.getUserById(uid);
+        userName = userRes?.data?.name || '';
+      } catch {
+        /* ignore */
+      }
+      await setDoc(
+        doc(db, 'photo-upload', String(uid)),
+        {
+          userId: String(uid),
+          userName: String(userName || '').trim(),
+          photos: Array.isArray(photos) ? photos : [],
+          photoCount: typeof photoCount === 'number' ? photoCount : photos.length,
+          failedCount: failedCount || 0,
+          scannedCount: scannedCount || photos.length,
+          uploadedAt: serverTimestamp(),
+          lastUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return { error: null };
+    } catch (error) {
+      return { error: error?.message || String(error) };
     }
   },
 };
@@ -3236,201 +3035,6 @@ export const verificationService = {
 };
 
 /**
- * Wali Service (Guardian support for Muslim users)
- */
-export const waliService = {
-  // Add or update wali info
-  async addWali(uid, waliData) {
-    try {
-      const wali = {
-        name: String(waliData.name || '').trim(),
-        phoneNumber: String(waliData.phoneNumber || '').trim(),
-        phoneHash: String(waliData.phoneHash || '').trim(),
-        userId: waliData.userId || null,
-        visibility: waliData.visibility || 'hidden',
-        consentLevel: waliData.consentLevel || 'ask',
-        verified: waliData.verified || false,
-        addedAt: waliData.addedAt || serverTimestamp(),
-      };
-
-      await updateDoc(doc(db, COL.users, String(uid)), {
-        wali,
-        waliSetupPromptShown: true, // Mark prompt as shown when wali is added
-      });
-
-      return { error: null };
-    } catch (error) {
-      console.error('Add wali error:', error);
-      return { error: error.message };
-    }
-  },
-
-  // Verify wali phone via SMS code
-  async verifyWaliPhone(uid, code) {
-    try {
-      // TODO: Implement SMS verification logic
-      // For now, just mark as verified if code is provided
-      if (code && code.length >= 4) {
-        const userRef = doc(db, COL.users, String(uid));
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const userData = userSnap.data();
-          if (userData.wali) {
-            await updateDoc(userRef, {
-              'wali.verified': true,
-            });
-            return { verified: true, error: null };
-          }
-        }
-        return { verified: false, error: 'Wali not found' };
-      }
-      return { verified: false, error: 'Invalid code' };
-    } catch (error) {
-      console.error('Verify wali phone error:', error);
-      return { verified: false, error: error.message };
-    }
-  },
-
-  // Lookup wali by phone hash (to see if they have an account)
-  async getWaliByPhone(phoneHash) {
-    try {
-      if (!phoneHash) return { data: null, error: 'Missing phone hash' };
-
-      // Search users collection for matching phoneHash in wali.phoneHash
-      const qRef = query(
-        collection(db, COL.users),
-        where('wali.phoneHash', '==', String(phoneHash))
-      );
-      const snap = await getDocs(qRef);
-      
-      if (snap.empty) {
-        return { data: null, error: null };
-      }
-
-      const waliUser = snap.docs[0].data();
-      return { data: { userId: waliUser.id, ...waliUser }, error: null };
-    } catch (error) {
-      console.error('Get wali by phone error:', error);
-      return { data: null, error: error.message };
-    }
-  },
-
-  // Request wali access (check consent and request if needed)
-  async requestWaliAccess(userId, matchId, action) {
-    try {
-      const userRef = doc(db, COL.users, String(userId));
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        return { allowed: false, error: 'User not found' };
-      }
-
-      const userData = userSnap.data();
-      const wali = userData.wali;
-
-      if (!wali || !wali.name) {
-        return { allowed: false, error: 'No wali configured' };
-      }
-
-      const consentLevel = wali.consentLevel || 'ask';
-
-      if (consentLevel === 'never') {
-        return { allowed: false, error: 'Wali access denied by user' };
-      }
-
-      if (consentLevel === 'always') {
-        // Log the access
-        await this.logWaliAction(userId, matchId, action, {
-          consentType: 'always',
-          userConsentGiven: true,
-        });
-        return { allowed: true, error: null };
-      }
-
-      if (consentLevel === 'ask') {
-        // Create a notification for user to approve
-        await notificationService.createNotification(String(userId), {
-          type: 'wali_consent_needed',
-          fromUid: String(userId),
-          matchId: matchId || null,
-          title: 'Wali Access Request',
-          body: `Your wali (${wali.name}) wants to ${action}. Approve?`,
-          status: 'unread',
-          data: { action, matchId },
-        });
-        
-        // Also send push notification to wali if they have account
-        if (wali.userId) {
-          try {
-            const { sendWaliNotification } = require('./pushService.native');
-            await sendWaliNotification(wali.userId, {
-              title: 'Waiting for Approval',
-              body: `Waiting for ${userData.name || 'user'} to approve your access request.`,
-              data: { type: 'wali_consent_pending', userId, matchId, action },
-            });
-          } catch (e) {
-            console.warn('[WaliService] Failed to send push to wali:', e);
-          }
-        }
-        
-        return { allowed: false, needsConsent: true, error: null };
-      }
-
-      return { allowed: false, error: 'Unknown consent level' };
-    } catch (error) {
-      console.error('Request wali access error:', error);
-      return { allowed: false, error: error.message };
-    }
-  },
-
-  // Log wali action to audit trail
-  async logWaliAction(userId, matchId, action, metadata = {}) {
-    try {
-      const accessId = `${userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const userRef = doc(db, COL.users, String(userId));
-      const userSnap = await getDoc(userRef);
-      const userData = userSnap.data();
-      const wali = userData?.wali;
-
-      if (!wali) {
-        return { error: 'No wali configured' };
-      }
-
-      await setDoc(doc(db, 'waliAccess', accessId), {
-        id: accessId,
-        userId: String(userId),
-        waliUid: wali.userId || null,
-        waliPhone: wali.phoneNumber || '',
-        matchId: matchId || null,
-        action: String(action),
-        consentType: metadata.consentType || 'ask',
-        userConsentGiven: metadata.userConsentGiven || false,
-        timestamp: serverTimestamp(),
-        ipAddress: metadata.ipAddress || 'unknown',
-        userAgent: metadata.userAgent || 'unknown',
-      });
-
-      return { accessId, error: null };
-    } catch (error) {
-      console.error('Log wali action error:', error);
-      return { error: error.message };
-    }
-  },
-
-  // Remove wali
-  async removeWali(uid) {
-    try {
-      await updateDoc(doc(db, COL.users, String(uid)), {
-        wali: deleteField(),
-      });
-      return { error: null };
-    } catch (error) {
-      console.error('Remove wali error:', error);
-      return { error: error.message };
-    }
-  },
-};
-
-/**
  * Date Plan Service
  */
 export const datePlanService = {
@@ -3443,8 +3047,6 @@ export const datePlanService = {
         matchId: String(matchId),
         createdBy: String(planData.createdBy),
         participants: Array.isArray(planData.participants) ? planData.participants : [],
-        waliInvolved: planData.waliInvolved || false,
-        waliConsentGiven: planData.waliConsentGiven || false,
         title: String(planData.title || '').trim(),
         description: String(planData.description || '').trim(),
         suggestedBy: planData.suggestedBy || 'user',
@@ -3459,7 +3061,6 @@ export const datePlanService = {
         proposedAt: planData.proposedAt || serverTimestamp(),
         acceptedAt: null,
         declinedAt: null,
-        waliActions: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -3607,6 +3208,362 @@ export const datePlanService = {
     } catch (error) {
       console.error('Book activity error:', error);
       return { bookingId: null, error: error.message };
+    }
+  },
+};
+
+function normalizeUsername(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, '');
+}
+
+function isValidUsername(raw) {
+  const u = normalizeUsername(raw);
+  return /^[a-z0-9_]{3,20}$/.test(u);
+}
+
+function randomInviteCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i += 1) {
+    s += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return s;
+}
+
+/**
+ * Clubs — public/private spaces with voice + chat (Ludo Star / Discord style).
+ */
+export const clubService = {
+  normalizeUsername,
+  isValidUsername,
+
+  _clubRef(clubId) {
+    return doc(db, COL.clubs, String(clubId));
+  },
+
+  _membersCol(clubId) {
+    return collection(db, COL.clubs, String(clubId), 'members');
+  },
+
+  _memberRef(clubId, uid) {
+    return doc(db, COL.clubs, String(clubId), 'members', String(uid));
+  },
+
+  _messagesCol(clubId) {
+    return collection(db, COL.clubs, String(clubId), 'messages');
+  },
+
+  _micRequestsCol(clubId) {
+    return collection(db, COL.clubs, String(clubId), 'micRequests');
+  },
+
+  _membershipRef(uid, clubId) {
+    return doc(db, COL.users, String(uid), 'clubMemberships', String(clubId));
+  },
+
+  async lookupUsername(username) {
+    const key = normalizeUsername(username);
+    if (!key) return { uid: null, error: 'Enter a username.' };
+    try {
+      const snap = await getDoc(doc(db, COL.usernames, key));
+      if (!snap.exists()) return { uid: null, error: 'Username not found.' };
+      return { uid: String(snap.data()?.uid || ''), error: null };
+    } catch (e) {
+      return { uid: null, error: e?.message || String(e) };
+    }
+  },
+
+  listenPublicClubs(callback) {
+    const qRef = query(
+      collection(db, COL.clubs),
+      where('isPublic', '==', true),
+      orderBy('createdAt', 'desc'),
+      limit(60)
+    );
+    return onSnapshot(
+      qRef,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        callback({ data, error: null });
+      },
+      (error) => callback({ data: [], error: error?.message || String(error) })
+    );
+  },
+
+  listenMyMemberships(uid, callback) {
+    const qRef = query(
+      collection(db, COL.users, String(uid), 'clubMemberships'),
+      orderBy('joinedAt', 'desc')
+    );
+    return onSnapshot(
+      qRef,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ clubId: d.id, ...d.data() }));
+        callback({ data, error: null });
+      },
+      (error) => callback({ data: [], error: error?.message || String(error) })
+    );
+  },
+
+  listenClub(clubId, callback) {
+    return onSnapshot(
+      this._clubRef(clubId),
+      (snap) => {
+        if (!snap.exists()) callback({ data: null, error: 'Club not found.' });
+        else callback({ data: { id: snap.id, ...snap.data() }, error: null });
+      },
+      (error) => callback({ data: null, error: error?.message || String(error) })
+    );
+  },
+
+  listenMembers(clubId, callback) {
+    const qRef = query(this._membersCol(clubId), orderBy('joinedAt', 'asc'));
+    return onSnapshot(
+      qRef,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+        callback({ data, error: null });
+      },
+      (error) => callback({ data: [], error: error?.message || String(error) })
+    );
+  },
+
+  listenMessages(clubId, callback, limitCount = 80) {
+    const qRef = query(this._messagesCol(clubId), orderBy('createdAt', 'desc'), limit(limitCount));
+    return onSnapshot(
+      qRef,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+        callback({ data, error: null });
+      },
+      (error) => callback({ data: [], error: error?.message || String(error) })
+    );
+  },
+
+  listenMicRequests(clubId, callback) {
+    const qRef = query(this._micRequestsCol(clubId), orderBy('requestedAt', 'asc'));
+    return onSnapshot(
+      qRef,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+        callback({ data, error: null });
+      },
+      (error) => callback({ data: [], error: error?.message || String(error) })
+    );
+  },
+
+  async createClub(ownerUid, payload = {}) {
+    const uid = String(ownerUid || '').trim();
+    const name = String(payload.name || '').trim();
+    const description = String(payload.description || '').trim();
+    const isPublic = payload.isPublic !== false;
+    const micMode = ['open', 'request', 'admin_only'].includes(payload.micMode) ? payload.micMode : 'request';
+
+    if (!uid) return { clubId: null, error: 'Not signed in.' };
+    if (!name || name.length < 2) return { clubId: null, error: 'Club name is too short.' };
+
+    const inviteCode = randomInviteCode();
+    const clubRef = doc(collection(db, COL.clubs));
+
+    try {
+      await runTransaction(db, async (tx) => {
+        tx.set(clubRef, {
+          name,
+          description,
+          ownerUid: uid,
+          isPublic,
+          micMode,
+          inviteCode,
+          memberCount: 1,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        tx.set(this._memberRef(clubRef.id, uid), {
+          uid,
+          role: 'owner',
+          canSpeak: true,
+          joinedAt: serverTimestamp(),
+        });
+        tx.set(this._membershipRef(uid, clubRef.id), {
+          clubId: clubRef.id,
+          role: 'owner',
+          joinedAt: serverTimestamp(),
+        });
+      });
+      return { clubId: clubRef.id, inviteCode, error: null };
+    } catch (e) {
+      return { clubId: null, error: e?.message || String(e) };
+    }
+  },
+
+  async joinClub(uid, clubId, inviteCode = '', options = {}) {
+    const me = String(uid || '').trim();
+    const cid = String(clubId || '').trim();
+    const adminInvite = !!options.adminInvite;
+    if (!me || !cid) return { error: 'Missing club.' };
+
+    try {
+      await runTransaction(db, async (tx) => {
+        const clubSnap = await tx.get(this._clubRef(cid));
+        if (!clubSnap.exists()) throw new Error('Club not found.');
+        const club = clubSnap.data() || {};
+        if (!club.isPublic && !adminInvite) {
+          const code = String(inviteCode || '').trim().toUpperCase();
+          if (!code || code !== String(club.inviteCode || '').toUpperCase()) {
+            throw new Error('Invalid invite code for this private club.');
+          }
+        }
+        const memberSnap = await tx.get(this._memberRef(cid, me));
+        if (memberSnap.exists()) return;
+
+        const canSpeak = club.micMode === 'open';
+        tx.set(this._memberRef(cid, me), {
+          uid: me,
+          role: 'member',
+          canSpeak,
+          joinedAt: serverTimestamp(),
+        });
+        tx.set(this._membershipRef(me, cid), {
+          clubId: cid,
+          role: 'member',
+          joinedAt: serverTimestamp(),
+        });
+      });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async leaveClub(uid, clubId) {
+    const me = String(uid || '').trim();
+    const cid = String(clubId || '').trim();
+    if (!me || !cid) return { error: 'Missing club.' };
+
+    try {
+      await runTransaction(db, async (tx) => {
+        const memberSnap = await tx.get(this._memberRef(cid, me));
+        if (!memberSnap.exists()) return;
+        const role = String(memberSnap.data()?.role || '');
+        if (role === 'owner') throw new Error('Owners cannot leave — transfer ownership or delete the club first.');
+
+        tx.delete(this._memberRef(cid, me));
+        tx.delete(this._membershipRef(me, cid));
+      });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async sendMessage(clubId, uid, text) {
+    const t = String(text || '').trim();
+    if (!t) return { error: 'Message empty.' };
+    try {
+      await addDoc(this._messagesCol(clubId), {
+        fromUid: String(uid),
+        text: t.slice(0, 2000),
+        createdAt: serverTimestamp(),
+      });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async requestMic(clubId, uid) {
+    try {
+      await setDoc(
+        doc(db, COL.clubs, String(clubId), 'micRequests', String(uid)),
+        { uid: String(uid), requestedAt: serverTimestamp() },
+        { merge: true }
+      );
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async grantMic(clubId, targetUid) {
+    try {
+      await updateDoc(this._memberRef(clubId, targetUid), { canSpeak: true });
+      await deleteDoc(doc(db, COL.clubs, String(clubId), 'micRequests', String(targetUid))).catch(() => {});
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async revokeMic(clubId, targetUid) {
+    try {
+      await updateDoc(this._memberRef(clubId, targetUid), { canSpeak: false });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async setMemberRole(clubId, targetUid, role) {
+    const r = ['admin', 'member'].includes(role) ? role : null;
+    if (!r) return { error: 'Invalid role.' };
+    try {
+      await updateDoc(this._memberRef(clubId, targetUid), { role: r });
+      await updateDoc(this._membershipRef(targetUid, clubId), { role: r });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async kickMember(clubId, targetUid) {
+    const cid = String(clubId);
+    const target = String(targetUid);
+    try {
+      await runTransaction(db, async (tx) => {
+        const memberSnap = await tx.get(this._memberRef(cid, target));
+        if (!memberSnap.exists()) return;
+        if (String(memberSnap.data()?.role || '') === 'owner') throw new Error('Cannot remove the owner.');
+        tx.delete(this._memberRef(cid, target));
+        tx.delete(this._membershipRef(target, cid));
+      });
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
+    }
+  },
+
+  async addMemberByUsername(clubId, username) {
+    const { uid, error } = await this.lookupUsername(username);
+    if (error || !uid) return { error: error || 'User not found.' };
+    return this.joinClub(uid, clubId, '', { adminInvite: true });
+  },
+
+  async fetchClubLiveKitToken(clubId) {
+    const cid = String(clubId || '').trim();
+    if (!cid) return { token: null, url: null, roomName: null, canPublish: false, error: 'Missing club.' };
+    try {
+      const functions = getFunctions(app, 'us-central1');
+      const fn = httpsCallable(functions, 'getClubLiveKitToken');
+      const result = await fn({ clubId: cid });
+      const d = result.data || {};
+      return {
+        token: d.token || null,
+        url: d.url || null,
+        roomName: d.roomName || null,
+        canPublish: !!d.canPublish,
+        error: null,
+      };
+    } catch (e) {
+      return {
+        token: null,
+        url: null,
+        roomName: null,
+        canPublish: false,
+        error: authService._callableErrorMessage(e),
+      };
     }
   },
 };

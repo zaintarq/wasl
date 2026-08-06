@@ -40,7 +40,7 @@ export function LiveMatchPulse() {
           </View>
         </View>
         <LiveText style={styles.title}>Finding someone for you</LiveText>
-        <LiveText style={styles.hint}>Matching with another member who’s online. Usually just a moment.</LiveText>
+        <LiveText style={styles.hint}>Pairing you with another member who’s online. Usually just a moment.</LiveText>
       </View>
     </LiveContentWidth>
   );

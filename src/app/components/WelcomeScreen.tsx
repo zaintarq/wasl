@@ -32,7 +32,7 @@ export function WelcomeScreen({ onNavigate }: WelcomeScreenProps) {
             HUZZ
           </h1>
           <p className="text-center mb-2" style={{ color: '#000000', fontWeight: 'bold' }}>
-            Connect authentically. Date freely.
+            Connect authentically. Connect freely.
           </p>
           <p className="text-sm" style={{ color: '#808080' }}>
             Open-source & community-driven

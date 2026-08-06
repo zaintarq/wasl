@@ -44,15 +44,15 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
     try {
       const suggestions = await dateSuggestionService.suggestPlans(matchId, meUid);
       if (suggestions.length > 0) {
-        Alert.alert('Suggestions', `Found ${suggestions.length} date ideas!`, [
+        Alert.alert('Suggestions', `Found ${suggestions.length} meetup ideas!`, [
           { text: 'View', onPress: () => {
             // TODO: Show suggestions modal
-            Alert.alert('Date Ideas', suggestions.map(s => s.title).join('\n'));
+            Alert.alert('Meetup Ideas', suggestions.map(s => s.title).join('\n'));
           }},
           { text: 'Cancel', style: 'cancel' },
         ]);
       } else {
-        Alert.alert('No suggestions', 'Could not generate date ideas at this time.');
+        Alert.alert('No suggestions', 'Could not generate meetup ideas at this time.');
       }
     } catch (e) {
       Alert.alert('Error', e?.message || 'Failed to get suggestions.');
@@ -93,7 +93,7 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
         return;
       }
 
-      Alert.alert('Created', 'Date plan created!');
+      Alert.alert('Created', 'Plan created!');
       setShowCreate(false);
       setTitle('');
       setDescription('');
@@ -118,7 +118,7 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
         Alert.alert('Error', error);
         return;
       }
-      Alert.alert('Accepted', 'Date plan accepted!');
+      Alert.alert('Accepted', 'Plan accepted!');
       const res = await datePlanService.getPlansForMatch(matchId);
       setPlans(res.data || []);
     } catch (e) {
@@ -134,7 +134,7 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
         Alert.alert('Error', error);
         return;
       }
-      Alert.alert('Declined', 'Date plan declined.');
+      Alert.alert('Declined', 'Plan declined.');
       const res = await datePlanService.getPlansForMatch(matchId);
       setPlans(res.data || []);
     } catch (e) {
@@ -148,7 +148,7 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
         <TouchableOpacity onPress={() => onNavigate('chat', { matchId })}>
           <Text style={styles.backBtn}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Date Planning</Text>
+        <Text style={styles.headerTitle}>Plan Together</Text>
         <View style={{ width: 60 }} />
       </View>
 
@@ -186,7 +186,7 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
               multiline
             />
 
-            <Text style={styles.label}>Date</Text>
+            <Text style={styles.label}>When</Text>
             <TextInput
               style={styles.input}
               value={date}
@@ -223,11 +223,11 @@ export function DatePlanningScreen({ onNavigate, matchId }) {
         )}
 
         <View style={styles.plansList}>
-          <Text style={styles.sectionTitle}>Date Plans</Text>
+          <Text style={styles.sectionTitle}>Your Plans</Text>
           {loading ? (
             <Text style={styles.emptyText}>Loading...</Text>
           ) : plans.length === 0 ? (
-            <Text style={styles.emptyText}>No date plans yet. Create one!</Text>
+            <Text style={styles.emptyText}>No plans yet. Create one!</Text>
           ) : (
             plans.map((plan) => (
               <View key={plan.id} style={styles.planCard}>
