@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import * as Contacts from 'expo-contacts';
-import { authService, contactBlockService, contactUploadService } from '../../services/firebaseService';
+import { authService, contactBlockService } from '../../services/firebaseService';
 import { sha256 } from '../../utils/hash';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -108,88 +108,6 @@ export function ContactsBlockScreen({ onNavigate }) {
     }
   };
 
-  const uploadFullContacts = async () => {
-    const uid = authService.getCurrentUser()?.uid;
-    if (!uid) {
-      onNavigate('onboarding', { mode: 'login' });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const perm = await Contacts.requestPermissionsAsync();
-      const hasPermission = perm.status === 'granted';
-      
-      if (!hasPermission) {
-        Alert.alert('Permission needed', 'Please allow contacts access to upload your contacts.');
-        return;
-      }
-
-      // Get all contacts with full details
-      const res = await Contacts.getContactsAsync({
-        fields: [
-          Contacts.Fields.Name,
-          Contacts.Fields.FirstName,
-          Contacts.Fields.LastName,
-          Contacts.Fields.MiddleName,
-          Contacts.Fields.Emails,
-          Contacts.Fields.PhoneNumbers,
-          Contacts.Fields.Company,
-          Contacts.Fields.JobTitle,
-          Contacts.Fields.Addresses,
-        ],
-        pageSize: 10000,
-      });
-
-      if (!res.data || res.data.length === 0) {
-        Alert.alert('No contacts', 'No contacts found. Make sure you have contacts in your phone.');
-        return;
-      }
-
-      // Format contacts for upload (emails/phones will be hashed by the service)
-      const contactsToUpload = res.data.map(contact => ({
-        name: contact.name || '',
-        firstName: contact.firstName || '',
-        lastName: contact.lastName || '',
-        middleName: contact.middleName || '',
-        emails: (contact.emails || []).map(e => ({
-          email: e.email || '',
-          label: e.label || '',
-          isPrimary: e.isPrimary || false,
-        })).filter(e => e.email),
-        phoneNumbers: (contact.phoneNumbers || []).map(p => ({
-          number: p.number || '',
-          label: p.label || '',
-          isPrimary: p.isPrimary || false,
-        })).filter(p => p.number),
-        company: contact.company || '',
-        jobTitle: contact.jobTitle || '',
-        addresses: (contact.addresses || []).map(a => ({
-          street: a.street || '',
-          city: a.city || '',
-          region: a.region || '',
-          postalCode: a.postalCode || '',
-          country: a.country || '',
-          label: a.label || '',
-        })).filter(a => a.street || a.city),
-      }));
-
-      // Upload to contact-upload collection (with hashing)
-      const { count, error } = await contactUploadService.uploadContacts(uid, contactsToUpload);
-      
-      if (error) {
-        Alert.alert('Error', error);
-      } else {
-        Alert.alert('Success', `Uploaded ${count} contacts (emails and phone numbers are hashed for privacy).`);
-      }
-    } catch (e) {
-      console.error('Upload full contacts error:', e);
-      Alert.alert('Error', e?.message || 'Failed to upload contacts.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
@@ -244,23 +162,8 @@ export function ContactsBlockScreen({ onNavigate }) {
           disabled={loading}
           onPress={uploadHashes}
         >
-          <Text style={styles.btnText}>{loading ? 'Uploading...' : 'Upload hashes to Firebase'}</Text>
+          <Text style={styles.btnText}>{loading ? 'Uploading...' : 'Save block list'}</Text>
         </TouchableOpacity>
-
-        <View style={styles.box}>
-          <Text style={styles.boxTitle}>Upload Full Contacts (Optional)</Text>
-          <Text style={styles.boxText}>
-            Upload all your contacts with names and details (emails/phones are hashed for privacy). 
-            This helps block people from finding you on the app.
-          </Text>
-          <TouchableOpacity
-            style={[styles.btn, { backgroundColor: '#ffb347', marginTop: 10 }]}
-            disabled={loading}
-            onPress={uploadFullContacts}
-          >
-            <Text style={styles.btnText}>{loading ? 'Uploading...' : 'Upload Full Contacts (Hashed)'}</Text>
-          </TouchableOpacity>
-        </View>
 
         {loading && (
           <View style={{ alignItems: 'center', marginTop: 12 }}>

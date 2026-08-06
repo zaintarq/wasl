@@ -27,7 +27,7 @@ import { FadeInImage } from '../../ui/components/FadeInImage.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { ProfileVoicePlayer } from '../../ui/components/ProfileVoicePlayer.native';
 import { ProfilePhotoGalleryModal } from '../../ui/components/ProfilePhotoGalleryModal.native';
-import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
+import { MainBottomNav, MAIN_BOTTOM_NAV_FALLBACK_H } from '../../ui/components/MainBottomNav.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Settings, SlidersHorizontal, UserRound, SkipForward, MessageCircle, UserPlus, LayoutGrid, Square } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -49,9 +49,8 @@ import * as Haptics from 'expo-haptics';
 const { height: SCREEN_H } = Dimensions.get('window');
 const CARD_MAX_W = 440;
 const HEADER_FALLBACK_H = 64; // wordmark + underline + padding
-const BOTTOM_NAV_FALLBACK_H = 72;
-/** Breathing room between swipe actions and floating tab bar. */
-const FLOAT_NAV_GAP = 24;
+/** Breathing room between swipe actions and tab bar (in-flow, not overlay). */
+const FLOAT_NAV_GAP = 16;
 
 export function HomeScreen({ onNavigate }) {
   const navigation = useNavigation();
@@ -71,7 +70,7 @@ export function HomeScreen({ onNavigate }) {
   // Max-tall card: fill as much as possible between header and pinned bottom nav.
   const cardHeight = useMemo(() => {
     const header = headerH || HEADER_FALLBACK_H;
-    const nav = bottomNavH || BOTTOM_NAV_FALLBACK_H + bottomNavPad;
+    const nav = bottomNavH || MAIN_BOTTOM_NAV_FALLBACK_H + bottomNavPad;
     const avail = SCREEN_H - insets.top - header - nav - FLOAT_NAV_GAP;
     return Math.round(Math.min(860, Math.max(560, avail)));
   }, [bottomNavH, bottomNavPad, headerH, insets.top]);
@@ -1169,7 +1168,7 @@ export function HomeScreen({ onNavigate }) {
 
       <View style={styles.container}>
       {/* Swipe Cards */}
-      <View style={[styles.cardContainer, { paddingBottom: (bottomNavH || BOTTOM_NAV_FALLBACK_H) + FLOAT_NAV_GAP }]}>
+      <View style={[styles.cardContainer, { paddingBottom: FLOAT_NAV_GAP }]}>
         <HuzzPressable style={styles.filterButton} onPress={openFilters} haptic="light">
           <SlidersHorizontal size={22} color={tokens.colors.accent} strokeWidth={2.2} />
         </HuzzPressable>
@@ -1183,7 +1182,7 @@ export function HomeScreen({ onNavigate }) {
           <DiscoveryProfileGrid
             profiles={allCandidates}
             onSelectProfile={openProfileFromGrid}
-            contentPaddingBottom={(bottomNavH || BOTTOM_NAV_FALLBACK_H) + FLOAT_NAV_GAP + 16}
+            contentPaddingBottom={FLOAT_NAV_GAP + 8}
           />
         ) : !currentUser ? (
           <View style={[styles.card, { alignItems: 'center', justifyContent: 'center', minHeight: 400, padding: 24 }]}>
@@ -1549,6 +1548,7 @@ const styles = StyleSheet.create({
   },
   cardContainer: {
     flex: 1,
+    minHeight: 0,
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: 8,

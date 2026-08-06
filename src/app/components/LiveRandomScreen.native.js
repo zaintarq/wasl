@@ -22,7 +22,7 @@ import {
   LiveRetroButton,
 } from '../../ui/components/live/LiveTypography.native';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
-import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
+import { MainBottomNav, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
 const SESSION_MS = liveRandomService.SESSION_MS;
 
 export function LiveRandomScreen({ onNavigate }) {
@@ -191,7 +191,8 @@ export function LiveRandomScreen({ onNavigate }) {
     skipOrLeave('leave');
   }, [skipOrLeave]);
 
-  const listPadBottom = Math.max(8, insets.bottom);
+  const showTabNav = phase !== 'session';
+  const tabNavClearance = showTabNav ? mainBottomNavClearance(bottomNavH, 12) : Math.max(12, insets.bottom);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -203,7 +204,7 @@ export function LiveRandomScreen({ onNavigate }) {
         </View>
 
         <KeyboardAvoidingView
-          style={styles.flex}
+          style={styles.body}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={insets.top + 8}
         >
@@ -218,7 +219,7 @@ export function LiveRandomScreen({ onNavigate }) {
           {phase === 'idle' ? (
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={[styles.scrollContent, { paddingBottom: 28 + bottomNavH + insets.bottom }]}
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: 20 }]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
@@ -240,18 +241,20 @@ export function LiveRandomScreen({ onNavigate }) {
 
           {phase === 'searching' ? (
             <View style={styles.searchingPage}>
-              <LiveMatchPulse />
-              <ActivityIndicator color={tokens.colors.accent} style={{ marginTop: 8 }} />
-              <LiveContentWidth style={{ marginTop: 20 }}>
-                <LiveRetroButton
-                  variant="outline"
-                  onPress={cancelSearch}
-                  style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
-                  textStyle={welcomeButtonStyles.welcomeBtnLabel}
-                >
-                  Cancel
-                </LiveRetroButton>
-              </LiveContentWidth>
+              <View style={styles.searchingInner}>
+                <LiveMatchPulse />
+                <ActivityIndicator color={tokens.colors.accent} style={{ marginTop: 8 }} />
+                <LiveContentWidth style={{ marginTop: 20, width: '100%' }}>
+                  <LiveRetroButton
+                    variant="outline"
+                    onPress={cancelSearch}
+                    style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
+                    textStyle={welcomeButtonStyles.welcomeBtnLabel}
+                  >
+                    Cancel
+                  </LiveRetroButton>
+                </LiveContentWidth>
+              </View>
             </View>
           ) : null}
 
@@ -293,7 +296,7 @@ export function LiveRandomScreen({ onNavigate }) {
                   contentContainerStyle={styles.chatListContent}
                 />
 
-                <View style={[styles.composer, { paddingBottom: listPadBottom }]}>
+                <View style={[styles.composer, { paddingBottom: tabNavClearance }]}>
                   <LiveTextInput
                     style={styles.input}
                     value={chatText}
@@ -311,7 +314,7 @@ export function LiveRandomScreen({ onNavigate }) {
             </View>
           ) : null}
         </KeyboardAvoidingView>
-        {phase !== 'session' ? (
+        {showTabNav ? (
           <MainBottomNav active="live" onNavigate={onNavigate} onLayout={setBottomNavH} />
         ) : null}
       </LiveTypographyProvider>
@@ -350,12 +353,13 @@ const styles = StyleSheet.create({
     borderColor: tokens.colors.filterBorderRose,
   },
   bannerText: { ...tokens.typography.bodySmall, color: tokens.colors.danger },
+  body: { flex: 1, minHeight: 0, backgroundColor: tokens.colors.bg },
   scroll: { flex: 1 },
-  scrollContent: { paddingTop: tokens.spacing.md },
-  flex: { flex: 1, backgroundColor: tokens.colors.bg },
+  scrollContent: { paddingTop: tokens.spacing.md, flexGrow: 1 },
   cta: { width: '100%' },
-  searchingPage: { flex: 1, justifyContent: 'center', paddingVertical: 24 },
-  sessionWrap: { flex: 1, backgroundColor: tokens.colors.bg },
+  searchingPage: { flex: 1, minHeight: 0, justifyContent: 'center', paddingVertical: 16 },
+  searchingInner: { alignItems: 'center', width: '100%' },
+  sessionWrap: { flex: 1, minHeight: 0, backgroundColor: tokens.colors.bg },
   chatSection: {
     flex: 1,
     minHeight: 140,

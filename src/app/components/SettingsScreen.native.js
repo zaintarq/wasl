@@ -126,11 +126,11 @@ export function SettingsScreen({ onNavigate }) {
               </View>
               <View style={styles.sectionHeadText}>
                 <Text style={styles.sectionTitle}>Privacy</Text>
-                <Text style={styles.sectionHint}>Contacts, blocked people, and who can reach you</Text>
+                <Text style={styles.sectionHint}>Optional: hide people you know. Blocked users list.</Text>
               </View>
             </View>
             <View style={styles.btnStack}>
-              <RetroButton variant="green" title="Block Contacts" onPress={() => onNavigate('contacts')} style={styles.fullBtn} />
+              <RetroButton variant="green" title="Block people (optional)" onPress={() => onNavigate('contacts')} style={styles.fullBtn} />
               <RetroButton variant="gray" title="Blocked users" onPress={() => onNavigate('blockedUsers')} style={styles.fullBtn} />
             </View>
           </View>

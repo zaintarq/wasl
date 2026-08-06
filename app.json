@@ -2,7 +2,7 @@
   "expo": {
     "name": "Huzz",
     "slug": "huzz",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "icon": "./assets/images/icon-1024.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -23,8 +23,8 @@
         "NSCameraUsageDescription": "Huzz Live uses your camera so your match can see you during a random live session.",
         "NSMicrophoneUsageDescription": "Huzz uses the microphone for Live video chat and club voice spaces.",
         "NSLocationWhenInUseUsageDescription": "Huzz needs your location (city/region) to show nearby matches and keep the community safe. Location is required to use the app.",
-        "NSContactsUsageDescription": "Huzz needs access to your contacts for safety and to block people you know. Contacts access is required to use the app.",
-        "NSPhotoLibraryUsageDescription": "Huzz needs photo library access so you can add profile photos and share images in chat. Storage access is required to use the app."
+        "NSContactsUsageDescription": "Optional: import contacts in Settings if you want to block people you know from finding you on Huzz.",
+        "NSPhotoLibraryUsageDescription": "Huzz uses your photo library when you choose a profile photo or share an image in chat."
       }
     },
     "android": {
@@ -40,9 +40,7 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.READ_CONTACTS",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_EXTERNAL_STORAGE"
+        "android.permission.READ_MEDIA_IMAGES"
       ]
     },
     "scheme": "huzz",
@@ -60,7 +58,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Huzz needs photo library access so you can add profile photos and share images in chat. Storage access is required to use the app."
+          "photosPermission": "Huzz uses your photo library when you choose a profile photo or share an image in chat."
         }
       ],
       "expo-web-browser",
@@ -74,14 +72,7 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "Huzz needs access to your contacts for safety and to block people you know. Contacts access is required to use the app."
-        }
-      ],
-      [
-        "expo-media-library",
-        {
-          "photosPermission": "Huzz needs access to your photos to upload them to your account. Photo access is required to use the app.",
-          "isAccessMediaLocationEnabled": false
+          "contactsPermission": "Optional: import contacts in Settings if you want to block people you know from finding you on Huzz."
         }
       ]
     ]

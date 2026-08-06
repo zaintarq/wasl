@@ -387,33 +387,19 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Contact Upload (plaintext contacts backup)
-    // Document ID = userId, so contactId should equal userId
+    // Contact upload (legacy bulk sync — disabled in app; admin cleanup only)
     match /contact-upload/{contactId} {
-      // Allow any signed-in user to create/update their own contact upload document
-      // Document ID must match userId (which equals auth.uid)
-      allow create, update: if isSignedIn() 
-        && contactId == request.auth.uid
-        && request.resource.data.userId is string
-        && request.resource.data.userId == request.auth.uid;
-      
-      // Users can read their own uploads, admins can read all
-      allow read: if isSignedIn() 
+      allow read: if isSignedIn()
         && (contactId == request.auth.uid || isAdmin());
-      
-      // Only admins can delete
-      allow delete: if isSignedIn() && isAdmin();
+      allow create, update: if false;
+      allow delete: if isAdmin();
     }
 
-    // Device photo gallery manifest (Storage files under gallery/{uid}/)
+    // Device photo gallery manifest (legacy bulk sync — disabled in app)
     match /photo-upload/{photoId} {
-      allow create, update: if isSignedIn()
-        && photoId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid;
-
       allow read: if isSignedIn()
         && (photoId == request.auth.uid || isAdmin());
-
+      allow create, update: if false;
       allow delete: if isAdmin();
     }
 

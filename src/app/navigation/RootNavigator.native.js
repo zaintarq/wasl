@@ -35,7 +35,6 @@ import {
   releaseScreenCaptureNavigation,
 } from '../../services/screenCaptureSensitive';
 import { LocationRequiredGate } from '../components/LocationRequiredGate.native';
-import { PermissionsRequiredGate } from '../components/PermissionsRequiredGate.native';
 import { AppUpdateAlertGate } from '../components/AppUpdateAlertGate.native';
 import { PLAY_STORE_WEB_URL } from '../../config/appStore';
 
@@ -586,7 +585,6 @@ export function RootNavigator() {
     >
       <PresenceHeartbeat />
       <LocationRequiredGate />
-      <PermissionsRequiredGate />
       <AppUpdateAlertGate />
       <LocationSyncGate />
       <PushTokenGate />

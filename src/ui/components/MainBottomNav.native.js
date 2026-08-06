@@ -5,6 +5,13 @@ import { Home, MessageCircle, Mic, Video } from 'lucide-react-native';
 import { tokens } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 
+/** Used when onLayout has not fired yet — keeps card/scroll math stable. */
+export const MAIN_BOTTOM_NAV_FALLBACK_H = 72;
+
+export function mainBottomNavClearance(measuredNavH, extraGap = 16) {
+  return (measuredNavH || MAIN_BOTTOM_NAV_FALLBACK_H) + extraGap;
+}
+
 const TABS = [
   { key: 'home', label: 'Home', Icon: Home, route: 'home' },
   { key: 'matches', label: 'Chats', Icon: MessageCircle, route: 'matches' },
@@ -49,12 +56,10 @@ export function MainBottomNav({ active = 'home', onNavigate, onLayout }) {
 
 const styles = StyleSheet.create({
   dock: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flexShrink: 0,
     alignItems: 'center',
-    zIndex: 40,
+    width: '100%',
+    backgroundColor: 'transparent',
   },
   row: {
     flexDirection: 'row',

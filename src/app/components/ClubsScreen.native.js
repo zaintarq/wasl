@@ -26,7 +26,6 @@ export function ClubsScreen({ onNavigate }) {
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinClubId, setJoinClubId] = useState('');
-  const [bottomNavH, setBottomNavH] = useState(0);
 
   useEffect(() => {
     if (!meUid) {
@@ -140,7 +139,7 @@ export function ClubsScreen({ onNavigate }) {
           <ActivityIndicator size="large" color={tokens.colors.accent} />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ paddingBottom: bottomNavH + 24, paddingHorizontal: 16 }}>
+        <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
           {myClubs.length > 0 ? (
             <>
               <Text style={styles.sectionTitle}>My clubs</Text>
@@ -189,13 +188,15 @@ export function ClubsScreen({ onNavigate }) {
         </View>
       </Modal>
 
-      <MainBottomNav active="clubs" onNavigate={onNavigate} onLayout={setBottomNavH} />
+      <MainBottomNav active="clubs" onNavigate={onNavigate} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tokens.colors.bg },
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 16 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

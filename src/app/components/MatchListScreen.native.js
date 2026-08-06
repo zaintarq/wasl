@@ -13,7 +13,6 @@ export function MatchListScreen({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);
   const [usersById, setUsersById] = useState({});
-  const [bottomNavH, setBottomNavH] = useState(0);
 
   const meUid = authService.getCurrentUser()?.uid || null;
 
@@ -74,7 +73,8 @@ export function MatchListScreen({ onNavigate }) {
       </View>
 
       <FlatList
-        contentContainerStyle={{ padding: 16, paddingBottom: bottomNavH + 22 }}
+        style={styles.list}
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 }}
         initialNumToRender={12}
         windowSize={8}
         maxToRenderPerBatch={10}
@@ -174,13 +174,14 @@ export function MatchListScreen({ onNavigate }) {
           )
         }
       />
-      <MainBottomNav active="matches" onNavigate={onNavigate} onLayout={setBottomNavH} />
+      <MainBottomNav active="matches" onNavigate={onNavigate} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: tokens.colors.bg },
+  list: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

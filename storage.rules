@@ -40,14 +40,10 @@ service firebase.storage {
         );
     }
 
-    // Device photo gallery: gallery/{uid}/{fileName}
+    // Legacy device gallery bulk upload — disabled in app
     match /gallery/{uid}/{fileName} {
-      allow read: if isSignedIn();
-
-      allow write: if isSignedIn()
-        && request.auth.uid == uid
-        && request.resource.size < 15 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false;
     }
 
     // Default deny
