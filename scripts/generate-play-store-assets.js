@@ -61,20 +61,6 @@ async function main() {
   const outputs = [
     ['icon-1024.png', () => squareIcon(1024, path.join(ROOT, 'assets/images/icon-1024.png'))],
     ['icon-512.png', () => squareIcon(512, path.join(OUT_DIR, 'icon-512.png'))],
-    ['icon-512-flat.png', async () => {
-      const tmp = path.join(OUT_DIR, 'icon-512.png');
-      await sharp(tmp)
-        .flatten({ background: BG })
-        .png({ compressionLevel: 9, force: true })
-        .toFile(path.join(OUT_DIR, 'icon-512-flat.png'));
-    }],
-    ['icon-512.jpg', async () => {
-      const tmp = path.join(OUT_DIR, 'icon-512.png');
-      await sharp(tmp)
-        .flatten({ background: BG })
-        .jpeg({ quality: 92, mozjpeg: true })
-        .toFile(path.join(OUT_DIR, 'icon-512.jpg'));
-    }],
     ['feature-graphic-1024x500.png', () => featureGraphic(path.join(OUT_DIR, 'feature-graphic-1024x500.png'))],
     ['adaptive-icon-1024.png', () => squareIcon(1024, path.join(ROOT, 'assets/images/adaptive-icon-1024.png'))],
   ];
@@ -84,9 +70,8 @@ async function main() {
     console.log('Created', name);
   }
 
-  console.log('\nPlay Store uploads (try icon-512-flat.png first if upload fails):');
-  console.log('  App icon:', path.join(OUT_DIR, 'icon-512-flat.png'));
-  console.log('  App icon JPEG:', path.join(OUT_DIR, 'icon-512.jpg'));
+  console.log('\nPlay Store uploads:');
+  console.log('  App icon:', path.join(OUT_DIR, 'icon-512.png'));
   console.log('  Feature graphic:', path.join(OUT_DIR, 'feature-graphic-1024x500.png'));
 }
 

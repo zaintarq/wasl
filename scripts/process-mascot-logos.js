@@ -16,11 +16,17 @@ const SOFT = 36;
 
 const SOURCES = [
   {
-    src: path.join(imagesDir, 'mascot-default-source.png'),
+    src: path.join(
+      '/Users/muhammad-zain/.cursor/projects/Users-muhammad-zain-Desktop-huzz/assets',
+      'Copilot_20260730_184135-6e7fe2b9-08de-406d-97fc-85e683f74ca5.png'
+    ),
     out: path.join(imagesDir, 'app-logo.png'),
   },
   {
-    src: path.join(imagesDir, 'mascot-angry-source.png'),
+    src: path.join(
+      '/Users/muhammad-zain/.cursor/projects/Users-muhammad-zain-Desktop-huzz/assets',
+      'Copilot_20260730_185551-60fb6a26-ac3d-4298-b3af-daf19e91df72.png'
+    ),
     out: path.join(imagesDir, 'stop-touching.png'),
   },
 ];

@@ -1,38 +1,46 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Timer, MessageCircle, Shuffle } from 'lucide-react-native';
+import { Heart, SlidersHorizontal, LayoutGrid, MapPin } from 'lucide-react-native';
 import { tokens } from '../../tokens';
-import { LiveContentWidth } from './LiveContentWidth.native';
-import { LiveText } from './LiveTypography.native';
+import { LiveContentWidth } from '../live/LiveContentWidth.native';
+import { LiveText } from '../live/LiveTypography.native';
 
 const ITEMS = [
   {
-    key: 't',
-    Icon: Timer,
-    title: '60 seconds',
-    caption: 'Timed session',
+    key: 'swipe',
+    Icon: Heart,
+    title: 'Swipe deck',
+    caption: 'Like or skip profiles',
     circleBg: tokens.colors.filterBgRose,
     iconColor: tokens.colors.accent,
   },
   {
-    key: 'c',
-    Icon: MessageCircle,
-    title: 'Text chat',
-    caption: 'Type in real time',
+    key: 'filters',
+    Icon: SlidersHorizontal,
+    title: 'Filters',
+    caption: 'Country & preferences',
     circleBg: tokens.colors.filterBgSky,
     iconColor: tokens.colors.blue,
   },
   {
-    key: 's',
-    Icon: Shuffle,
-    title: 'Skip',
-    caption: 'Next person',
-    circleBg: tokens.colors.filterBgAmber,
-    iconColor: tokens.colors.warning,
+    key: 'grid',
+    Icon: LayoutGrid,
+    title: 'Grid view',
+    caption: 'Browse at a glance',
+    circleBg: tokens.colors.filterBgViolet,
+    iconColor: '#7c3aed',
+  },
+  {
+    key: 'nearby',
+    Icon: MapPin,
+    title: 'Nearby',
+    caption: 'People in your area',
+    circleBg: tokens.colors.filterBgEmerald,
+    iconColor: tokens.colors.green,
   },
 ];
 
-export function LiveFeatureGrid() {
+export function HomeFeatureGrid() {
   return (
     <LiveContentWidth style={styles.marginBottom}>
       <LiveText style={styles.sectionTitle}>What you get</LiveText>
@@ -62,10 +70,13 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   cell: {
-    flex: 1,
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '46%',
     backgroundColor: tokens.colors.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,

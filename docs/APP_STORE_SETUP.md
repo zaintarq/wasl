@@ -126,7 +126,7 @@ After upload, wait **5–30 min** — build appears under **App Store Connect �
 | Subtitle (30 chars) | Meet, match & chat — 18+ |
 | Category | Social Networking |
 | Secondary | Lifestyle |
-| Age rating | **17+** (complete questionnaire — social connection, UGC, unrestricted web) |
+| Age rating | **17+** (complete questionnaire — dating, UGC, unrestricted web) |
 | Privacy Policy URL | https://zaintarq.github.io/huzz/privacy.html |
 
 ### Description (use/adapt from PLAY_STORE_LISTING.txt)
@@ -136,7 +136,7 @@ Add line: **Sign in with Apple, email, or Google.**
 
 ### Keywords (100 chars max)
 ```
-connect,social,chat,meet,people,live,video,friends,18,connect freely
+dating,match,chat,social,meet,people,live,video,friends,18
 ```
 
 ### Support URL
@@ -196,7 +196,7 @@ Mark if linked to user, used for tracking, etc.
 **App Store Connect → your version → App Review Information**
 
 ```
-Huzz is an 18+ social connection app. Connect freely. Sign-in required.
+Huzz is an 18+ dating/social app. Sign-in required.
 
 TEST ACCOUNT:
 Email: playreview@huzz.com
@@ -271,7 +271,7 @@ Until that works on iOS, review may reject.
 ### 2. Contacts + bulk photo upload
 Apple is strict. Mandatory contacts/photo sync may get **rejected**. Be ready to explain in Review Notes or make optional on iOS.
 
-### 3. Social connection + live video
+### 3. Dating + live video
 Expect **17+** rating and possible extra questions. Have block/report and moderation documented.
 
 ### 4. No `ios/` folder yet

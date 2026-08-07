@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -24,6 +24,8 @@ export function SwipeDeck({
   style,
   gestureX,
   gestureY,
+  /** slide = horizontal only, fixed stage. card = legacy rotate + xy. */
+  motion = 'card',
 }) {
   const top = data?.[index] || null;
   const next = data?.[index + 1] || null;
@@ -67,11 +69,11 @@ export function SwipeDeck({
         hasSwiped.value = false;
       }
     });
-    translateY.value = withTiming(translateY.value + 10, { duration: 170 });
+    translateY.value = withTiming(motion === 'slide' ? 0 : translateY.value + 10, { duration: 170 });
   };
 
-  // Scroll vs swipe: inner GHScrollView must win on vertical drags. Require clear horizontal
-  // movement before the deck pan activates; vertical-first drags fail the pan.
+  // Pan only wraps the photo (HomeScreen); bio ScrollView is a sibling so it isn’t blocked.
+  // Require clear horizontal movement before the deck pan activates.
   const activeOffsetX = useMemo(() => [-40, 40], []);
   const failOffsetY = useMemo(() => [-14, 14], []);
 
@@ -146,6 +148,7 @@ export function SwipeDeck({
     translateX,
     translateY,
     hasSwiped,
+    motion,
   ]);
 
   const likeOpacity = useDerivedValue(() => {
@@ -162,6 +165,11 @@ export function SwipeDeck({
   });
 
   const cardStyle = useAnimatedStyle(() => {
+    if (motion === 'slide') {
+      return {
+        transform: [{ translateX: translateX.value }],
+      };
+    }
     const rot = interpolate(translateX.value, [-SCREEN_W, 0, SCREEN_W], [-12, 0, 12], Extrapolation.CLAMP);
     return {
       transform: [
@@ -195,24 +203,20 @@ export function SwipeDeck({
       ) : null}
 
       {top ? (
-        <GestureDetector gesture={pan}>
-          <Animated.View 
-            style={[styles.cardShell, cardStyle]}
-            onLayout={() => {
-              // Reset liked state when new card appears
-              if (showLiked) setShowLiked(false);
-            }}
-          >
-            {/* Overlays */}
-            <Animated.View pointerEvents="none" style={[styles.overlay, styles.like, likeStyle]}>
-              <Text style={styles.overlayText}>{showLiked ? 'CONNECT!' : 'CONNECT'}</Text>
-            </Animated.View>
-            <Animated.View pointerEvents="none" style={[styles.overlay, styles.nope, nopeStyle]}>
-              <Text style={styles.overlayText}>NEXT</Text>
-            </Animated.View>
-            {renderCard(top, { isTop: true })}
+        <Animated.View
+          style={[styles.cardShell, cardStyle]}
+          onLayout={() => {
+            if (showLiked) setShowLiked(false);
+          }}
+        >
+          <Animated.View pointerEvents="none" style={[styles.overlay, styles.like, likeStyle]}>
+            <Text style={styles.overlayText}>{showLiked ? 'CONNECT!' : 'CONNECT'}</Text>
           </Animated.View>
-        </GestureDetector>
+          <Animated.View pointerEvents="none" style={[styles.overlay, styles.nope, nopeStyle]}>
+            <Text style={styles.overlayText}>NEXT</Text>
+          </Animated.View>
+          {renderCard(top, { isTop: true, panGesture: pan })}
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -223,8 +227,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
   },
   cardShell: {
     position: 'absolute',

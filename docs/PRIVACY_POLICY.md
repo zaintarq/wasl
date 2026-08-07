@@ -12,7 +12,7 @@ By using Huzz, you agree to this Privacy Policy.
 
 ## 1. Who we are
 
-Huzz is a social connection app that lets users browse profiles, connect with other users, chat, and optionally join short live video/text sessions with other signed-in users.
+Huzz is a dating and social discovery app that lets users browse profiles, match with other users, chat, and optionally join short live video/text sessions with other signed-in users.
 
 **Developer contact:** support@huzz.com
 
@@ -23,11 +23,11 @@ Huzz is a social connection app that lets users browse profiles, connect with ot
 ### Account and profile information
 - Email address and authentication credentials
 - Name, age, gender, bio, interests, and profile photos
-- Discovery preferences such as location and discovery filters
+- Relationship intent and discovery preferences
 - Optional voice profile audio
 
 ### Location information
-- Approximate location (city and country/region) for discovery and safety
+- Approximate location (city and country/region) for matching and safety
 - We do not sell precise GPS coordinates to other users as a default product feature
 
 ### Contacts (required to use the app)
@@ -41,7 +41,7 @@ Huzz is a social connection app that lets users browse profiles, connect with ot
 
 ### Messages and interactions
 - Text messages, voice notes, reactions, and metadata (timestamps, read status)
-- Likes, passes, connections, blocks, and reports
+- Likes, passes, matches, blocks, and reports
 - Live Random session messages and session metadata (duration, participants)
 
 ### Live video and audio
@@ -65,8 +65,8 @@ Huzz is a social connection app that lets users browse profiles, connect with ot
 We use information to:
 - Create and manage your account
 - Show you other users and apply your filters and preferences
-- Enable discovery, messaging, and Live Random sessions
-- Send push notifications (chats, messages, alerts)
+- Enable matching, messaging, and Live Random sessions
+- Send push notifications (matches, messages, alerts)
 - Keep users safe through blocking, reporting, moderation, and admin review
 - Prevent fraud, spam, abuse, and policy violations
 - Improve, maintain, and secure the App
@@ -77,7 +77,7 @@ We use information to:
 ## 4. How we share information
 
 We may share information with:
-- **Other users:** Profile information you choose to show, and messages/media you send to connections or live session partners
+- **Other users:** Profile information you choose to show, and messages/media you send to matches or live session partners
 - **Service providers:** Cloud hosting (Google Firebase), push notifications (Expo), live video (LiveKit), email delivery, and analytics/security tools that help us run the App
 - **Moderators and admins:** Authorized staff may access account, contact, device, and safety data to investigate reports and enforce policies
 - **Legal requests:** When required by law or to protect rights, safety, and security

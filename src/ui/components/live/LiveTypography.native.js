@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { Text, TextInput } from 'react-native';
+import { Text, TextInput, StyleSheet } from 'react-native';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 import { RetroButton } from '../RetroButton.native';
 
@@ -43,4 +43,8 @@ export function LiveRetroButton({ textStyle, style, children, ...props }) {
       {children}
     </RetroButton>
   );
+}
+
+export function liveKaushanTextStyle(extra) {
+  return StyleSheet.flatten([{ fontFamily: LIVE_KAUSHAN_FONT }, extra]);
 }

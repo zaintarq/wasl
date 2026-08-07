@@ -1,6 +1,6 @@
 /**
- * Discovery preferences live in Settings — not onboarding.
- * Default discovery is men ↔ women when no custom prefs are set.
+ * Match preferences live in Settings — not onboarding.
+ * Default matching is straight (boys ↔ girls) when no custom prefs are set.
  */
 
 export function hasPreferencesComplete(_profile) {
@@ -11,7 +11,7 @@ export function getOnboardingInitialStep(_profile) {
   return 2;
 }
 
-/** Effective "connect with" list; empty profile prefs → default from gender. */
+/** Effective "interested in" list; empty profile prefs → straight default from gender. */
 export function getEffectiveGenderPreferences(profile) {
   const gp = Array.isArray(profile?.genderPreferences) ? profile.genderPreferences.filter(Boolean) : [];
   if (gp.length > 0) return gp;

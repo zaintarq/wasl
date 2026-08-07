@@ -10,7 +10,6 @@ import {
   Platform,
   Animated as RNAnimated,
 } from 'react-native';
-import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { authService, blockService, contactBlockService, likeService, userService, matchService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,16 +19,19 @@ import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
 import { hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
 import { getEffectiveGenderPreferences } from '../../utils/profilePreferences';
-import { getPresenceDisplay } from '../../utils/presence';
 import { SwipeDeck } from './SwipeDeck.native';
 import { DiscoveryProfileGrid } from './DiscoveryProfileGrid.native';
-import { FadeInImage } from '../../ui/components/FadeInImage.native';
+import { DiscoveryProfileStack } from '../../ui/components/discovery/DiscoveryProfileStack.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
-import { ProfileVoicePlayer } from '../../ui/components/ProfileVoicePlayer.native';
 import { ProfilePhotoGalleryModal } from '../../ui/components/ProfilePhotoGalleryModal.native';
-import { MainBottomNav, MAIN_BOTTOM_NAV_FALLBACK_H } from '../../ui/components/MainBottomNav.native';
+import { MainBottomNav, MAIN_BOTTOM_NAV_FALLBACK_H, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
+import { LiveTypographyProvider, LiveText, LiveRetroButton } from '../../ui/components/live/LiveTypography.native';
+import { LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
+import { HomeLobbyHero } from '../../ui/components/home/HomeLobbyHero.native';
+import { HomeFeatureGrid } from '../../ui/components/home/HomeFeatureGrid.native';
+import { HomeSafetyNote } from '../../ui/components/home/HomeSafetyNote.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { Settings, SlidersHorizontal, UserRound, SkipForward, MessageCircle, UserPlus, LayoutGrid, Square } from 'lucide-react-native';
+import { Settings, SlidersHorizontal, UserRound, X, MessageCircle, Heart, LayoutGrid, Square } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 
@@ -49,8 +51,8 @@ import * as Haptics from 'expo-haptics';
 const { height: SCREEN_H } = Dimensions.get('window');
 const CARD_MAX_W = 440;
 const HEADER_FALLBACK_H = 64; // wordmark + underline + padding
-/** Breathing room between swipe actions and tab bar (in-flow, not overlay). */
-const FLOAT_NAV_GAP = 16;
+/** Breathing room between swipe actions and tab bar. */
+const FLOAT_NAV_GAP = 12;
 
 export function HomeScreen({ onNavigate }) {
   const navigation = useNavigation();
@@ -67,13 +69,15 @@ export function HomeScreen({ onNavigate }) {
   const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
   const kaushan = fontsLoaded ? { fontFamily: 'KaushanScript_400Regular' } : undefined;
 
-  // Max-tall card: fill as much as possible between header and pinned bottom nav.
+  // Tall states (loading / empty) — active discovery uses flex:1 stage instead.
   const cardHeight = useMemo(() => {
     const header = headerH || HEADER_FALLBACK_H;
     const nav = bottomNavH || MAIN_BOTTOM_NAV_FALLBACK_H + bottomNavPad;
     const avail = SCREEN_H - insets.top - header - nav - FLOAT_NAV_GAP;
-    return Math.round(Math.min(860, Math.max(560, avail)));
+    return Math.round(Math.min(860, Math.max(420, avail)));
   }, [bottomNavH, bottomNavPad, headerH, insets.top]);
+
+  const navClearance = mainBottomNavClearance(bottomNavH, 12);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [viewMode, setViewMode] = useState('card'); // 'card' | 'grid'
@@ -92,11 +96,12 @@ export function HomeScreen({ onNavigate }) {
   
   /** Tap card photo → full-screen gallery (swipe between uploads). */
   const [photoGallery, setPhotoGallery] = useState({ open: false, uris: [], start: 0 });
-  const openPhotoGallery = useCallback((u) => {
+  const openPhotoGallery = useCallback((u, startIndex = 0) => {
     const raw = Array.isArray(u?.images) ? u.images : [];
     const uris = raw.filter((x) => typeof x === 'string' && String(x).trim().length > 0);
     if (!uris.length) return;
-    setPhotoGallery({ open: true, uris, start: 0 });
+    const start = Math.min(Math.max(0, startIndex), uris.length - 1);
+    setPhotoGallery({ open: true, uris, start });
   }, []);
 
   // Cute in-app alerts (matching LIKE/NOPE design)
@@ -191,6 +196,9 @@ export function HomeScreen({ onNavigate }) {
     }
     return allCandidates[currentIndex] || null;
   }, [allCandidates, currentIndex]);
+
+  /** Full lobby only when discovery returned nobody — not while swiping. */
+  const showDiscoveryLobby = !loading && allCandidates.length === 0;
 
   const onHeaderHuzzPress = useCallback(() => {
     setDeckRefreshKey((k) => k + 1);
@@ -1112,6 +1120,7 @@ export function HomeScreen({ onNavigate }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <LiveTypographyProvider>
       {/* Header */}
       <View style={styles.header} onLayout={(e) => setHeaderH(e?.nativeEvent?.layout?.height || 0)}>
         <HuzzPressable style={styles.headerButton} onPress={() => onNavigate('settings')} haptic="light">
@@ -1145,6 +1154,11 @@ export function HomeScreen({ onNavigate }) {
           </View>
         </HuzzPressable>
         <View style={styles.headerRight}>
+          {!loading && allCandidates.length > 0 && viewMode === 'card' ? (
+            <HuzzPressable style={styles.headerButton} onPress={openFilters} haptic="light">
+              <SlidersHorizontal size={22} color={tokens.colors.text} strokeWidth={2.2} />
+            </HuzzPressable>
+          ) : null}
           {!loading && allCandidates.length > 0 ? (
             <HuzzPressable
               style={styles.headerButton}
@@ -1167,16 +1181,32 @@ export function HomeScreen({ onNavigate }) {
       </View>
 
       <View style={styles.container}>
-      {/* Swipe Cards */}
       <View style={[styles.cardContainer, { paddingBottom: FLOAT_NAV_GAP }]}>
-        <HuzzPressable style={styles.filterButton} onPress={openFilters} haptic="light">
-          <SlidersHorizontal size={22} color={tokens.colors.accent} strokeWidth={2.2} />
-        </HuzzPressable>
-
-        {loading ? (
-          <View style={[styles.card, { alignItems: 'center', justifyContent: 'center', minHeight: 400 }]}>
-            <ActivityIndicator size="large" />
-            <Text style={[{ marginTop: 12, fontSize: 16 }, kaushan]}>Loading people...</Text>
+        {showDiscoveryLobby ? (
+          <ScrollView
+            style={styles.lobbyScroll}
+            contentContainerStyle={[styles.lobbyScrollContent, { paddingBottom: navClearance }]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <HomeLobbyHero />
+            <HomeFeatureGrid />
+            <HomeSafetyNote />
+            <LiveContentWidth style={styles.lobbyCta}>
+              <LiveRetroButton
+                variant="primary"
+                onPress={openFilters}
+                style={[styles.lobbyCtaBtn, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+                textStyle={welcomeButtonStyles.welcomeBtnLabel}
+              >
+                Open filters
+              </LiveRetroButton>
+            </LiveContentWidth>
+          </ScrollView>
+        ) : loading ? (
+          <View style={[styles.card, styles.stateCard, { height: cardHeight }]}>
+            <ActivityIndicator size="large" color={tokens.colors.accent} />
+            <LiveText style={[styles.stateText, { marginTop: 12, marginBottom: 0 }]}>Loading people…</LiveText>
           </View>
         ) : viewMode === 'grid' && allCandidates.length > 0 ? (
           <DiscoveryProfileGrid
@@ -1185,19 +1215,23 @@ export function HomeScreen({ onNavigate }) {
             contentPaddingBottom={FLOAT_NAV_GAP + 8}
           />
         ) : !currentUser ? (
-          <View style={[styles.card, { alignItems: 'center', justifyContent: 'center', minHeight: 400, padding: 24 }]}>
-            <Text style={[{ fontSize: 18, color: tokens.colors.textSecondary, marginBottom: 8 }, kaushan]}>
-              No profiles found
-            </Text>
-            <Text style={[{ textAlign: 'center', color: tokens.colors.text, marginBottom: 16 }, kaushan]}>
-              Try changing your country filter using the filter button.
-            </Text>
-            <RetroButton variant="blue" onPress={openFilters} title="Open Filters" />
+          <View style={[styles.card, styles.stateCard, { height: Math.min(cardHeight, 360) }]}>
+            <LiveText style={styles.stateTitle}>You&apos;re all caught up</LiveText>
+            <LiveText style={styles.stateText}>
+              No more profiles in this batch. Tap Huzz above to refresh, or widen your filters.
+            </LiveText>
+            <LiveRetroButton
+              variant="outline"
+              onPress={openFilters}
+              style={[styles.lobbyCtaBtn, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              Open filters
+            </LiveRetroButton>
           </View>
         ) : (
-          <>
-            <View style={[styles.deckFrame, { height: cardHeight }]}>
-              {/* Cute In-App Alert Overlay */}
+          <View style={styles.discoveryStage}>
+            <View style={styles.deckFrame}>
               {cuteAlert && (
                 <RNAnimated.View
                   pointerEvents="none"
@@ -1278,181 +1312,60 @@ export function HomeScreen({ onNavigate }) {
               )}
               <SwipeDeck
                 style={styles.deckFill}
+                motion="slide"
                 gestureX={gestureX}
                 gestureY={gestureY}
                 data={allCandidates}
                 index={currentIndex}
                 onSwipe={handleSwipe}
-                renderCard={(u) => {
-                  const hasAbout =
-                    !!String(u?.bio || '').trim() ||
-                    !!String(u?.addMe || '').trim() ||
-                    (Array.isArray(u?.interests) && u.interests.length > 0) ||
-                    !!String(u?.aboutVoiceUrl || '').trim();
-
-                  return (
-                  <View style={styles.card}>
-                    {/* Photo — tap for full-screen gallery; fills card when no about section */}
-                    <View
-                      style={[
-                        styles.imageContainer,
-                        hasAbout ? styles.imageContainerSplit : styles.imageContainerFull,
-                      ]}
-                    >
-                      <HuzzPressable
-                        style={styles.imagePressable}
-                        onPress={() => openPhotoGallery(u)}
-                        haptic="light"
-                        disabled={!Array.isArray(u?.images) || !u.images.filter((x) => typeof x === 'string' && String(x).trim()).length}
-                      >
-                        <FadeInImage
-                          source={{ uri: String(u?.images?.[0] || '') }}
-                          style={styles.image}
-                          resizeMode="cover"
-                          contentPosition="top"
-                        />
-                      </HuzzPressable>
-
-                      {/* Top-left stack: keeps pills clear of the filter button (top-right) */}
-                      <View style={styles.candidateTopLeftPills} pointerEvents="box-none">
-                        {u?._isPendingRequest ? (
-                          <View style={[styles.candidatePill, { backgroundColor: tokens.colors.accentDim }]}>
-                            <Text style={[styles.candidatePillText, { color: tokens.colors.accent, fontWeight: '600' }]}>
-                              Wants to connect
-                            </Text>
-                          </View>
-                        ) : null}
-                        {!u?._isPendingRequest &&
-                          (() => {
-                            const p = getPresenceDisplay(u?.lastSeen);
-                            if (!p) return null;
-                            return (
-                              <View style={styles.candidatePill}>
-                                <Text
-                                  style={[
-                                    styles.candidatePillText,
-                                    p.kind === 'online' ? styles.candidatePresenceOnline : null,
-                                  ]}
-                                >
-                                  {p.kind === 'online' ? '● ' : ''}
-                                  {p.label}
-                                </Text>
-                              </View>
-                            );
-                          })()}
-                      </View>
-
-                      {/* Overlay */}
-                      <View style={styles.overlay}>
-                        <View style={styles.userInfo}>
-                          <View style={styles.nameRow}>
-                            <Text style={styles.userName}>{u?.name || 'User'}</Text>
-                            {u?.isVerified ? <Text style={styles.verifiedBadge}> ✅</Text> : null}
-                            <Text style={styles.userAge}> {u?.age || ''}</Text>
-                          </View>
-                          <Text style={styles.location}>
-                            📍 {u?.location || u?.countryOfResidence || ''} {u?.distance ? `• ${u.distance} km away` : ''}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    {/* About me — only when there’s content; otherwise photo uses full card height */}
-                    {hasAbout ? (
-                    <GHScrollView
-                      style={styles.bioContainer}
-                      contentContainerStyle={styles.bioScrollContent}
-                      nestedScrollEnabled
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator
-                    >
-                      {!!String(u?.bio || '').trim() && (
-                        <>
-                          <Text style={styles.bioSectionLabel}>About</Text>
-                          <Text style={styles.bio}>{String(u?.bio || '')}</Text>
-                        </>
-                      )}
-                      {!!String(u?.addMe || '').trim() && (
-                        <>
-                          <Text style={styles.bioSectionLabel}>Add me</Text>
-                          <Text style={styles.addMeText}>{String(u?.addMe || '').trim()}</Text>
-                        </>
-                      )}
-                      {(u?.interests || []).length > 0 ? (
-                        <>
-                          <Text style={styles.bioSectionLabel}>Interests</Text>
-                          <View style={styles.interestsContainer}>
-                            {(u?.interests || []).slice(0, 12).map((interest, idx) => {
-                              const colors = ['#98fb98', '#b0e0e6', '#fffacd', '#f0e68c'];
-                              return (
-                                <View
-                                  key={`${interest}-${idx}`}
-                                  style={[styles.interestTag, { backgroundColor: colors[idx % colors.length] }]}
-                                >
-                                  <Text style={styles.interestTagText}>{interest}</Text>
-                                </View>
-                              );
-                            })}
-                          </View>
-                        </>
-                      ) : null}
-                      {!!String(u?.aboutVoiceUrl || '').trim() && (
-                        <>
-                          <Text style={styles.bioSectionLabel}>Voice</Text>
-                          <ProfileVoicePlayer
-                            audioUrl={String(u.aboutVoiceUrl).trim()}
-                            durationMs={u?.aboutVoiceDurationMs}
-                          />
-                        </>
-                      )}
-                    </GHScrollView>
-                    ) : null}
-                  </View>
-                  );
-                }}
+                renderCard={(u, meta) => (
+                  <DiscoveryProfileStack
+                    user={u}
+                    isTop={meta?.isTop}
+                    panGesture={meta?.panGesture}
+                    onPhotoPress={openPhotoGallery}
+                  />
+                )}
               />
-
-              {/* Floating Action Buttons (float bar near bottom edge, not covering content) */}
-              <View pointerEvents="box-none" style={styles.actionsOverlay}>
-                <View style={styles.actionContainer}>
-                <Animated.View style={nopeBtnStyle}>
-                  <HuzzPressable
-                    style={[styles.actionButton, styles.skipButton]}
-                    onPress={() => handleSwipe('left', currentUser)}
-                    haptic="light"
-                  >
-                    <SkipForward size={26} color="#475569" strokeWidth={2.4} />
-                  </HuzzPressable>
-                </Animated.View>
-
-                <Animated.View style={msgBtnStyle}>
-                  <HuzzPressable
-                    style={[styles.actionButton, styles.messageButton]}
-                    onPress={async () => {
-                      const ok = await handleDirectMessage(currentUser);
-                      if (ok) {
-                        setCurrentIndex((prev) => (prev < allCandidates.length - 1 ? prev + 1 : 0));
-                      }
-                    }}
-                    haptic="medium"
-                  >
-                    <MessageCircle size={28} color="#FFFFFF" strokeWidth={2.2} />
-                  </HuzzPressable>
-                </Animated.View>
-
-                <Animated.View style={likeBtnStyle}>
-                  <HuzzPressable
-                    style={[styles.actionButton, styles.connectButton]}
-                    onPress={() => handleSwipe('right', currentUser)}
-                    haptic="medium"
-                  >
-                    <UserPlus size={26} color="#047857" strokeWidth={2.4} />
-                  </HuzzPressable>
-                </Animated.View>
-                </View>
-              </View>
             </View>
-          </>
+
+            <View style={styles.discoveryDock}>
+              <Animated.View style={nopeBtnStyle}>
+                <HuzzPressable
+                  style={[styles.actionButton, styles.skipButton]}
+                  onPress={() => handleSwipe('left', currentUser)}
+                  haptic="light"
+                >
+                  <X size={26} color="#64748B" strokeWidth={2.4} />
+                </HuzzPressable>
+              </Animated.View>
+
+              <Animated.View style={msgBtnStyle}>
+                <HuzzPressable
+                  style={[styles.actionButton, styles.messageButton]}
+                  onPress={async () => {
+                    const ok = await handleDirectMessage(currentUser);
+                    if (ok) {
+                      setCurrentIndex((prev) => (prev < allCandidates.length - 1 ? prev + 1 : 0));
+                    }
+                  }}
+                  haptic="medium"
+                >
+                  <MessageCircle size={28} color="#FFFFFF" strokeWidth={2.2} />
+                </HuzzPressable>
+              </Animated.View>
+
+              <Animated.View style={likeBtnStyle}>
+                <HuzzPressable
+                  style={[styles.actionButton, styles.connectButton]}
+                  onPress={() => handleSwipe('right', currentUser)}
+                  haptic="medium"
+                >
+                  <Heart size={26} color="#059669" strokeWidth={2.4} fill="#D1FAE5" />
+                </HuzzPressable>
+              </Animated.View>
+            </View>
+          </View>
         )}
       </View>
 
@@ -1466,6 +1379,7 @@ export function HomeScreen({ onNavigate }) {
         onClose={() => setPhotoGallery((s) => ({ ...s, open: false }))}
       />
 
+      </LiveTypographyProvider>
     </SafeAreaView>
   );
 }
@@ -1500,6 +1414,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: tokens.radius.sm,
     backgroundColor: tokens.colors.surfaceElevated,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerRight: {
     flexDirection: 'row',
@@ -1549,19 +1468,59 @@ const styles = StyleSheet.create({
   cardContainer: {
     flex: 1,
     minHeight: 0,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 8,
+    paddingHorizontal: 0,
     paddingTop: 0,
-    paddingBottom: 18,
+    paddingBottom: 0,
   },
-  deckFrame: {
+  discoveryStage: {
+    flex: 1,
+    width: '100%',
+    minHeight: 0,
+    flexDirection: 'column',
+  },
+  discoveryDock: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 22,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  lobbyScroll: { flex: 1, width: '100%' },
+  lobbyScrollContent: {
+    paddingTop: tokens.spacing.sm,
+    flexGrow: 1,
+  },
+  lobbyCta: { marginBottom: tokens.spacing.md },
+  lobbyCtaBtn: { width: '100%' },
+  stateCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
     width: '100%',
     maxWidth: CARD_MAX_W,
-    position: 'relative',
     alignSelf: 'center',
-    justifyContent: 'center',
-    marginTop: 0,
+  },
+  stateTitle: {
+    ...tokens.typography.titleSmall,
+    color: tokens.colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  stateText: {
+    ...tokens.typography.bodySmall,
+    color: tokens.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  deckFrame: {
+    flex: 1,
+    width: '100%',
+    minHeight: 0,
+    position: 'relative',
+    overflow: 'hidden',
   },
   deckFill: {
     width: '100%',
@@ -1569,9 +1528,9 @@ const styles = StyleSheet.create({
   },
   filterButton: {
     position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 10,
+    top: 12,
+    right: 16,
+    zIndex: 30,
     width: 44,
     height: 44,
     backgroundColor: tokens.colors.surfaceElevated,
@@ -1767,9 +1726,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: 'transparent',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+      },
+      android: { elevation: 3 },
+    }),
   },
   actionButton: {
     width: 56,
@@ -1812,7 +1783,7 @@ const styles = StyleSheet.create({
   },
   connectButton: {
     borderColor: tokens.colors.filterBorderEmerald,
-    backgroundColor: tokens.colors.filterBgEmerald,
+    backgroundColor: tokens.colors.surface,
   },
   authButton: {
     paddingVertical: 14,

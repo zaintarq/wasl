@@ -1,25 +1,23 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Switch } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import { authService, clubService } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
-import { RetroInput } from '../../ui/components/RetroInput.native';
-import { RetroButton } from '../../ui/components/RetroButton.native';
-
-const MIC_MODES = [
-  { key: 'open', label: 'Open mic', hint: 'Everyone in the club can talk.' },
-  { key: 'request', label: 'Request mic', hint: 'Members ask admins; admins approve who can speak.' },
-  { key: 'admin_only', label: 'Admins only', hint: 'Only owners and admins can use the mic.' },
-];
+import { LIVE_SCREEN_GUTTER, LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
+import {
+  LiveTypographyProvider,
+  LiveText,
+  LiveTextInput,
+  LiveRetroButton,
+} from '../../ui/components/live/LiveTypography.native';
+import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 
 export function CreateClubScreen({ onNavigate }) {
   const meUid = authService.getCurrentUser()?.uid || null;
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [isPublic, setIsPublic] = useState(true);
-  const [micMode, setMicMode] = useState('request');
   const [saving, setSaving] = useState(false);
 
   const create = async () => {
@@ -29,22 +27,15 @@ export function CreateClubScreen({ onNavigate }) {
     }
     setSaving(true);
     try {
-      const { clubId, inviteCode, error } = await clubService.createClub(meUid, {
+      const { clubId, error } = await clubService.createClub(meUid, {
         name,
         description,
-        isPublic,
-        micMode,
       });
       if (error) {
         Alert.alert('Could not create club', error);
         return;
       }
-      Alert.alert(
-        'Club created',
-        isPublic
-          ? 'Your club is live on Discover.'
-          : `Private club ready. Invite code: ${inviteCode}`
-      );
+      Alert.alert('Club created', 'You can change public/private and voice settings inside the club.');
       onNavigate('clubRoom', { clubId });
     } finally {
       setSaving(false);
@@ -53,56 +44,56 @@ export function CreateClubScreen({ onNavigate }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <HuzzPressable onPress={() => onNavigate('clubs')} haptic="light" style={styles.backBtn}>
-          <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.2} />
-        </HuzzPressable>
-        <Text style={styles.title}>Create club</Text>
-        <View style={{ width: 44 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.label}>Club name</Text>
-        <RetroInput placeholder="e.g. Late night vibes" value={name} onChangeText={setName} style={styles.input} />
-
-        <Text style={styles.label}>About</Text>
-        <RetroInput
-          placeholder="What’s this space for?"
-          value={description}
-          onChangeText={setDescription}
-          style={[styles.input, { minHeight: 80 }]}
-          multiline
-        />
-
-        <View style={styles.switchRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.switchLabel}>Public club</Text>
-            <Text style={styles.switchHint}>Anyone can discover and join. Turn off for invite-code only.</Text>
-          </View>
-          <Switch value={isPublic} onValueChange={setIsPublic} trackColor={{ true: tokens.colors.blue }} />
+      <LiveTypographyProvider>
+        <View style={styles.header}>
+          <HuzzPressable onPress={() => onNavigate('clubs')} haptic="light" style={styles.backBtn}>
+            <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.2} />
+          </HuzzPressable>
+          <LiveText style={styles.title}>Create club</LiveText>
+          <View style={styles.headerSide} />
         </View>
 
-        <Text style={[styles.label, { marginTop: 16 }]}>Voice rules</Text>
-        {MIC_MODES.map((m) => (
-          <HuzzPressable
-            key={m.key}
-            style={[styles.modeChip, micMode === m.key && styles.modeChipOn]}
-            onPress={() => setMicMode(m.key)}
-            haptic="light"
-          >
-            <Text style={[styles.modeLabel, micMode === m.key && styles.modeLabelOn]}>{m.label}</Text>
-            <Text style={styles.modeHint}>{m.hint}</Text>
-          </HuzzPressable>
-        ))}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <LiveContentWidth>
+            <LiveText style={styles.hint}>
+              Start with a name and description. Public/private and voice rules can be changed anytime in club settings.
+            </LiveText>
 
-        <RetroButton
-          variant="blue"
-          title={saving ? 'Creating…' : 'Create club'}
-          onPress={create}
-          disabled={saving}
-          style={{ marginTop: 24 }}
-        />
-      </ScrollView>
+            <LiveText style={styles.label}>Club name</LiveText>
+            <LiveTextInput
+              placeholder="e.g. Late night vibes"
+              placeholderTextColor={tokens.colors.textMuted}
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+            />
+
+            <LiveText style={styles.label}>Description</LiveText>
+            <LiveTextInput
+              placeholder="What's this space for?"
+              placeholderTextColor={tokens.colors.textMuted}
+              value={description}
+              onChangeText={setDescription}
+              style={[styles.input, styles.inputMultiline]}
+              multiline
+            />
+
+            <LiveRetroButton
+              variant="blue"
+              onPress={create}
+              disabled={saving || name.trim().length < 2}
+              style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              {saving ? 'Creating…' : 'Create club'}
+            </LiveRetroButton>
+          </LiveContentWidth>
+        </ScrollView>
+      </LiveTypographyProvider>
     </SafeAreaView>
   );
 }
@@ -112,43 +103,43 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
     backgroundColor: tokens.colors.surface,
   },
   backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  title: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: tokens.colors.text },
-  content: { padding: tokens.spacing.screenHorizontal, paddingBottom: 32 },
-  label: { fontSize: 13, fontWeight: '800', color: tokens.colors.text, marginBottom: 8, marginTop: 8 },
-  input: { marginBottom: 8 },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-    padding: 14,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-  },
-  switchLabel: { fontWeight: '700', color: tokens.colors.text },
-  switchHint: { fontSize: 13, color: tokens.colors.textMuted, marginTop: 4 },
-  modeChip: {
-    padding: 14,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surface,
+  headerSide: { width: 44 },
+  title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
+  content: { padding: LIVE_SCREEN_GUTTER, paddingBottom: 32 },
+  hint: {
+    ...tokens.typography.bodySmall,
+    lineHeight: 20,
+    color: tokens.colors.textSecondary,
     marginBottom: 8,
   },
-  modeChipOn: {
-    borderColor: tokens.colors.blue,
-    backgroundColor: tokens.colors.filterBgSky,
+  label: {
+    ...tokens.typography.caption,
+    fontWeight: '800',
+    color: tokens.colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginTop: 16,
   },
-  modeLabel: { fontWeight: '700', color: tokens.colors.text },
-  modeLabelOn: { color: tokens.colors.blue },
-  modeHint: { fontSize: 13, color: tokens.colors.textMuted, marginTop: 4 },
+  input: {
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: tokens.colors.text,
+    backgroundColor: tokens.colors.bgSecondary,
+    marginBottom: 8,
+  },
+  inputMultiline: { minHeight: 100, textAlignVertical: 'top' },
+  cta: { width: '100%', marginTop: 24 },
 });

@@ -13,7 +13,7 @@ import { tokens } from '../../ui/tokens';
 
 /**
  * Blocks logged-in normal users until foreground location permission is granted.
- * Admins/staff skip this gate.
+ * Admins/staff/wali skip this gate.
  */
 export function LocationRequiredGate() {
   const [checking, setChecking] = useState(true);
@@ -51,6 +51,13 @@ export function LocationRequiredGate() {
           setBlocked(false);
           return;
         }
+        const profile = await userService.getUserById(user.uid);
+        const waliRole = String(profile?.data?.role || '').toLowerCase();
+        if (waliRole === 'wali') {
+          skipRef.current = true;
+          setBlocked(false);
+          return;
+        }
       } catch {
         /* continue with gate */
       }
@@ -70,7 +77,7 @@ export function LocationRequiredGate() {
       setHint(
         perm.canAskAgain === false
           ? 'Location was denied. Open Settings → Huzz → Location → While Using the App, then return here.'
-          : 'Huzz needs your approximate location (city/region) for discovery and safety. Allow location to continue.'
+          : 'Huzz needs your approximate location (city/region) for matching and safety. Allow location to continue.'
       );
     } finally {
       setChecking(false);

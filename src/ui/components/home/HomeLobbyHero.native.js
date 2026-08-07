@@ -1,16 +1,17 @@
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Video, ArrowRight } from 'lucide-react-native';
+import { Heart, X, Sparkles } from 'lucide-react-native';
 import { tokens } from '../../tokens';
 import { RetroCard } from '../RetroCard.native';
 import { RetroBadge } from '../RetroBadge.native';
-import { LiveContentWidth } from './LiveContentWidth.native';
-import { LiveText, useLiveTypography } from './LiveTypography.native';
+import { LiveContentWidth } from '../live/LiveContentWidth.native';
+import { LiveText, useLiveTypography } from '../live/LiveTypography.native';
 
 /**
- * Editorial hero: accent rail + card, Kaushan throughout, playful tilted preview tiles.
+ * Discovery lobby — only when Home has zero profiles (filters too narrow, new area, etc.).
+ * When swiping, the profile card is the hero; this is not shown.
  */
-export function LiveLobbyHero() {
+export function HomeLobbyHero() {
   const { fontFamily, ready } = useLiveTypography();
 
   return (
@@ -19,7 +20,7 @@ export function LiveLobbyHero() {
         <View style={styles.accentRail} />
         <RetroCard variant="panel" style={styles.cardGrow}>
           <RetroBadge
-            text="Random · 60 seconds"
+            text="Discover · Swipe · Connect"
             color={tokens.colors.accentDim}
             textStyle={[
               { color: tokens.colors.accent },
@@ -27,30 +28,30 @@ export function LiveLobbyHero() {
             ]}
           />
 
-          <LiveText style={styles.wordmark}>Live</LiveText>
+          <LiveText style={styles.wordmark}>Discover</LiveText>
 
-          <LiveText style={styles.headline}>Meet someone new</LiveText>
+          <LiveText style={styles.headline}>Find your person</LiveText>
           <LiveText style={styles.sub}>
-            One-minute sessions with another Huzz member. Text chat today; video later. Skip or leave anytime.
+            Browse profiles near you. Swipe to connect, message when it feels right, and tune who you see with filters.
           </LiveText>
 
           <View style={styles.tilesArea}>
-            <View style={[styles.tile, styles.tileLeft, styles.tileSky]}>
-              <Video size={26} color={tokens.colors.blue} strokeWidth={1.8} />
-              <LiveText style={styles.tileLabel}>You</LiveText>
-              <LiveText style={styles.tileHint}>Preview</LiveText>
+            <View style={[styles.tile, styles.tileLeft, styles.tileRose]}>
+              <Heart size={26} color={tokens.colors.accent} strokeWidth={1.8} />
+              <LiveText style={styles.tileLabel}>Like</LiveText>
+              <LiveText style={styles.tileHint}>Connect</LiveText>
             </View>
 
             <View style={styles.tileBridge}>
               <View style={styles.bridgeCircle}>
-                <ArrowRight size={16} color={tokens.colors.accent} strokeWidth={2.5} />
+                <X size={16} color={tokens.colors.textSecondary} strokeWidth={2.5} />
               </View>
             </View>
 
             <View style={[styles.tile, styles.tileRight, styles.tileViolet]}>
-              <LiveText style={styles.tileQ}>?</LiveText>
-              <LiveText style={styles.tileLabel}>Stranger</LiveText>
-              <LiveText style={styles.tileHint}>Anonymous</LiveText>
+              <Sparkles size={26} color="#7c3aed" strokeWidth={1.8} />
+              <LiveText style={styles.tileLabel}>Match</LiveText>
+              <LiveText style={styles.tileHint}>Mutual vibe</LiveText>
             </View>
           </View>
         </RetroCard>
@@ -104,9 +105,9 @@ const styles = StyleSheet.create({
     minHeight: 112,
     justifyContent: 'center',
   },
-  tileSky: {
-    backgroundColor: tokens.colors.filterBgSky,
-    borderColor: tokens.colors.filterBorderSky,
+  tileRose: {
+    backgroundColor: tokens.colors.filterBgRose,
+    borderColor: tokens.colors.filterBorderRose,
     transform: [{ rotate: '-2deg' }],
   },
   tileViolet: {
@@ -138,5 +139,4 @@ const styles = StyleSheet.create({
   },
   tileLabel: { ...tokens.typography.label, color: tokens.colors.text, marginTop: 8 },
   tileHint: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
-  tileQ: { fontSize: 28, color: tokens.colors.textMuted },
 });

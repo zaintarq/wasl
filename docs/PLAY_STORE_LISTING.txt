@@ -15,7 +15,7 @@ CORE FEATURES
 1) DISCOVER PROFILES
 • Scroll a home feed of user profile cards
 • See photos, name, age, city/region, and bio
-• Filter who you see by preferences such as location
+• Filter who you see by preferences such as location and intent
 
 2) LIKE, CONNECT & MESSAGE
 • Like someone to show interest
@@ -45,7 +45,7 @@ SAFETY
 • Moderation and review of safety reports
 
 PERMISSIONS (WHY WE ASK)
-• Location — show your city/region in discovery
+• Location — show your city/region for matching
 • Camera & microphone — only for Live Random when you turn them on
 • Photos — add profile pictures and share images in chat
 • Contacts — safety features on device

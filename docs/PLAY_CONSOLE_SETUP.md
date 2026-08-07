@@ -19,7 +19,7 @@ Host the content from `docs/PRIVACY_POLICY.md` on your website at that URL (requ
 **Instructions for reviewers:**
 
 ```
-Huzz is a social connection app. All features require a signed-in account.
+Huzz is a dating/social app. All features require a signed-in account.
 
 TEST ACCOUNT (create before submit, or use this if you already made one):
 Email: playreview@huzz.com
@@ -31,7 +31,7 @@ Steps to test:
 3. If onboarding appears, complete profile (name, age 18+, at least one photo, location)
 4. Grant Contacts, Photos, Location, Camera, and Microphone when prompted (required for full access)
 
-To test discovery & chat:
+To test matching & chat:
 - Use a second test account on another device, or browse Home and Like/Message users
 
 To test Live Random video:
@@ -59,10 +59,10 @@ Huzz does not show third-party advertisements.
 
 | Question area | Answer |
 |---------------|--------|
-| Category | Social networking / Communication |
+| Category | Social networking / Dating / Communication |
 | User-generated content | **Yes** — profiles, photos, chat, live video |
 | Users can interact | **Yes** — messaging, live chat, video |
-| Shares user location | **Yes** — city/region for discovery |
+| Shares user location | **Yes** — city/region for matching |
 | Violence | No |
 | Sexual content | **Possible in user content** — moderated; report/block available |
 | Language | **Possible** — user-generated; profanity filtered in chat |
@@ -70,9 +70,9 @@ Huzz does not show third-party advertisements.
 | Gambling | No |
 | Fear | No |
 
-**Expected rating:** Likely **PEGI 18 / Mature 17+** (social connection + live user interaction + UGC)
+**Expected rating:** Likely **PEGI 18 / Mature 17+** (dating + live user interaction + UGC)
 
-Complete Google's questionnaire honestly; social apps with live video usually lands 17+/18+.
+Complete Google's questionnaire honestly; dating + live video usually lands 17+/18+.
 
 ---
 
@@ -142,7 +142,7 @@ No banking, crypto, loans, or in-app purchases in v1.0.0.
 | Field | Value |
 |-------|-------|
 | **App category** | Social |
-| **Tags** | Social, Chat, Connect freely, Meet new people |
+| **Tags** | Dating, Chat, Meet new people |
 | **Email** | support@huzz.com |
 | **Website** | https://huzz.com |
 | **Phone** | (optional — leave blank or add business number) |
@@ -164,7 +164,7 @@ Meet people nearby. Match, chat, and go live for short random video sessions.
 
 ### Full description
 ```
-Huzz is a modern social app to connect freely and build real connections.
+Huzz is a modern dating and discovery app built for real connections.
 
 SWIPE & MATCH
 Browse profiles with photos, bios, and interests. Like someone to show interest, or message them directly. When you both like each other, chat unlocks instantly.

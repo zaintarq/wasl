@@ -3368,34 +3368,76 @@ export const clubService = {
     const inviteCode = randomInviteCode();
     const clubRef = doc(collection(db, COL.clubs));
 
+    // Sequential writes (not one transaction): security rules evaluate each write
+    // independently, so get(clubs/{id}) inside rules cannot see a club doc created
+    // in the same transaction batch.
     try {
-      await runTransaction(db, async (tx) => {
-        tx.set(clubRef, {
-          name,
-          description,
-          ownerUid: uid,
-          isPublic,
-          micMode,
-          inviteCode,
-          memberCount: 1,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        tx.set(this._memberRef(clubRef.id, uid), {
+      await setDoc(clubRef, {
+        name,
+        description,
+        ownerUid: uid,
+        isPublic,
+        micMode,
+        inviteCode,
+        memberCount: 1,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      try {
+        await setDoc(this._memberRef(clubRef.id, uid), {
           uid,
           role: 'owner',
           canSpeak: true,
           joinedAt: serverTimestamp(),
         });
-        tx.set(this._membershipRef(uid, clubRef.id), {
+        await setDoc(this._membershipRef(uid, clubRef.id), {
           clubId: clubRef.id,
           role: 'owner',
           joinedAt: serverTimestamp(),
         });
-      });
+      } catch (inner) {
+        await deleteDoc(clubRef).catch(() => {});
+        throw inner;
+      }
       return { clubId: clubRef.id, inviteCode, error: null };
     } catch (e) {
       return { clubId: null, error: e?.message || String(e) };
+    }
+  },
+
+  async updateClubSettings(clubId, actorUid, patch = {}) {
+    const cid = String(clubId || '').trim();
+    const uid = String(actorUid || '').trim();
+    if (!cid || !uid) return { error: 'Missing club.' };
+
+    const updates = { updatedAt: serverTimestamp() };
+    if (typeof patch.name === 'string' && patch.name.trim().length >= 2) {
+      updates.name = patch.name.trim();
+    }
+    if (typeof patch.description === 'string') {
+      updates.description = patch.description.trim();
+    }
+    if (typeof patch.isPublic === 'boolean') {
+      updates.isPublic = patch.isPublic;
+    }
+    if (['open', 'request', 'admin_only'].includes(patch.micMode)) {
+      updates.micMode = patch.micMode;
+    }
+
+    if (Object.keys(updates).length <= 1) {
+      return { error: 'Nothing to update.' };
+    }
+
+    try {
+      const memberSnap = await getDoc(this._memberRef(cid, uid));
+      const role = String(memberSnap.data()?.role || '');
+      if (!memberSnap.exists() || !['owner', 'admin'].includes(role)) {
+        return { error: 'Only club admins can change settings.' };
+      }
+      await updateDoc(this._clubRef(cid), updates);
+      return { error: null };
+    } catch (e) {
+      return { error: e?.message || String(e) };
     }
   },
 

@@ -42,7 +42,7 @@ cat > "$PROPS" <<EOF
 storePassword=$STORE_PASS
 keyPassword=$STORE_PASS
 keyAlias=huzz-upload
-storeFile=huzz-upload.keystore
+storeFile=app/huzz-upload.keystore
 EOF
 
 echo ""

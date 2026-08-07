@@ -1,16 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Video, ArrowRight } from 'lucide-react-native';
+import { Heart, MessageCircle } from 'lucide-react-native';
 import { tokens } from '../../tokens';
 import { RetroCard } from '../RetroCard.native';
 import { RetroBadge } from '../RetroBadge.native';
-import { LiveContentWidth } from './LiveContentWidth.native';
-import { LiveText, useLiveTypography } from './LiveTypography.native';
+import { LiveContentWidth } from '../live/LiveContentWidth.native';
+import { LiveText, useLiveTypography } from '../live/LiveTypography.native';
 
-/**
- * Editorial hero: accent rail + card, Kaushan throughout, playful tilted preview tiles.
- */
-export function LiveLobbyHero() {
+export function ChatLobbyHero() {
   const { fontFamily, ready } = useLiveTypography();
 
   return (
@@ -19,7 +16,7 @@ export function LiveLobbyHero() {
         <View style={styles.accentRail} />
         <RetroCard variant="panel" style={styles.cardGrow}>
           <RetroBadge
-            text="Random · 60 seconds"
+            text="Match · Message · Connect"
             color={tokens.colors.accentDim}
             textStyle={[
               { color: tokens.colors.accent },
@@ -27,30 +24,30 @@ export function LiveLobbyHero() {
             ]}
           />
 
-          <LiveText style={styles.wordmark}>Live</LiveText>
+          <LiveText style={styles.wordmark}>Chats</LiveText>
 
-          <LiveText style={styles.headline}>Meet someone new</LiveText>
+          <LiveText style={styles.headline}>Stay in touch</LiveText>
           <LiveText style={styles.sub}>
-            One-minute sessions with another Huzz member. Text chat today; video later. Skip or leave anytime.
+            Your mutual connections live here. Text, voice notes, translations, and AI openers when you need a hand.
           </LiveText>
 
           <View style={styles.tilesArea}>
-            <View style={[styles.tile, styles.tileLeft, styles.tileSky]}>
-              <Video size={26} color={tokens.colors.blue} strokeWidth={1.8} />
-              <LiveText style={styles.tileLabel}>You</LiveText>
-              <LiveText style={styles.tileHint}>Preview</LiveText>
+            <View style={[styles.tile, styles.tileLeft, styles.tileRose]}>
+              <Heart size={26} color={tokens.colors.accent} strokeWidth={1.8} />
+              <LiveText style={styles.tileLabel}>Match</LiveText>
+              <LiveText style={styles.tileHint}>Mutual like</LiveText>
             </View>
 
             <View style={styles.tileBridge}>
               <View style={styles.bridgeCircle}>
-                <ArrowRight size={16} color={tokens.colors.accent} strokeWidth={2.5} />
+                <MessageCircle size={16} color={tokens.colors.blue} strokeWidth={2.5} />
               </View>
             </View>
 
-            <View style={[styles.tile, styles.tileRight, styles.tileViolet]}>
-              <LiveText style={styles.tileQ}>?</LiveText>
-              <LiveText style={styles.tileLabel}>Stranger</LiveText>
-              <LiveText style={styles.tileHint}>Anonymous</LiveText>
+            <View style={[styles.tile, styles.tileRight, styles.tileSky]}>
+              <MessageCircle size={26} color={tokens.colors.blue} strokeWidth={1.8} />
+              <LiveText style={styles.tileLabel}>Chat</LiveText>
+              <LiveText style={styles.tileHint}>Real time</LiveText>
             </View>
           </View>
         </RetroCard>
@@ -104,14 +101,14 @@ const styles = StyleSheet.create({
     minHeight: 112,
     justifyContent: 'center',
   },
+  tileRose: {
+    backgroundColor: tokens.colors.filterBgRose,
+    borderColor: tokens.colors.filterBorderRose,
+    transform: [{ rotate: '-2deg' }],
+  },
   tileSky: {
     backgroundColor: tokens.colors.filterBgSky,
     borderColor: tokens.colors.filterBorderSky,
-    transform: [{ rotate: '-2deg' }],
-  },
-  tileViolet: {
-    backgroundColor: tokens.colors.filterBgViolet,
-    borderColor: tokens.colors.filterBorderViolet,
     transform: [{ rotate: '2deg' }],
   },
   tileLeft: { marginRight: 4 },
@@ -138,5 +135,4 @@ const styles = StyleSheet.create({
   },
   tileLabel: { ...tokens.typography.label, color: tokens.colors.text, marginTop: 8 },
   tileHint: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
-  tileQ: { fontSize: 28, color: tokens.colors.textMuted },
 });

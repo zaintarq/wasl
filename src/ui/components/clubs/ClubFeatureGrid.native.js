@@ -1,38 +1,46 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Timer, MessageCircle, Shuffle } from 'lucide-react-native';
+import { Mic, MessageCircle, Lock, Hash } from 'lucide-react-native';
 import { tokens } from '../../tokens';
-import { LiveContentWidth } from './LiveContentWidth.native';
-import { LiveText } from './LiveTypography.native';
+import { LiveContentWidth } from '../live/LiveContentWidth.native';
+import { LiveText } from '../live/LiveTypography.native';
 
 const ITEMS = [
   {
-    key: 't',
-    Icon: Timer,
-    title: '60 seconds',
-    caption: 'Timed session',
-    circleBg: tokens.colors.filterBgRose,
-    iconColor: tokens.colors.accent,
+    key: 'voice',
+    Icon: Mic,
+    title: 'Voice rooms',
+    caption: 'Talk live with mic',
+    circleBg: tokens.colors.filterBgEmerald,
+    iconColor: tokens.colors.green,
   },
   {
-    key: 'c',
+    key: 'chat',
     Icon: MessageCircle,
     title: 'Text chat',
-    caption: 'Type in real time',
+    caption: 'Messages in the room',
     circleBg: tokens.colors.filterBgSky,
     iconColor: tokens.colors.blue,
   },
   {
-    key: 's',
-    Icon: Shuffle,
-    title: 'Skip',
-    caption: 'Next person',
+    key: 'private',
+    Icon: Lock,
+    title: 'Private clubs',
+    caption: 'Invite-only access',
     circleBg: tokens.colors.filterBgAmber,
     iconColor: tokens.colors.warning,
   },
+  {
+    key: 'code',
+    Icon: Hash,
+    title: 'Invite codes',
+    caption: 'Share with friends',
+    circleBg: tokens.colors.filterBgViolet,
+    iconColor: '#7c3aed',
+  },
 ];
 
-export function LiveFeatureGrid() {
+export function ClubFeatureGrid() {
   return (
     <LiveContentWidth style={styles.marginBottom}>
       <LiveText style={styles.sectionTitle}>What you get</LiveText>
@@ -62,10 +70,13 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   cell: {
-    flex: 1,
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '46%',
     backgroundColor: tokens.colors.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,

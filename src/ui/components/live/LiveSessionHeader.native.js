@@ -31,8 +31,8 @@ export function LiveSessionHeader({ secondsLeft, totalSeconds = 60 }) {
 
 const styles = StyleSheet.create({
   shell: {
-    paddingTop: 8,
-    paddingBottom: 10,
+    paddingTop: 12,
+    paddingBottom: 14,
     backgroundColor: tokens.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
@@ -41,13 +41,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   label: { ...tokens.typography.titleSmall, color: tokens.colors.text },
   caption: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
   big: {
-    fontSize: 32,
+    fontSize: 40,
     color: tokens.colors.accent,
     fontVariant: ['tabular-nums'],
     letterSpacing: -1,

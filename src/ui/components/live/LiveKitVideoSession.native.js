@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Track } from 'livekit-client';
-import { LiveKitRoom, VideoTrack, useTracks, useLocalParticipant } from '@livekit/react-native';
-import { UserRound, VideoOff } from 'lucide-react-native';
+import { LiveKitRoom, VideoTrack, useTracks } from '@livekit/react-native';
+import { UserRound } from 'lucide-react-native';
 import { liveRandomService } from '../../../services/firebaseService';
 import { tokens } from '../../tokens';
 import { LiveText } from './LiveTypography.native';
@@ -31,7 +31,7 @@ function LocalPip({ trackRef, cameraOff }) {
   if (!trackRef || cameraOff) {
     return (
       <View style={[styles.pip, styles.pipOff]}>
-        <VideoOff size={20} color={tokens.colors.textMuted} strokeWidth={2} />
+        <VideoOffIcon />
         <LiveText style={styles.pipOffText}>Camera off</LiveText>
       </View>
     );
@@ -47,8 +47,12 @@ function LocalPip({ trackRef, cameraOff }) {
   );
 }
 
+function VideoOffIcon() {
+  const { VideoOff } = require('lucide-react-native');
+  return <VideoOff size={20} color={tokens.colors.textMuted} strokeWidth={2} />;
+}
+
 function OmegleStage({ onSkip, onLeave }) {
-  const { isCameraEnabled } = useLocalParticipant();
   const trackRefs = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }], {
     onlySubscribed: false,
   });
@@ -62,11 +66,14 @@ function OmegleStage({ onSkip, onLeave }) {
     [trackRefs]
   );
 
+  const localPub = localRef?.publication;
+  const cameraOff = localPub?.isMuted || !localPub?.track;
+
   return (
     <View style={styles.stageWrap}>
       <View style={styles.stage}>
         <RemoteTile trackRef={remoteRef} />
-        <LocalPip trackRef={localRef} cameraOff={!isCameraEnabled} />
+        <LocalPip trackRef={localRef} cameraOff={cameraOff} />
       </View>
       <LiveSessionControls onSkip={onSkip} onLeave={onLeave} />
     </View>

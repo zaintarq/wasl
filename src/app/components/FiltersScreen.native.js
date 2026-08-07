@@ -152,7 +152,7 @@ export function FiltersScreen({ onNavigate }) {
               </View>
               <View style={styles.sectionHeadText}>
                 <Text style={styles.sectionTitle}>Location</Text>
-                <Text style={styles.sectionHint}>Limit discovery by country</Text>
+                <Text style={styles.sectionHint}>Limit matches by country</Text>
               </View>
             </View>
             <Text style={styles.modalSubValue}>{countrySummary}</Text>

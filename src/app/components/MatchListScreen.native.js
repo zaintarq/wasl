@@ -1,28 +1,41 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, Alert } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
+import { MessageCircle } from 'lucide-react-native';
 import { authService, matchService, userService } from '../../services/firebaseService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
-import { getPresenceDisplay } from '../../utils/presence';
-import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
+import { MainBottomNav, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
+import { LIVE_SCREEN_GUTTER } from '../../ui/components/live/LiveContentWidth.native';
+import { LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
+import {
+  LiveTypographyProvider,
+  LiveText,
+  LiveRetroButton,
+} from '../../ui/components/live/LiveTypography.native';
+import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
+import { ChatLobbyHero } from '../../ui/components/chats/ChatLobbyHero.native';
+import { ChatFeatureGrid } from '../../ui/components/chats/ChatFeatureGrid.native';
+import { ChatSafetyNote } from '../../ui/components/chats/ChatSafetyNote.native';
+import { ChatMatchCard } from '../../ui/components/chats/ChatMatchCard.native';
 
 export function MatchListScreen({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);
   const [usersById, setUsersById] = useState({});
+  const [bottomNavH, setBottomNavH] = useState(0);
 
   const meUid = authService.getCurrentUser()?.uid || null;
 
-  // Real-time match list: updates when new messages arrive or match status changes
   useEffect(() => {
     const authUser = authService.getCurrentUser();
     if (!authUser) {
       onNavigate('onboarding', { mode: 'login' });
-      return;
+      return undefined;
     }
+
     setLoading(true);
     const unsub = matchService.listenMyMatches(authUser.uid, ({ data: list, error }) => {
       if (error) {
@@ -33,7 +46,7 @@ export function MatchListScreen({ onNavigate }) {
       const arr = Array.isArray(list) ? list : [];
       setMatches(arr);
       setLoading(false);
-      // Load other-user profiles when list changes (best-effort)
+
       const otherUids = Array.from(
         new Set(
           arr
@@ -64,117 +77,155 @@ export function MatchListScreen({ onNavigate }) {
     });
   }, [matches, usersById, meUid]);
 
+  const navClearance = mainBottomNavClearance(bottomNavH, 12);
+
+  const openChat = async (match, otherUid, status) => {
+    const uid = authService.getCurrentUser()?.uid;
+    if (!uid || !otherUid) return;
+    if (status === 'pending') {
+      await matchService.createActiveMatch(uid, otherUid, { initiatedBy: uid });
+    }
+    onNavigate('chat', { matchId: match.id, userId: otherUid });
+  };
+
+  const handleUnmatch = (match, other) => {
+    Alert.alert(
+      'Remove connection?',
+      `Stop chatting with ${other?.name || 'this person'}? You can connect again from Home if you both like each other.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const uid = authService.getCurrentUser()?.uid;
+            if (!uid) return;
+            const { error } = await matchService.unmatch(match.id, uid);
+            if (error) Alert.alert('Error', error);
+          },
+        },
+      ]
+    );
+  };
+
+  const listHeader = (
+    <>
+      <ChatLobbyHero />
+      <ChatFeatureGrid />
+      {!loading && rows.length > 0 ? (
+        <LiveContentWidth style={styles.section}>
+          <LiveText style={styles.sectionTitle}>Your conversations</LiveText>
+        </LiveContentWidth>
+      ) : null}
+    </>
+  );
+
+  const listFooter = (
+    <>
+      {!loading && rows.length === 0 ? (
+        <LiveContentWidth style={styles.emptyWrap}>
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <MessageCircle size={36} color={tokens.colors.textMuted} strokeWidth={1.5} />
+            </View>
+            <LiveText style={styles.emptyTitle}>No chats yet</LiveText>
+            <LiveText style={styles.emptyText}>
+              Like people on Home — when you both connect, your conversation shows up here.
+            </LiveText>
+          </View>
+        </LiveContentWidth>
+      ) : null}
+      <ChatSafetyNote />
+      <LiveContentWidth style={styles.ctaStack}>
+        <LiveRetroButton
+          variant="primary"
+          onPress={() => onNavigate('home')}
+          style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+          textStyle={welcomeButtonStyles.welcomeBtnLabel}
+        >
+          Find people on Home
+        </LiveRetroButton>
+      </LiveContentWidth>
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View style={{ width: 70 }} />
-        <Text style={styles.title}>Chats</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      <LiveTypographyProvider>
+        <View style={styles.header}>
+          <View style={styles.headerSide} />
+          <LiveText style={styles.title}>Chats</LiveText>
+          <View style={styles.headerSide} />
+        </View>
 
-      <FlatList
-        style={styles.list}
-        contentContainerStyle={{ padding: 16, paddingBottom: 16 }}
-        initialNumToRender={12}
-        windowSize={8}
-        maxToRenderPerBatch={10}
-        updateCellsBatchingPeriod={16}
-        removeClippedSubviews
-        keyboardDismissMode="on-drag"
-        data={loading ? Array.from({ length: 6 }).map((_, i) => ({ _skeleton: true, id: `sk-${i}` })) : rows}
-        keyExtractor={(item) => String(item?.match?.id || item?.id)}
-        renderItem={({ item }) => {
-          if (item?._skeleton) {
-            return (
-              <View style={styles.matchRow}>
-                <View style={{ flex: 1, gap: 8 }}>
-                  <SkeletonBox style={{ height: 14, width: '55%' }} />
-                  <SkeletonBox style={{ height: 10, width: '35%' }} />
-                </View>
-                <SkeletonBox style={{ height: 12, width: 56 }} />
-              </View>
-            );
-          }
-          const { match, otherUid, other, status, canChat } = item;
-          const openChat = async () => {
-            const uid = authService.getCurrentUser()?.uid;
-            if (!uid || !otherUid) return;
-            if (status === 'pending') {
-              await matchService.createActiveMatch(uid, otherUid, { initiatedBy: uid });
-            }
-            onNavigate('chat', { matchId: match.id, userId: otherUid });
-          };
-          const handleUnmatch = () => {
-            Alert.alert(
-              'Remove connection?',
-              `Stop chatting with ${other?.name || 'this person'}? You can connect again from Home if you both like each other.`,
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Remove',
-                  style: 'destructive',
-                  onPress: async () => {
-                    const uid = authService.getCurrentUser()?.uid;
-                    if (!uid) return;
-                    const { error } = await matchService.unmatch(match.id, uid);
-                    if (error) Alert.alert('Error', error);
-                  },
-                },
-              ]
-            );
-          };
-
-          const rowContent = (
-            <HuzzPressable
-              style={styles.matchRow}
-              onPress={() => {
-                if (canChat) openChat();
-              }}
-              haptic="light"
-              disabled={!canChat}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.matchName}>{other?.name || 'Connection'}</Text>
-                <Text style={styles.matchMeta}>
-                  {(() => {
-                    const p = getPresenceDisplay(other?.lastSeen);
-                    if (p && canChat) return p.label;
-                    return 'Tap to chat';
-                  })()}
-                </Text>
-              </View>
-              <Text style={[styles.openChat, !canChat ? { opacity: 0.5 } : null]}>{canChat ? 'Chat →' : '⏳'}</Text>
-            </HuzzPressable>
-          );
-
-          if (canChat) {
-            return (
-              <Swipeable
-                key={match.id}
-                renderLeftActions={() => (
-                  <View style={styles.unmatchAction}>
-                    <HuzzPressable style={styles.unmatchBtn} onPress={handleUnmatch} haptic="medium">
-                      <Text style={styles.unmatchText}>Remove</Text>
-                    </HuzzPressable>
+        <FlatList
+          style={styles.list}
+          contentContainerStyle={[styles.listContent, { paddingBottom: navClearance }]}
+          initialNumToRender={12}
+          windowSize={8}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={16}
+          removeClippedSubviews
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+          data={loading ? Array.from({ length: 4 }).map((_, i) => ({ _skeleton: true, id: `sk-${i}` })) : rows}
+          keyExtractor={(item) => String(item?.match?.id || item?.id)}
+          renderItem={({ item }) => {
+            if (item?._skeleton) {
+              return (
+                <LiveContentWidth>
+                  <View style={styles.skeletonRow}>
+                    <SkeletonBox style={styles.skeletonAvatar} />
+                    <View style={{ flex: 1, gap: 8 }}>
+                      <SkeletonBox style={{ height: 14, width: '55%' }} />
+                      <SkeletonBox style={{ height: 10, width: '70%' }} />
+                    </View>
                   </View>
-                )}
-              >
-                {rowContent}
-              </Swipeable>
+                </LiveContentWidth>
+              );
+            }
+
+            const { match, otherUid, other, status, canChat } = item;
+
+            const card = (
+              <ChatMatchCard
+                other={other}
+                match={match}
+                canChat={canChat}
+                onPress={() => openChat(match, otherUid, status)}
+              />
             );
-          }
-          return rowContent;
-        }}
-        ListEmptyComponent={
-          loading ? null : (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyTitle}>No chats yet</Text>
-              <Text style={styles.emptyText}>Like people on Home — when you both connect, your chat opens here.</Text>
-            </View>
-          )
-        }
-      />
-      <MainBottomNav active="matches" onNavigate={onNavigate} />
+
+            if (!canChat) {
+              return <LiveContentWidth>{card}</LiveContentWidth>;
+            }
+
+            return (
+              <LiveContentWidth>
+                <Swipeable
+                  renderLeftActions={() => (
+                    <View style={styles.unmatchAction}>
+                      <HuzzPressable
+                        style={styles.unmatchBtn}
+                        onPress={() => handleUnmatch(match, other)}
+                        haptic="medium"
+                      >
+                        <LiveText style={styles.unmatchText}>Remove</LiveText>
+                      </HuzzPressable>
+                    </View>
+                  )}
+                >
+                  {card}
+                </Swipeable>
+              </LiveContentWidth>
+            );
+          }}
+        />
+
+        <MainBottomNav active="matches" onNavigate={onNavigate} onLayout={setBottomNavH} />
+      </LiveTypographyProvider>
     </SafeAreaView>
   );
 }
@@ -182,56 +233,78 @@ export function MatchListScreen({ onNavigate }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: tokens.colors.bg },
   list: { flex: 1 },
+  listContent: {
+    paddingTop: tokens.spacing.md,
+    flexGrow: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: tokens.spacing.screenHorizontal,
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
     backgroundColor: tokens.colors.surface,
   },
-  headerBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.colors.surfaceElevated,
-    minWidth: 70,
-    alignItems: 'center',
-  },
-  headerBtnText: { ...tokens.typography.label, color: tokens.colors.text },
+  headerSide: { width: 70 },
   title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
-  emptyBox: {
-    backgroundColor: tokens.colors.surface,
-    borderRadius: tokens.radius.lg,
-    padding: 24,
-    marginTop: 24,
+  section: { marginBottom: 4 },
+  sectionTitle: {
+    ...tokens.typography.caption,
+    color: tokens.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
   },
-  emptyTitle: { ...tokens.typography.titleSmall, color: tokens.colors.text, marginBottom: 8 },
-  emptyText: { ...tokens.typography.bodySmall, color: tokens.colors.textSecondary },
-  matchRow: {
+  skeletonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
-    backgroundColor: tokens.colors.surface,
-    borderRadius: tokens.radius.md,
-    padding: 16,
+    padding: 14,
     marginBottom: 10,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.surface,
     borderWidth: 1,
     borderColor: tokens.colors.border,
   },
-  matchName: { ...tokens.typography.body, fontWeight: '600', color: tokens.colors.text },
-  matchMeta: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 4 },
-  openChat: { ...tokens.typography.label, color: tokens.colors.accent },
-  approveBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.colors.success,
+  skeletonAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
-  approveText: { ...tokens.typography.label, color: '#FFFFFF' },
+  emptyWrap: { marginBottom: tokens.spacing.lg },
+  empty: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: tokens.colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    ...tokens.typography.titleSmall,
+    color: tokens.colors.text,
+    marginBottom: 6,
+  },
+  emptyText: {
+    ...tokens.typography.bodySmall,
+    color: tokens.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  ctaStack: { marginBottom: tokens.spacing.md },
+  cta: { width: '100%' },
   unmatchAction: {
     justifyContent: 'center',
     marginBottom: 10,
@@ -241,7 +314,7 @@ const styles = StyleSheet.create({
   unmatchBtn: {
     width: 88,
     height: '100%',
-    minHeight: 64,
+    minHeight: 72,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: tokens.colors.danger,
@@ -251,5 +324,3 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 });
-
-

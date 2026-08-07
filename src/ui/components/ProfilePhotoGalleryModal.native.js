@@ -52,6 +52,28 @@ export function ProfilePhotoGalleryModal({ visible, uris, initialIndex = 0, onCl
     [winW, list.length]
   );
 
+  const goToPage = useCallback(
+    (index) => {
+      if (list.length <= 1) return;
+      const i = Math.min(Math.max(0, index), list.length - 1);
+      setPage(i);
+      try {
+        scrollRef.current?.scrollTo({ x: i * winW, y: 0, animated: true });
+      } catch {
+        /* ignore */
+      }
+    },
+    [list.length, winW]
+  );
+
+  const goNext = useCallback(() => {
+    if (page < list.length - 1) goToPage(page + 1);
+  }, [goToPage, list.length, page]);
+
+  const goPrev = useCallback(() => {
+    if (page > 0) goToPage(page - 1);
+  }, [goToPage, page]);
+
   if (!list.length) return null;
 
   return (
@@ -77,7 +99,7 @@ export function ProfilePhotoGalleryModal({ visible, uris, initialIndex = 0, onCl
             ref={scrollRef}
             horizontal
             pagingEnabled
-            showsHorizontalScrollIndicator
+            showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             decelerationRate="fast"
             onMomentumScrollEnd={onScrollEnd}
@@ -94,6 +116,13 @@ export function ProfilePhotoGalleryModal({ visible, uris, initialIndex = 0, onCl
               </View>
             ))}
           </ScrollView>
+
+          {list.length > 1 ? (
+            <>
+              <Pressable style={styles.tapLeft} onPress={goPrev} accessibilityLabel="Previous photo" />
+              <Pressable style={styles.tapRight} onPress={goNext} accessibilityLabel="Next photo" />
+            </>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -108,9 +137,26 @@ const styles = StyleSheet.create({
   galleryWrap: {
     flex: 1,
     minHeight: 200,
+    position: 'relative',
   },
   galleryScroll: {
     flex: 1,
+  },
+  tapLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '38%',
+    zIndex: 2,
+  },
+  tapRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '62%',
+    zIndex: 2,
   },
   header: {
     flexDirection: 'row',

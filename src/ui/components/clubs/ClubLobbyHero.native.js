@@ -1,16 +1,16 @@
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Video, ArrowRight } from 'lucide-react-native';
+import { Mic, MessageCircle, Users } from 'lucide-react-native';
 import { tokens } from '../../tokens';
 import { RetroCard } from '../RetroCard.native';
 import { RetroBadge } from '../RetroBadge.native';
-import { LiveContentWidth } from './LiveContentWidth.native';
-import { LiveText, useLiveTypography } from './LiveTypography.native';
+import { LiveContentWidth } from '../live/LiveContentWidth.native';
+import { LiveText, useLiveTypography } from '../live/LiveTypography.native';
 
 /**
- * Editorial hero: accent rail + card, Kaushan throughout, playful tilted preview tiles.
+ * Editorial hero for Clubs lobby — mirrors Live lobby layout.
  */
-export function LiveLobbyHero() {
+export function ClubLobbyHero() {
   const { fontFamily, ready } = useLiveTypography();
 
   return (
@@ -19,38 +19,38 @@ export function LiveLobbyHero() {
         <View style={styles.accentRail} />
         <RetroCard variant="panel" style={styles.cardGrow}>
           <RetroBadge
-            text="Random · 60 seconds"
-            color={tokens.colors.accentDim}
+            text="Voice · Chat · Community"
+            color={tokens.colors.filterBgSky}
             textStyle={[
-              { color: tokens.colors.accent },
+              { color: tokens.colors.blue },
               ready && fontFamily ? { fontFamily } : null,
             ]}
           />
 
-          <LiveText style={styles.wordmark}>Live</LiveText>
+          <LiveText style={styles.wordmark}>Clubs</LiveText>
 
-          <LiveText style={styles.headline}>Meet someone new</LiveText>
+          <LiveText style={styles.headline}>Hang out with your people</LiveText>
           <LiveText style={styles.sub}>
-            One-minute sessions with another Huzz member. Text chat today; video later. Skip or leave anytime.
+            Drop into voice rooms, chat in real time, and build your own crew. Create a club or join with an invite code.
           </LiveText>
 
           <View style={styles.tilesArea}>
-            <View style={[styles.tile, styles.tileLeft, styles.tileSky]}>
-              <Video size={26} color={tokens.colors.blue} strokeWidth={1.8} />
-              <LiveText style={styles.tileLabel}>You</LiveText>
-              <LiveText style={styles.tileHint}>Preview</LiveText>
+            <View style={[styles.tile, styles.tileLeft, styles.tileEmerald]}>
+              <Mic size={26} color={tokens.colors.green} strokeWidth={1.8} />
+              <LiveText style={styles.tileLabel}>Voice</LiveText>
+              <LiveText style={styles.tileHint}>Open mic</LiveText>
             </View>
 
             <View style={styles.tileBridge}>
               <View style={styles.bridgeCircle}>
-                <ArrowRight size={16} color={tokens.colors.accent} strokeWidth={2.5} />
+                <MessageCircle size={16} color={tokens.colors.blue} strokeWidth={2.5} />
               </View>
             </View>
 
             <View style={[styles.tile, styles.tileRight, styles.tileViolet]}>
-              <LiveText style={styles.tileQ}>?</LiveText>
-              <LiveText style={styles.tileLabel}>Stranger</LiveText>
-              <LiveText style={styles.tileHint}>Anonymous</LiveText>
+              <Users size={26} color="#7c3aed" strokeWidth={1.8} />
+              <LiveText style={styles.tileLabel}>Your crew</LiveText>
+              <LiveText style={styles.tileHint}>Public or private</LiveText>
             </View>
           </View>
         </RetroCard>
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   accentRail: {
     width: 5,
     borderRadius: 3,
-    backgroundColor: tokens.colors.accent,
+    backgroundColor: tokens.colors.blue,
     opacity: 0.9,
   },
   cardGrow: { flex: 1, padding: tokens.spacing.md },
@@ -104,9 +104,9 @@ const styles = StyleSheet.create({
     minHeight: 112,
     justifyContent: 'center',
   },
-  tileSky: {
-    backgroundColor: tokens.colors.filterBgSky,
-    borderColor: tokens.colors.filterBorderSky,
+  tileEmerald: {
+    backgroundColor: tokens.colors.filterBgEmerald,
+    borderColor: tokens.colors.filterBorderEmerald,
     transform: [{ rotate: '-2deg' }],
   },
   tileViolet: {
@@ -138,5 +138,4 @@ const styles = StyleSheet.create({
   },
   tileLabel: { ...tokens.typography.label, color: tokens.colors.text, marginTop: 8 },
   tileHint: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
-  tileQ: { fontSize: 28, color: tokens.colors.textMuted },
 });

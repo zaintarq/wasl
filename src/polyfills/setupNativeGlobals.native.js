@@ -18,3 +18,7 @@ function installDomExceptionPolyfill() {
 }
 
 installDomExceptionPolyfill();
+
+export function setupNativeGlobals() {
+  installDomExceptionPolyfill();
+}

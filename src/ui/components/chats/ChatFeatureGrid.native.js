@@ -1,38 +1,46 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Timer, MessageCircle, Shuffle } from 'lucide-react-native';
+import { MessageCircle, Languages, Sparkles, Mic } from 'lucide-react-native';
 import { tokens } from '../../tokens';
-import { LiveContentWidth } from './LiveContentWidth.native';
-import { LiveText } from './LiveTypography.native';
+import { LiveContentWidth } from '../live/LiveContentWidth.native';
+import { LiveText } from '../live/LiveTypography.native';
 
 const ITEMS = [
   {
-    key: 't',
-    Icon: Timer,
-    title: '60 seconds',
-    caption: 'Timed session',
-    circleBg: tokens.colors.filterBgRose,
-    iconColor: tokens.colors.accent,
-  },
-  {
-    key: 'c',
+    key: 'text',
     Icon: MessageCircle,
     title: 'Text chat',
-    caption: 'Type in real time',
+    caption: 'Instant messages',
     circleBg: tokens.colors.filterBgSky,
     iconColor: tokens.colors.blue,
   },
   {
-    key: 's',
-    Icon: Shuffle,
-    title: 'Skip',
-    caption: 'Next person',
+    key: 'voice',
+    Icon: Mic,
+    title: 'Voice notes',
+    caption: 'Send audio clips',
+    circleBg: tokens.colors.filterBgViolet,
+    iconColor: '#7c3aed',
+  },
+  {
+    key: 'translate',
+    Icon: Languages,
+    title: 'Translate',
+    caption: 'Chat in any language',
+    circleBg: tokens.colors.filterBgEmerald,
+    iconColor: tokens.colors.green,
+  },
+  {
+    key: 'ai',
+    Icon: Sparkles,
+    title: 'AI openers',
+    caption: 'Break the ice',
     circleBg: tokens.colors.filterBgAmber,
     iconColor: tokens.colors.warning,
   },
 ];
 
-export function LiveFeatureGrid() {
+export function ChatFeatureGrid() {
   return (
     <LiveContentWidth style={styles.marginBottom}>
       <LiveText style={styles.sectionTitle}>What you get</LiveText>
@@ -62,10 +70,13 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   cell: {
-    flex: 1,
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '46%',
     backgroundColor: tokens.colors.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,

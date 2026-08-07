@@ -66,8 +66,8 @@ export function MatchPreferencesSettings() {
   return (
     <View style={styles.wrap}>
       <Text style={styles.hint}>
-        Choose your gender so we can show you relevant people in discovery. Optionally pick who you want to connect
-        with — leave blank to use default settings.
+        By default, men see women and women see men in discovery. Change who you want to connect with below
+        only if you prefer something different.
       </Text>
 
       <Text style={styles.label}>Your gender</Text>

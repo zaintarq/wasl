@@ -1,23 +1,35 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
-  TextInput,
   Alert,
   Modal,
   ScrollView,
   ActivityIndicator,
   Share,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Settings, Mic } from 'lucide-react-native';
-import { requestRecordingPermissionsAsync } from 'expo-audio';
 import { authService, clubService, userService } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
-import { RetroButton } from '../../ui/components/RetroButton.native';
+import { LIVE_SCREEN_GUTTER, LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
+import {
+  LiveTypographyProvider,
+  LiveText,
+  LiveTextInput,
+  LiveRetroButton,
+} from '../../ui/components/live/LiveTypography.native';
+import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
+import { ClubAudioRoom } from '../../ui/components/live/ClubAudioRoom.native';
+
+const MIC_MODES = [
+  { key: 'open', label: 'Open mic', hint: 'Everyone in the club can talk.' },
+  { key: 'request', label: 'Request mic', hint: 'Members ask admins to speak.' },
+  { key: 'admin_only', label: 'Admins only', hint: 'Only owners and admins can use the mic.' },
+];
 
 export function ClubRoomScreen({ onNavigate, clubId }) {
   const meUid = authService.getCurrentUser()?.uid || null;
@@ -29,10 +41,13 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
   const [usersById, setUsersById] = useState({});
   const [text, setText] = useState('');
   const [inVoice, setInVoice] = useState(false);
-  const [ClubAudioRoom, setClubAudioRoom] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [addUsername, setAddUsername] = useState('');
   const [joinCode, setJoinCode] = useState('');
+  const [settingsDesc, setSettingsDesc] = useState('');
+  const [settingsPublic, setSettingsPublic] = useState(true);
+  const [settingsMicMode, setSettingsMicMode] = useState('request');
+  const [savingSettings, setSavingSettings] = useState(false);
   const listRef = useRef(null);
 
   useEffect(() => {
@@ -50,16 +65,6 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
   }, [meUid, cid]);
 
   useEffect(() => {
-    if (!inVoice) return;
-    try {
-      const mod = require('../../ui/components/live/ClubAudioRoom.native');
-      setClubAudioRoom(() => mod.ClubAudioRoom);
-    } catch (e) {
-      console.warn('[ClubRoom] voice module', e?.message || e);
-    }
-  }, [inVoice]);
-
-  useEffect(() => {
     const uids = Array.from(new Set(members.map((m) => m.uid).filter(Boolean)));
     Promise.all(
       uids.map(async (uid) => {
@@ -74,6 +79,29 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
     [members, meUid]
   );
   const isAdmin = myMember && ['owner', 'admin'].includes(String(myMember.role || ''));
+
+  useEffect(() => {
+    if (!club) return;
+    setSettingsDesc(String(club.description || ''));
+    setSettingsPublic(club.isPublic !== false);
+    setSettingsMicMode(String(club.micMode || 'request'));
+  }, [club?.id, club?.description, club?.isPublic, club?.micMode]);
+
+  const saveClubSettings = async () => {
+    if (!meUid || !cid) return;
+    setSavingSettings(true);
+    try {
+      const { error } = await clubService.updateClubSettings(cid, meUid, {
+        description: settingsDesc,
+        isPublic: settingsPublic,
+        micMode: settingsMicMode,
+      });
+      if (error) Alert.alert('Could not save settings', error);
+      else Alert.alert('Saved', 'Club settings updated.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const displayName = (uid) => {
     const u = usersById[uid];
@@ -114,8 +142,19 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
   if (!cid) {
     return (
       <SafeAreaView style={styles.safe}>
-        <Text style={styles.err}>Missing club.</Text>
-        <RetroButton variant="blue" title="Back to clubs" onPress={() => onNavigate('clubs')} />
+        <LiveTypographyProvider>
+          <LiveText style={styles.err}>Missing club.</LiveText>
+          <LiveContentWidth style={{ padding: LIVE_SCREEN_GUTTER }}>
+            <LiveRetroButton
+              variant="blue"
+              onPress={() => onNavigate('clubs')}
+              style={[welcomeButtonStyles.welcomeBtnShape]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              Back to clubs
+            </LiveRetroButton>
+          </LiveContentWidth>
+        </LiveTypographyProvider>
       </SafeAreaView>
     );
   }
@@ -131,33 +170,43 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
   if (!myMember) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <HuzzPressable onPress={() => onNavigate('clubs')} style={styles.iconBtn} haptic="light">
-            <ArrowLeft size={22} color={tokens.colors.text} />
-          </HuzzPressable>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {club.name}
-          </Text>
-          <View style={{ width: 44 }} />
-        </View>
-        <View style={styles.joinGate}>
-          <Text style={styles.joinTitle}>{club.isPublic ? 'Join this club' : 'Private club'}</Text>
-          <Text style={styles.joinHint}>
-            {club.isPublic
-              ? club.description || 'Public space — join to chat and use voice.'
-              : 'Enter the invite code from the admin.'}
-          </Text>
-          {!club.isPublic ? (
-            <TextInput
-              style={styles.codeInput}
-              placeholder="Invite code"
-              value={joinCode}
-              onChangeText={(t) => setJoinCode(t.toUpperCase())}
-              autoCapitalize="characters"
-            />
-          ) : null}
-          <RetroButton variant="blue" title="Join club" onPress={joinClub} />
-        </View>
+        <LiveTypographyProvider>
+          <View style={styles.header}>
+            <HuzzPressable onPress={() => onNavigate('clubs')} style={styles.iconBtn} haptic="light">
+              <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.2} />
+            </HuzzPressable>
+            <LiveText style={styles.headerTitle} numberOfLines={1}>
+              {club.name}
+            </LiveText>
+            <View style={styles.headerSide} />
+          </View>
+          <LiveContentWidth style={styles.joinGate}>
+            <LiveText style={styles.joinTitle}>{club.isPublic ? 'Join this club' : 'Private club'}</LiveText>
+            <LiveText style={styles.joinHint}>
+              {club.isPublic
+                ? club.description || 'Public space — join to chat and use voice.'
+                : 'Enter the invite code from the admin.'}
+            </LiveText>
+            {!club.isPublic ? (
+              <LiveTextInput
+                style={styles.codeInput}
+                placeholder="Invite code"
+                placeholderTextColor={tokens.colors.textMuted}
+                value={joinCode}
+                onChangeText={(t) => setJoinCode(t.toUpperCase())}
+                autoCapitalize="characters"
+              />
+            ) : null}
+            <LiveRetroButton
+              variant="blue"
+              onPress={joinClub}
+              style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              Join club
+            </LiveRetroButton>
+          </LiveContentWidth>
+        </LiveTypographyProvider>
       </SafeAreaView>
     );
   }
@@ -166,51 +215,38 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
   const canSpeak =
     isAdmin || micMode === 'open' || (micMode === 'request' && myMember.canSpeak === true);
 
-  const joinVoice = async () => {
-    if (canSpeak) {
-      const mic = await requestRecordingPermissionsAsync();
-      if (!mic.granted) {
-        Alert.alert(
-          'Microphone required',
-          'Allow microphone access to speak in the club voice space. You can still read text chat without it.'
-        );
-        return;
-      }
-    }
-    setInVoice(true);
-  };
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <LiveTypographyProvider>
       <View style={styles.header}>
         <HuzzPressable onPress={() => onNavigate('clubs')} style={styles.iconBtn} haptic="light">
-          <ArrowLeft size={22} color={tokens.colors.text} />
+          <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.2} />
         </HuzzPressable>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
+        <View style={styles.headerCenter}>
+          <LiveText style={styles.headerTitle} numberOfLines={1}>
             {club.name}
-          </Text>
-          <Text style={styles.headerSub}>
+          </LiveText>
+          <LiveText style={styles.headerSub}>
             {members.length} member{members.length === 1 ? '' : 's'} · {club.isPublic ? 'Public' : 'Private'}
-          </Text>
+          </LiveText>
         </View>
         {isAdmin ? (
           <HuzzPressable onPress={() => setAdminOpen(true)} style={styles.iconBtn} haptic="light">
-            <Settings size={22} color={tokens.colors.text} />
+            <Settings size={22} color={tokens.colors.text} strokeWidth={2.2} />
           </HuzzPressable>
         ) : (
-          <View style={{ width: 44 }} />
+          <View style={styles.headerSide} />
         )}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberStrip} contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberStrip} contentContainerStyle={styles.memberStripContent}>
         {members.map((m) => (
           <View key={m.uid} style={styles.memberChip}>
-            <Text style={styles.memberChipText} numberOfLines={1}>
+            <LiveText style={styles.memberChipText} numberOfLines={1}>
               {displayName(m.uid)}
-            </Text>
+            </LiveText>
             {m.role !== 'member' ? (
-              <Text style={styles.memberRole}>{m.role === 'owner' ? 'Owner' : 'Admin'}</Text>
+              <LiveText style={styles.memberRole}>{m.role === 'owner' ? 'Owner' : 'Admin'}</LiveText>
             ) : m.canSpeak ? (
               <Mic size={12} color={tokens.colors.success} />
             ) : null}
@@ -219,23 +255,22 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
       </ScrollView>
 
       {inVoice ? (
-        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-          {ClubAudioRoom ? (
-            <ClubAudioRoom
-              clubId={cid}
-              canPublishHint={canSpeak}
-              onLeave={() => setInVoice(false)}
-            />
-          ) : (
-            <ActivityIndicator color={tokens.colors.accent} style={{ marginVertical: 12 }} />
-          )}
+        <View style={styles.voiceWrap}>
+          <ClubAudioRoom clubId={cid} canPublishHint={canSpeak} onLeave={() => setInVoice(false)} />
         </View>
       ) : (
         <View style={styles.voiceBar}>
-          <RetroButton variant="blue" title="Join voice space" onPress={joinVoice} />
+          <LiveRetroButton
+            variant="blue"
+            onPress={() => setInVoice(true)}
+            style={[styles.voiceBtn, welcomeButtonStyles.welcomeBtnShape]}
+            textStyle={welcomeButtonStyles.welcomeBtnLabel}
+          >
+            Join voice space
+          </LiveRetroButton>
           {micMode === 'request' && !canSpeak && !isAdmin ? (
             <HuzzPressable onPress={requestMic} style={styles.requestMicBtn} haptic="light">
-              <Text style={styles.requestMicText}>Request mic</Text>
+              <LiveText style={styles.requestMicText}>Request mic</LiveText>
             </HuzzPressable>
           ) : null}
         </View>
@@ -245,13 +280,13 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
         ref={listRef}
         data={messages}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+        contentContainerStyle={styles.messageList}
         renderItem={({ item }) => {
           const mine = String(item.fromUid) === String(meUid);
           return (
             <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
-              {!mine ? <Text style={styles.bubbleAuthor}>{displayName(item.fromUid)}</Text> : null}
-              <Text style={styles.bubbleText}>{item.text}</Text>
+              {!mine ? <LiveText style={styles.bubbleAuthor}>{displayName(item.fromUid)}</LiveText> : null}
+              <LiveText style={styles.bubbleText}>{item.text}</LiveText>
             </View>
           );
         }}
@@ -259,41 +294,92 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
       />
 
       <View style={styles.composer}>
-        <TextInput
+        <LiveTextInput
           style={styles.composerInput}
           placeholder="Message the club…"
+          placeholderTextColor={tokens.colors.textMuted}
           value={text}
           onChangeText={setText}
           onSubmitEditing={send}
         />
         <HuzzPressable style={styles.sendBtn} onPress={send} haptic="medium">
-          <Text style={styles.sendBtnText}>Send</Text>
+          <LiveText style={styles.sendBtnText}>Send</LiveText>
         </HuzzPressable>
       </View>
 
       <Modal visible={adminOpen} animationType="slide" onRequestClose={() => setAdminOpen(false)}>
-        <SafeAreaView style={styles.adminModal}>
+        <SafeAreaView style={styles.adminModal} edges={['top', 'bottom']}>
           <View style={styles.adminHeader}>
-            <Text style={styles.adminTitle}>Club admin</Text>
-            <HuzzPressable onPress={() => setAdminOpen(false)}>
-              <Text style={styles.adminClose}>Done</Text>
+            <HuzzPressable onPress={() => setAdminOpen(false)} style={styles.iconBtn} haptic="light">
+              <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.2} />
             </HuzzPressable>
+            <LiveText style={styles.adminTitle}>Club admin</LiveText>
+            <View style={styles.headerSide} />
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <RetroButton variant="outline" title="Share invite code" onPress={shareInvite} />
-            <Text style={styles.adminSection}>Invite code: {club.inviteCode}</Text>
+          <ScrollView contentContainerStyle={styles.adminScroll} showsVerticalScrollIndicator={false}>
+            <LiveContentWidth>
+            <LiveText style={styles.adminSection}>Club settings</LiveText>
+            <LiveText style={styles.settingsLabel}>Description</LiveText>
+            <LiveTextInput
+              style={styles.codeInput}
+              placeholder="What is this club about?"
+              placeholderTextColor={tokens.colors.textMuted}
+              value={settingsDesc}
+              onChangeText={setSettingsDesc}
+              multiline
+            />
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <LiveText style={styles.switchLabel}>Public club</LiveText>
+                <LiveText style={styles.switchHint}>
+                  {settingsPublic ? 'Anyone can discover and join.' : 'Invite code required to join.'}
+                </LiveText>
+              </View>
+              <Switch value={settingsPublic} onValueChange={setSettingsPublic} trackColor={{ true: tokens.colors.blue }} />
+            </View>
+            <LiveText style={[styles.settingsLabel, { marginTop: 12 }]}>Voice rules</LiveText>
+            {MIC_MODES.map((m) => (
+              <HuzzPressable
+                key={m.key}
+                style={[styles.modeChip, settingsMicMode === m.key && styles.modeChipOn]}
+                onPress={() => setSettingsMicMode(m.key)}
+                haptic="light"
+              >
+                <LiveText style={[styles.modeLabel, settingsMicMode === m.key && styles.modeLabelOn]}>{m.label}</LiveText>
+                <LiveText style={styles.modeHint}>{m.hint}</LiveText>
+              </HuzzPressable>
+            ))}
+            <LiveRetroButton
+              variant="blue"
+              onPress={saveClubSettings}
+              disabled={savingSettings}
+              style={[styles.adminBtn, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              {savingSettings ? 'Saving…' : 'Save settings'}
+            </LiveRetroButton>
 
-            <Text style={styles.adminSection}>Add member by username</Text>
-            <TextInput
+            <LiveRetroButton
+              variant="outline"
+              onPress={shareInvite}
+              style={[styles.adminBtn, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              Share invite code
+            </LiveRetroButton>
+            <LiveText style={styles.adminSection}>Invite code: {club.inviteCode}</LiveText>
+
+            <LiveText style={styles.adminSection}>Add member by username</LiveText>
+            <LiveTextInput
               style={styles.codeInput}
               placeholder="@username"
+              placeholderTextColor={tokens.colors.textMuted}
               value={addUsername}
               onChangeText={setAddUsername}
               autoCapitalize="none"
             />
-            <RetroButton
+            <LiveRetroButton
               variant="blue"
-              title="Add to club"
               onPress={async () => {
                 const { error } = await clubService.addMemberByUsername(cid, addUsername);
                 if (error) Alert.alert('Could not add', error);
@@ -302,33 +388,37 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
                   Alert.alert('Added', 'User was added to the club.');
                 }
               }}
-            />
+              style={[styles.adminBtn, welcomeButtonStyles.welcomeBtnShape]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              Add to club
+            </LiveRetroButton>
 
             {micRequests.length > 0 ? (
               <>
-                <Text style={styles.adminSection}>Mic requests</Text>
+                <LiveText style={styles.adminSection}>Mic requests</LiveText>
                 {micRequests.map((r) => (
                   <View key={r.uid} style={styles.adminRow}>
-                    <Text style={{ flex: 1 }}>{displayName(r.uid)}</Text>
+                    <LiveText style={styles.adminRowName}>{displayName(r.uid)}</LiveText>
                     <HuzzPressable
                       onPress={async () => {
                         await clubService.grantMic(cid, r.uid);
                       }}
                       style={styles.adminAction}
                     >
-                      <Text style={styles.adminActionText}>Allow mic</Text>
+                      <LiveText style={styles.adminActionText}>Allow mic</LiveText>
                     </HuzzPressable>
                   </View>
                 ))}
               </>
             ) : null}
 
-            <Text style={styles.adminSection}>Members</Text>
+            <LiveText style={styles.adminSection}>Members</LiveText>
             {members.map((m) => (
               <View key={m.uid} style={styles.adminRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.adminMemberName}>{displayName(m.uid)}</Text>
-                  <Text style={styles.adminMemberRole}>{m.role}</Text>
+                  <LiveText style={styles.adminMemberName}>{displayName(m.uid)}</LiveText>
+                  <LiveText style={styles.adminMemberRole}>{m.role}</LiveText>
                 </View>
                 {m.uid !== meUid && m.role !== 'owner' ? (
                   <View style={styles.adminActions}>
@@ -337,23 +427,23 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
                         onPress={() => clubService.setMemberRole(cid, m.uid, 'admin')}
                         style={styles.adminAction}
                       >
-                        <Text style={styles.adminActionText}>Make admin</Text>
+                        <LiveText style={styles.adminActionText}>Make admin</LiveText>
                       </HuzzPressable>
                     ) : (
                       <HuzzPressable
                         onPress={() => clubService.setMemberRole(cid, m.uid, 'member')}
                         style={styles.adminAction}
                       >
-                        <Text style={styles.adminActionText}>Demote</Text>
+                        <LiveText style={styles.adminActionText}>Demote</LiveText>
                       </HuzzPressable>
                     )}
                     {m.canSpeak ? (
                       <HuzzPressable onPress={() => clubService.revokeMic(cid, m.uid)} style={styles.adminAction}>
-                        <Text style={styles.adminActionText}>Revoke mic</Text>
+                        <LiveText style={styles.adminActionText}>Revoke mic</LiveText>
                       </HuzzPressable>
                     ) : (
                       <HuzzPressable onPress={() => clubService.grantMic(cid, m.uid)} style={styles.adminAction}>
-                        <Text style={styles.adminActionText}>Grant mic</Text>
+                        <LiveText style={styles.adminActionText}>Grant mic</LiveText>
                       </HuzzPressable>
                     )}
                     <HuzzPressable
@@ -369,15 +459,17 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
                       }
                       style={[styles.adminAction, styles.adminActionDanger]}
                     >
-                      <Text style={[styles.adminActionText, { color: tokens.colors.danger }]}>Kick</Text>
+                      <LiveText style={[styles.adminActionText, styles.adminActionTextDanger]}>Kick</LiveText>
                     </HuzzPressable>
                   </View>
                 ) : null}
               </View>
             ))}
+            </LiveContentWidth>
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      </LiveTypographyProvider>
     </SafeAreaView>
   );
 }
@@ -388,16 +480,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
     backgroundColor: tokens.colors.surface,
   },
   iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: tokens.colors.text },
-  headerSub: { fontSize: 12, color: tokens.colors.textMuted, marginTop: 2 },
+  headerSide: { width: 44 },
+  headerCenter: { flex: 1, alignItems: 'center', minWidth: 0 },
+  headerTitle: { ...tokens.typography.titleSmall, color: tokens.colors.text },
+  headerSub: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
   memberStrip: { maxHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: tokens.colors.border },
+  memberStripContent: { paddingHorizontal: LIVE_SCREEN_GUTTER, gap: 8 },
   memberChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -408,11 +503,20 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.filterBgSky,
     maxWidth: 140,
   },
-  memberChipText: { fontSize: 13, fontWeight: '700', color: tokens.colors.text },
+  memberChipText: { ...tokens.typography.label, fontSize: 13, color: tokens.colors.text },
   memberRole: { fontSize: 10, fontWeight: '800', color: tokens.colors.blue },
-  voiceBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  voiceWrap: { paddingHorizontal: LIVE_SCREEN_GUTTER, marginBottom: 8 },
+  voiceBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
+    paddingVertical: 10,
+  },
+  voiceBtn: { flexShrink: 0 },
   requestMicBtn: { paddingHorizontal: 12, paddingVertical: 10 },
   requestMicText: { fontWeight: '700', color: tokens.colors.blue },
+  messageList: { padding: LIVE_SCREEN_GUTTER, paddingBottom: 8 },
   bubble: {
     maxWidth: '82%',
     padding: 12,
@@ -438,6 +542,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     padding: 12,
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
     borderTopWidth: 1,
     borderTopColor: tokens.colors.border,
     backgroundColor: tokens.colors.surface,
@@ -450,6 +555,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 16,
+    color: tokens.colors.text,
     backgroundColor: tokens.colors.bgSecondary,
   },
   sendBtn: {
@@ -459,9 +565,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.blue,
   },
   sendBtnText: { color: '#fff', fontWeight: '800' },
-  joinGate: { flex: 1, padding: 24, justifyContent: 'center', gap: 12 },
-  joinTitle: { fontSize: 22, fontWeight: '800', color: tokens.colors.text },
-  joinHint: { fontSize: 15, color: tokens.colors.textSecondary, lineHeight: 22 },
+  joinGate: { flex: 1, padding: LIVE_SCREEN_GUTTER, justifyContent: 'center', gap: 12 },
+  joinTitle: { fontSize: 22, color: tokens.colors.text },
+  joinHint: { ...tokens.typography.bodySmall, color: tokens.colors.textSecondary, lineHeight: 22 },
   codeInput: {
     borderWidth: 1,
     borderColor: tokens.colors.border,
@@ -469,26 +575,76 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
+    color: tokens.colors.text,
     backgroundColor: tokens.colors.bgSecondary,
     marginBottom: 8,
   },
   adminModal: { flex: 1, backgroundColor: tokens.colors.bg },
   adminHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
+    backgroundColor: tokens.colors.surface,
   },
-  adminTitle: { fontSize: 18, fontWeight: '800' },
-  adminClose: { fontWeight: '700', color: tokens.colors.blue },
-  adminSection: { fontSize: 13, fontWeight: '800', color: tokens.colors.textSecondary, marginTop: 20, marginBottom: 8, textTransform: 'uppercase' },
-  adminRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: tokens.colors.border },
+  adminTitle: { ...tokens.typography.titleSmall, color: tokens.colors.text },
+  adminScroll: { paddingVertical: 16, paddingBottom: 32 },
+  adminSection: {
+    ...tokens.typography.caption,
+    fontWeight: '800',
+    color: tokens.colors.textSecondary,
+    marginTop: 20,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  adminBtn: { width: '100%', marginBottom: 8 },
+  adminRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.colors.border,
+  },
+  adminRowName: { flex: 1, color: tokens.colors.text },
   adminMemberName: { fontWeight: '700', color: tokens.colors.text },
   adminMemberRole: { fontSize: 12, color: tokens.colors.textMuted },
   adminActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, maxWidth: '55%', justifyContent: 'flex-end' },
   adminAction: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, backgroundColor: tokens.colors.filterBgSky },
   adminActionDanger: { backgroundColor: tokens.colors.filterBgRose },
   adminActionText: { fontSize: 11, fontWeight: '800', color: tokens.colors.blue },
+  adminActionTextDanger: { color: tokens.colors.danger },
+  settingsLabel: { fontSize: 13, fontWeight: '700', color: tokens.colors.text, marginBottom: 6 },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 8,
+    padding: 14,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.surface,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  switchLabel: { fontWeight: '700', color: tokens.colors.text },
+  switchHint: { fontSize: 13, color: tokens.colors.textMuted, marginTop: 4 },
+  modeChip: {
+    padding: 14,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    backgroundColor: tokens.colors.surface,
+    marginBottom: 8,
+  },
+  modeChipOn: {
+    borderColor: tokens.colors.blue,
+    backgroundColor: tokens.colors.filterBgSky,
+  },
+  modeLabel: { fontWeight: '700', color: tokens.colors.text },
+  modeLabelOn: { color: tokens.colors.blue },
+  modeHint: { fontSize: 13, color: tokens.colors.textMuted, marginTop: 4 },
 });

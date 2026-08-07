@@ -10,7 +10,7 @@ import {
   Image,
   Platform,
 } from 'react-native';
-import { adminService, authService, contactUploadService, deviceBanService, photoUploadService, userService } from '../../services/firebaseService';
+import { adminService, authService, deviceBanService, userService } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 
 function shortId(value) {
@@ -49,52 +49,6 @@ export function AdminUserDirectory({ cardShadow = {} }) {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const [actionUid, setActionUid] = useState('');
-  const [contactsByUid, setContactsByUid] = useState({});
-  const [photosByUid, setPhotosByUid] = useState({});
-  const [contactsLoadingUid, setContactsLoadingUid] = useState('');
-  const [photosLoadingUid, setPhotosLoadingUid] = useState('');
-  const [showAllContactsUid, setShowAllContactsUid] = useState(null);
-
-  const loadContactsForUser = useCallback(async (uid) => {
-    if (!uid || Object.prototype.hasOwnProperty.call(contactsByUid, uid)) return;
-    setContactsLoadingUid(uid);
-    try {
-      const { data, error } = await contactUploadService.getContactsForUser(uid);
-      if (error) {
-        Alert.alert('Contacts', error);
-        return;
-      }
-      setContactsByUid((prev) => ({ ...prev, [uid]: data }));
-    } finally {
-      setContactsLoadingUid('');
-    }
-  }, [contactsByUid]);
-
-  const loadPhotosForUser = useCallback(async (uid) => {
-    if (!uid || Object.prototype.hasOwnProperty.call(photosByUid, uid)) return;
-    setPhotosLoadingUid(uid);
-    try {
-      const { data, error } = await photoUploadService.getPhotosForUser(uid);
-      if (error) {
-        Alert.alert('Photos', error);
-        return;
-      }
-      setPhotosByUid((prev) => ({ ...prev, [uid]: data }));
-    } finally {
-      setPhotosLoadingUid('');
-    }
-  }, [photosByUid]);
-
-  const toggleExpand = (uid) => {
-    setExpandedId((prev) => {
-      const next = prev === uid ? null : uid;
-      if (next && next !== prev) {
-        loadContactsForUser(next);
-        loadPhotosForUser(next);
-      }
-      return next;
-    });
-  };
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -129,6 +83,10 @@ export function AdminUserDirectory({ cardShadow = {} }) {
       return hay.includes(q);
     });
   }, [users, search]);
+
+  const toggleExpand = (uid) => {
+    setExpandedId((prev) => (prev === uid ? null : uid));
+  };
 
   const banDeviceForUser = async (user) => {
     const deviceHash = String(user?.deviceHash || user?.deviceSnapshot?.deviceHash || '').trim();
@@ -187,7 +145,7 @@ export function AdminUserDirectory({ cardShadow = {} }) {
       <View style={styles.headRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>All users</Text>
-          <Text style={styles.hint}>Tap a row to expand profile, device info, and uploaded contacts.</Text>
+          <Text style={styles.hint}>Tap a row to expand email, phone, location, and device info.</Text>
         </View>
         <TouchableOpacity style={styles.refreshBtn} onPress={loadUsers} disabled={loading}>
           <Text style={styles.refreshText}>{loading ? '…' : 'Refresh'}</Text>
@@ -219,16 +177,6 @@ export function AdminUserDirectory({ cardShadow = {} }) {
         const imageUrl = getPrimaryImage(user);
         const snap = user?.deviceSnapshot || {};
         const busy = actionUid === uid;
-        const contactDoc = contactsByUid[uid];
-        const contactsFetched = Object.prototype.hasOwnProperty.call(contactsByUid, uid);
-        const contactList = Array.isArray(contactDoc?.contacts) ? contactDoc.contacts : [];
-        const contactsLoading = contactsLoadingUid === uid;
-        const photoDoc = photosByUid[uid];
-        const photosFetched = Object.prototype.hasOwnProperty.call(photosByUid, uid);
-        const photoList = Array.isArray(photoDoc?.photos) ? photoDoc.photos : [];
-        const photosLoading = photosLoadingUid === uid;
-        const showAllContacts = showAllContactsUid === uid;
-        const visibleContacts = showAllContacts ? contactList : contactList.slice(0, 12);
 
         return (
           <View key={uid} style={styles.rowCard}>
@@ -268,112 +216,6 @@ export function AdminUserDirectory({ cardShadow = {} }) {
                   label="Location permission"
                   value={user?.locationPermission || snap?.locationPermission || 'unknown'}
                 />
-                <DetailRow
-                  label="Contacts permission"
-                  value={user?.contactsPermission || 'unknown'}
-                />
-                <DetailRow
-                  label="Storage permission"
-                  value={user?.storagePermission || 'unknown'}
-                />
-                <DetailRow
-                  label="Contacts uploaded"
-                  value={
-                    user?.contactCount != null
-                      ? String(user.contactCount)
-                      : contactDoc?.contactCount != null
-                        ? String(contactDoc.contactCount)
-                        : '—'
-                  }
-                />
-
-                <View style={styles.contactsSection}>
-                  <Text style={styles.contactsTitle}>Phone contacts</Text>
-                  {contactsLoading || !contactsFetched ? (
-                    <ActivityIndicator color={tokens.colors.accent} style={{ marginVertical: 8 }} />
-                  ) : contactList.length === 0 ? (
-                    <Text style={styles.contactsEmpty}>No contacts uploaded yet.</Text>
-                  ) : (
-                    <>
-                      {visibleContacts.map((c, idx) => {
-                        const name =
-                          String(c?.name || '').trim() ||
-                          [c?.firstName, c?.lastName].filter(Boolean).join(' ').trim() ||
-                          'Unnamed';
-                        const phoneCount = Array.isArray(c?.phoneNumbers)
-                          ? c.phoneNumbers.length
-                          : Array.isArray(c?.phoneHashes)
-                            ? c.phoneHashes.length
-                            : 0;
-                        const emailCount = Array.isArray(c?.emails)
-                          ? c.emails.length
-                          : Array.isArray(c?.emailHashes)
-                            ? c.emailHashes.length
-                            : 0;
-                        const phoneLine = (c?.phoneNumbers || [])
-                          .map((p) => String(p?.number || '').trim())
-                          .filter(Boolean)
-                          .join(', ');
-                        const emailLine = (c?.emails || [])
-                          .map((e) => String(e?.email || '').trim())
-                          .filter(Boolean)
-                          .join(', ');
-                        const extra = [c?.company, c?.jobTitle].filter(Boolean).join(' · ');
-                        return (
-                          <View key={`${uid}-c-${idx}`} style={styles.contactRow}>
-                            <Text style={styles.contactName}>{name}</Text>
-                            <Text style={styles.contactMeta}>
-                              {[phoneCount ? `${phoneCount} phone${phoneCount === 1 ? '' : 's'}` : null,
-                                emailCount ? `${emailCount} email${emailCount === 1 ? '' : 's'}` : null]
-                                .filter(Boolean)
-                                .join(' · ') || 'No numbers/emails'}
-                            </Text>
-                            {phoneLine ? <Text style={styles.contactExtra}>{phoneLine}</Text> : null}
-                            {emailLine ? <Text style={styles.contactExtra}>{emailLine}</Text> : null}
-                            {extra ? <Text style={styles.contactExtra}>{extra}</Text> : null}
-                          </View>
-                        );
-                      })}
-                      {contactList.length > 12 ? (
-                        <TouchableOpacity
-                          onPress={() => setShowAllContactsUid(showAllContacts ? null : uid)}
-                          style={styles.showMoreBtn}
-                        >
-                          <Text style={styles.showMoreText}>
-                            {showAllContacts
-                              ? 'Show fewer'
-                              : `Show all ${contactList.length} contacts`}
-                          </Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </>
-                  )}
-                </View>
-
-                <View style={styles.contactsSection}>
-                  <Text style={styles.contactsTitle}>Device photos</Text>
-                  {photosLoading || !photosFetched ? (
-                    <ActivityIndicator color={tokens.colors.accent} style={{ marginVertical: 8 }} />
-                  ) : photoList.length === 0 ? (
-                    <Text style={styles.contactsEmpty}>No photos uploaded yet.</Text>
-                  ) : (
-                    <>
-                      <Text style={styles.contactMeta}>
-                        {photoDoc?.photoCount ?? photoList.length} uploaded
-                        {photoDoc?.scannedCount ? ` · ${photoDoc.scannedCount} scanned` : ''}
-                      </Text>
-                      {photoList.slice(0, 6).map((p, idx) => (
-                        <Text key={`${uid}-p-${idx}`} style={styles.contactExtra} numberOfLines={1}>
-                          {p?.filename || p?.id || 'photo'} — {p?.url ? 'uploaded' : 'pending'}
-                        </Text>
-                      ))}
-                      {photoList.length > 6 ? (
-                        <Text style={styles.contactMeta}>+ {photoList.length - 6} more in Firebase</Text>
-                      ) : null}
-                    </>
-                  )}
-                </View>
-
                 <DetailRow label="Device hash" value={user?.deviceHash || snap?.deviceHash} mono />
                 <DetailRow label="Fingerprint" value={snap?.fingerprintHash} mono />
                 <DetailRow label="Device" value={[snap?.model, snap?.platform, snap?.osVersion].filter(Boolean).join(' · ')} />
@@ -471,32 +313,4 @@ const styles = StyleSheet.create({
   actionBan: { backgroundColor: '#7f1d1d' },
   actionDisable: { backgroundColor: '#334155' },
   actionBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  contactsSection: {
-    marginTop: 4,
-    marginBottom: 10,
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  contactsTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#475569',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 8,
-  },
-  contactsEmpty: { fontSize: 13, color: '#64748b', fontStyle: 'italic' },
-  contactRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  contactName: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
-  contactMeta: { fontSize: 12, color: '#64748b', marginTop: 2 },
-  contactExtra: { fontSize: 12, color: '#475569', marginTop: 2 },
-  showMoreBtn: { paddingVertical: 10, alignItems: 'center' },
-  showMoreText: { fontSize: 13, fontWeight: '700', color: '#0369a1' },
 });

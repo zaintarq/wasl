@@ -115,7 +115,16 @@ service cloud.firestore {
 
       match /clubMemberships/{clubId} {
         allow read: if isOwner(uid);
-        allow create: if isOwner(uid) || isClubAdmin(clubId);
+        allow create: if isOwner(uid)
+          || isClubAdmin(clubId)
+          || (
+            isSignedIn()
+            && !isDisabled()
+            && request.auth.uid == uid
+            && request.resource.data.role == 'owner'
+            && exists(/databases/$(database)/documents/clubs/$(clubId))
+            && get(/databases/$(database)/documents/clubs/$(clubId)).data.ownerUid == request.auth.uid
+          );
         allow update: if isOwner(uid) || isClubAdmin(clubId);
         allow delete: if isOwner(uid) || isClubAdmin(clubId);
       }
@@ -538,7 +547,14 @@ service cloud.firestore {
           && (
             (memberUid == request.auth.uid
               && request.resource.data.uid == request.auth.uid
-              && request.resource.data.role == 'member')
+              && (
+                request.resource.data.role == 'member'
+                || (
+                  request.resource.data.role == 'owner'
+                  && exists(/databases/$(database)/documents/clubs/$(clubId))
+                  && get(/databases/$(database)/documents/clubs/$(clubId)).data.ownerUid == request.auth.uid
+                )
+              ))
             || isClubAdmin(clubId)
           );
 

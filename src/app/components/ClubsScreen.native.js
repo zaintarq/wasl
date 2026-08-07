@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ActivityIndicator,
   Alert,
@@ -10,57 +9,97 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Lock, Globe, Users } from 'lucide-react-native';
+import { Plus, Users } from 'lucide-react-native';
 import { authService, clubService } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
-import { RetroButton } from '../../ui/components/RetroButton.native';
-import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
+import { MainBottomNav, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
+import { LIVE_SCREEN_GUTTER } from '../../ui/components/live/LiveContentWidth.native';
+import { LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
+import {
+  LiveTypographyProvider,
+  LiveText,
+  LiveTextInput,
+  LiveRetroButton,
+} from '../../ui/components/live/LiveTypography.native';
+import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
+import { ClubLobbyHero } from '../../ui/components/clubs/ClubLobbyHero.native';
+import { ClubFeatureGrid } from '../../ui/components/clubs/ClubFeatureGrid.native';
+import { ClubSafetyNote } from '../../ui/components/clubs/ClubSafetyNote.native';
+import { ClubCard } from '../../ui/components/clubs/ClubCard.native';
 
 export function ClubsScreen({ onNavigate }) {
   const meUid = authService.getCurrentUser()?.uid || null;
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
+
+  const [bottomNavH, setBottomNavH] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [publicClubs, setPublicClubs] = useState([]);
   const [myClubIds, setMyClubIds] = useState([]);
-  const [clubMap, setClubMap] = useState({});
+  const [privateClubMap, setPrivateClubMap] = useState({});
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinClubId, setJoinClubId] = useState('');
 
   useEffect(() => {
     if (!meUid) {
-      onNavigate('onboarding', { mode: 'login' });
+      onNavigateRef.current('onboarding', { mode: 'login' });
       return undefined;
     }
+
+    let alive = true;
     setLoading(true);
+    setLoadError('');
+
+    const finishLoading = () => {
+      if (alive) setLoading(false);
+    };
+    const safety = setTimeout(finishLoading, 6000);
+
     const unsubPublic = clubService.listenPublicClubs(({ data, error }) => {
-      if (error) console.warn('[Clubs]', error);
+      if (!alive) return;
+      if (error) setLoadError(String(error));
       setPublicClubs(Array.isArray(data) ? data : []);
-      setLoading(false);
+      finishLoading();
     });
-    const unsubMine = clubService.listenMyMemberships(meUid, ({ data }) => {
+
+    const unsubMine = clubService.listenMyMemberships(meUid, ({ data, error }) => {
+      if (!alive) return;
+      if (error) console.warn('[Clubs memberships]', error);
       setMyClubIds((Array.isArray(data) ? data : []).map((m) => String(m.clubId)));
     });
+
     return () => {
+      alive = false;
+      clearTimeout(safety);
       unsubPublic?.();
       unsubMine?.();
     };
-  }, [meUid, onNavigate]);
+  }, [meUid]);
 
+  // Only listen to private clubs not already in the public list.
   useEffect(() => {
-    const ids = Array.from(new Set([...myClubIds, ...publicClubs.map((c) => c.id)]));
-    const unsubs = ids.map((id) =>
+    const publicIds = new Set(publicClubs.map((c) => c.id));
+    const privateIds = myClubIds.filter((id) => !publicIds.has(id));
+    if (!privateIds.length) return undefined;
+
+    const unsubs = privateIds.map((id) =>
       clubService.listenClub(id, ({ data }) => {
-        if (data) setClubMap((prev) => ({ ...prev, [id]: data }));
+        if (data) setPrivateClubMap((prev) => ({ ...prev, [id]: data }));
       })
     );
     return () => unsubs.forEach((u) => u?.());
   }, [myClubIds, publicClubs]);
 
-  const myClubs = myClubIds.map((id) => clubMap[id]).filter(Boolean);
+  const clubById = (id) =>
+    publicClubs.find((c) => c.id === id) || privateClubMap[id] || null;
+
+  const myClubs = myClubIds.map((id) => clubById(id)).filter(Boolean);
   const discover = publicClubs.filter((c) => !myClubIds.includes(c.id));
 
-  const openClub = (clubId) => onNavigate('clubRoom', { clubId });
+  const openClub = (clubId) => onNavigateRef.current('clubRoom', { clubId });
 
   const handleJoinPublic = async (clubId) => {
     const { error } = await clubService.joinClub(meUid, clubId);
@@ -79,7 +118,7 @@ export function ClubsScreen({ onNavigate }) {
     if (!targetId) {
       const match =
         publicClubs.find((c) => String(c.inviteCode || '').toUpperCase() === code) ||
-        Object.values(clubMap).find((c) => String(c.inviteCode || '').toUpperCase() === code);
+        Object.values(privateClubMap).find((c) => String(c.inviteCode || '').toUpperCase() === code);
       targetId = match?.id;
     }
     if (!targetId) {
@@ -96,128 +135,187 @@ export function ClubsScreen({ onNavigate }) {
     }
   };
 
-  const renderClubRow = (club, joined) => (
-    <HuzzPressable
-      key={club.id}
-      style={styles.clubRow}
-      onPress={() => (joined ? openClub(club.id) : handleJoinPublic(club.id))}
-      haptic="light"
-    >
-      <View style={styles.clubIcon}>
-        {club.isPublic ? (
-          <Globe size={20} color={tokens.colors.blue} strokeWidth={2} />
-        ) : (
-          <Lock size={20} color={tokens.colors.warning} strokeWidth={2} />
-        )}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.clubName}>{club.name}</Text>
-        <Text style={styles.clubMeta} numberOfLines={1}>
-          {club.description || (club.isPublic ? 'Public club' : 'Private — invite code required')}
-        </Text>
-      </View>
-      <Text style={styles.clubAction}>{joined ? 'Open →' : 'Join'}</Text>
-    </HuzzPressable>
-  );
+  const navClearance = mainBottomNavClearance(bottomNavH, 12);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Clubs</Text>
-        <View style={styles.headerActions}>
-          <HuzzPressable style={styles.headerBtn} onPress={() => setJoinOpen(true)} haptic="light">
-            <Text style={styles.headerBtnText}>Code</Text>
-          </HuzzPressable>
-          <HuzzPressable style={styles.headerBtnPrimary} onPress={() => onNavigate('createClub')} haptic="medium">
-            <Plus size={20} color="#fff" strokeWidth={2.5} />
-          </HuzzPressable>
-        </View>
-      </View>
-
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={tokens.colors.accent} />
-        </View>
-      ) : (
-        <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-          {myClubs.length > 0 ? (
-            <>
-              <Text style={styles.sectionTitle}>My clubs</Text>
-              {myClubs.map((c) => renderClubRow(c, true))}
-            </>
-          ) : null}
-
-          <Text style={[styles.sectionTitle, { marginTop: myClubs.length ? 20 : 0 }]}>Discover</Text>
-          {discover.length === 0 ? (
-            <View style={styles.empty}>
-              <Users size={40} color={tokens.colors.textMuted} strokeWidth={1.5} />
-              <Text style={styles.emptyTitle}>No public clubs yet</Text>
-              <Text style={styles.emptyText}>Create one and invite people with a code.</Text>
-              <RetroButton variant="blue" title="Create club" onPress={() => onNavigate('createClub')} />
-            </View>
-          ) : (
-            discover.map((c) => renderClubRow(c, false))
-          )}
-        </ScrollView>
-      )}
-
-      <Modal visible={joinOpen} transparent animationType="fade" onRequestClose={() => setJoinOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Join with code</Text>
-            <Text style={styles.modalHint}>Private clubs need the 6-character code from the admin.</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Invite code"
-              value={joinCode}
-              onChangeText={(t) => setJoinCode(t.toUpperCase())}
-              autoCapitalize="characters"
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Club ID (optional)"
-              value={joinClubId}
-              onChangeText={setJoinClubId}
-              autoCapitalize="none"
-            />
-            <RetroButton variant="blue" title="Join club" onPress={handleJoinWithCode} />
-            <HuzzPressable onPress={() => setJoinOpen(false)} style={{ marginTop: 12 }}>
-              <Text style={styles.cancelText}>Cancel</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <LiveTypographyProvider>
+        <View style={styles.header}>
+          <View style={styles.headerSide} />
+          <LiveText style={styles.title}>Clubs</LiveText>
+          <View style={styles.headerActions}>
+            <HuzzPressable style={styles.headerBtn} onPress={() => setJoinOpen(true)} haptic="light">
+              <LiveText style={styles.headerBtnText}>Code</LiveText>
+            </HuzzPressable>
+            <HuzzPressable
+              style={styles.headerBtnPrimary}
+              onPress={() => onNavigateRef.current('createClub')}
+              haptic="medium"
+            >
+              <Plus size={20} color="#fff" strokeWidth={2.5} />
             </HuzzPressable>
           </View>
         </View>
-      </Modal>
 
-      <MainBottomNav active="clubs" onNavigate={onNavigate} />
+        {loadError ? (
+          <LiveContentWidth style={styles.bannerWrap}>
+            <View style={styles.banner}>
+              <LiveText style={styles.bannerText}>{loadError}</LiveText>
+            </View>
+          </LiveContentWidth>
+        ) : null}
+
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: navClearance }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <ClubLobbyHero />
+          <ClubFeatureGrid />
+
+          {loading ? (
+            <View style={styles.loadingBlock}>
+              <ActivityIndicator size="large" color={tokens.colors.accent} />
+              <LiveText style={styles.loadingText}>Loading clubs…</LiveText>
+            </View>
+          ) : (
+            <>
+              {myClubs.length > 0 ? (
+                <LiveContentWidth style={styles.section}>
+                  <LiveText style={styles.sectionTitle}>My clubs</LiveText>
+                  {myClubs.map((club) => (
+                    <ClubCard
+                      key={club.id}
+                      club={club}
+                      joined
+                      onPress={() => openClub(club.id)}
+                    />
+                  ))}
+                </LiveContentWidth>
+              ) : null}
+
+              <LiveContentWidth style={styles.section}>
+                <LiveText style={styles.sectionTitle}>Discover</LiveText>
+                {discover.length === 0 ? (
+                  <View style={styles.empty}>
+                    <View style={styles.emptyIcon}>
+                      <Users size={36} color={tokens.colors.textMuted} strokeWidth={1.5} />
+                    </View>
+                    <LiveText style={styles.emptyTitle}>No public clubs yet</LiveText>
+                    <LiveText style={styles.emptyText}>
+                      Be the first — create a club and invite friends with a code.
+                    </LiveText>
+                  </View>
+                ) : (
+                  discover.map((club) => (
+                    <ClubCard
+                      key={club.id}
+                      club={club}
+                      joined={false}
+                      onPress={() => handleJoinPublic(club.id)}
+                    />
+                  ))
+                )}
+              </LiveContentWidth>
+            </>
+          )}
+
+          <ClubSafetyNote />
+
+          <LiveContentWidth style={styles.ctaStack}>
+            <LiveRetroButton
+              variant="primary"
+              onPress={() => onNavigateRef.current('createClub')}
+              style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              Create a club
+            </LiveRetroButton>
+            <LiveRetroButton
+              variant="outline"
+              onPress={() => setJoinOpen(true)}
+              style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+            >
+              Join with code
+            </LiveRetroButton>
+          </LiveContentWidth>
+        </ScrollView>
+
+        <Modal visible={joinOpen} transparent animationType="fade" onRequestClose={() => setJoinOpen(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <LiveText style={styles.modalTitle}>Join with code</LiveText>
+              <LiveText style={styles.modalHint}>
+                Private clubs need the 6-character code from the admin.
+              </LiveText>
+              <LiveTextInput
+                style={styles.modalInput}
+                placeholder="Invite code"
+                placeholderTextColor={tokens.colors.textMuted}
+                value={joinCode}
+                onChangeText={(t) => setJoinCode(t.toUpperCase())}
+                autoCapitalize="characters"
+              />
+              <LiveTextInput
+                style={styles.modalInput}
+                placeholder="Club ID (optional)"
+                placeholderTextColor={tokens.colors.textMuted}
+                value={joinClubId}
+                onChangeText={setJoinClubId}
+                autoCapitalize="none"
+              />
+              <LiveRetroButton
+                variant="blue"
+                onPress={handleJoinWithCode}
+                style={welcomeButtonStyles.welcomeBtnShape}
+                textStyle={welcomeButtonStyles.welcomeBtnLabel}
+              >
+                Join club
+              </LiveRetroButton>
+              <HuzzPressable onPress={() => setJoinOpen(false)} style={styles.cancelBtn}>
+                <LiveText style={styles.cancelText}>Cancel</LiveText>
+              </HuzzPressable>
+            </View>
+          </View>
+        </Modal>
+
+        <MainBottomNav active="clubs" onNavigate={onNavigate} onLayout={setBottomNavH} />
+      </LiveTypographyProvider>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: tokens.colors.bg },
-  list: { flex: 1 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 16 },
+  container: { flex: 1, backgroundColor: tokens.colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: tokens.spacing.screenHorizontal,
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
     backgroundColor: tokens.colors.surface,
   },
-  title: { ...tokens.typography.title, color: tokens.colors.text },
-  headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  headerSide: { width: 70 },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 70,
+    justifyContent: 'flex-end',
+  },
   headerBtn: {
+    paddingVertical: 10,
     paddingHorizontal: 14,
-    paddingVertical: 8,
     borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.surfaceElevated,
     borderWidth: 1,
     borderColor: tokens.colors.border,
-    backgroundColor: tokens.colors.bgSecondary,
   },
-  headerBtnText: { fontWeight: '700', color: tokens.colors.text },
+  headerBtnText: { ...tokens.typography.label, color: tokens.colors.text },
   headerBtnPrimary: {
     width: 40,
     height: 40,
@@ -226,41 +324,65 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: tokens.colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 10,
-    marginTop: 8,
-  },
-  clubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
+  title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
+  bannerWrap: { marginTop: 10 },
+  banner: {
+    backgroundColor: tokens.colors.filterBgRose,
+    padding: 12,
     borderRadius: tokens.radius.md,
-    backgroundColor: tokens.colors.surface,
     borderWidth: 1,
-    borderColor: tokens.colors.border,
-    marginBottom: 10,
+    borderColor: tokens.colors.filterBorderRose,
   },
-  clubIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: tokens.colors.filterBgSky,
+  bannerText: { ...tokens.typography.bodySmall, color: tokens.colors.danger },
+  scroll: { flex: 1 },
+  scrollContent: { paddingTop: tokens.spacing.md, flexGrow: 1 },
+  loadingBlock: {
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 32,
+    gap: 12,
   },
-  clubName: { fontSize: 16, fontWeight: '700', color: tokens.colors.text },
-  clubMeta: { fontSize: 13, color: tokens.colors.textMuted, marginTop: 2 },
-  clubAction: { fontWeight: '700', color: tokens.colors.blue },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  empty: { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: tokens.colors.text },
-  emptyText: { textAlign: 'center', color: tokens.colors.textSecondary, marginBottom: 8, paddingHorizontal: 20 },
+  loadingText: { ...tokens.typography.bodySmall, color: tokens.colors.textSecondary },
+  section: { marginBottom: tokens.spacing.lg },
+  sectionTitle: {
+    ...tokens.typography.caption,
+    color: tokens.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  empty: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    marginBottom: 4,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: tokens.colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    ...tokens.typography.titleSmall,
+    color: tokens.colors.text,
+    marginBottom: 6,
+  },
+  emptyText: {
+    ...tokens.typography.bodySmall,
+    color: tokens.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  ctaStack: { gap: 12, marginBottom: tokens.spacing.md },
+  cta: { width: '100%' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.45)',
@@ -277,8 +399,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.colors.border,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: tokens.colors.text, marginBottom: 6 },
-  modalHint: { fontSize: 14, color: tokens.colors.textSecondary, marginBottom: 14 },
+  modalTitle: { fontSize: 22, color: tokens.colors.text, marginBottom: 6 },
+  modalHint: {
+    ...tokens.typography.bodySmall,
+    color: tokens.colors.textSecondary,
+    marginBottom: 14,
+    lineHeight: 20,
+  },
   modalInput: {
     borderWidth: 1,
     borderColor: tokens.colors.border,
@@ -287,7 +414,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 10,
     fontSize: 16,
+    color: tokens.colors.text,
     backgroundColor: tokens.colors.bgSecondary,
   },
+  cancelBtn: { marginTop: 14 },
   cancelText: { textAlign: 'center', color: tokens.colors.textMuted, fontWeight: '600' },
 });
