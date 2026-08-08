@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Huzz</title>
+  <link rel="icon" href="assets/icon-512.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #fff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --accent: #e11d48;
+      --blue: #2563eb;
+      --max: 400px;
+      --gutter: 16px;
+      --nav-h: 62px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: Inter, system-ui, sans-serif;
+      background: linear-gradient(180deg, #f8fafc, #eff6ff 50%, #dbeafe);
+      color: var(--text);
+    }
+    .app {
+      max-width: var(--max);
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      background: transparent;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: max(10px, env(safe-area-inset-top)) var(--gutter) 10px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(8px);
+    }
+    .topbar a, .topbar button {
+      background: none;
+      border: none;
+      color: var(--blue);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .topbar-title {
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.35rem;
+    }
+    .main {
+      flex: 1;
+      overflow: auto;
+      padding: var(--gutter);
+      padding-bottom: calc(var(--nav-h) + var(--gutter) + env(safe-area-inset-bottom));
+    }
+    .main.no-nav { padding-bottom: var(--gutter); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card h2 {
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.2rem;
+      margin-bottom: 6px;
+    }
+    .card p.sub {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin: 12px 0 6px;
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 16px;
+      background: #f8fafc;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 50px;
+      margin-top: 16px;
+      border: none;
+      border-radius: 22px;
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.05rem;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-outline {
+      background: #fff;
+      color: var(--text);
+      border: 2px solid rgba(37,99,235,0.35);
+      margin-top: 10px;
+    }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .err {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #fff1f2;
+      border: 1px solid #fda4af;
+      color: #be123c;
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+    .ok {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #ecfdf5;
+      border: 1px solid #6ee7b7;
+      color: #047857;
+      font-size: 0.82rem;
+    }
+    .bottom-nav {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 0;
+      width: 100%;
+      max-width: var(--max);
+      display: none;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      padding: 8px var(--gutter) max(8px, env(safe-area-inset-bottom));
+      background: rgba(255,255,255,0.96);
+      border-top: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+    }
+    .bottom-nav.on { display: grid; }
+    .nav-item {
+      border: none;
+      background: transparent;
+      padding: 8px 4px;
+      border-radius: 12px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .nav-item span.icon { font-size: 1.1rem; }
+    .nav-item.on { color: var(--blue); background: #eff6ff; }
+    .list-item {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .list-item:last-child { border-bottom: none; }
+    .list-item strong { font-size: 0.9rem; display: block; }
+    .list-item span { font-size: 0.78rem; color: var(--muted); }
+    .empty {
+      text-align: center;
+      padding: 28px 12px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.45;
+    }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      background: #eff6ff;
+      color: var(--blue);
+      margin-top: 4px;
+    }
+    .hidden { display: none !important; }
+    .step-hint { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a href="index.html">← Home</a>
+      <span class="topbar-title">Huzz</span>
+      <button type="button" id="logoutBtn" class="hidden">Log out</button>
+    </header>
+
+    <main class="main no-nav" id="main">
+      <!-- Auth screens injected by JS -->
+    </main>
+
+    <nav class="bottom-nav" id="bottomNav" aria-label="Main">
+      <button type="button" class="nav-item on" data-screen="discover"><span class="icon">✦</span>Discover</button>
+      <button type="button" class="nav-item" data-screen="chats"><span class="icon">💬</span>Chats</button>
+      <button type="button" class="nav-item" data-screen="clubs"><span class="icon">🎙</span>Clubs</button>
+      <button type="button" class="nav-item" data-screen="live"><span class="icon">⚡</span>Live</button>
+    </nav>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+    import {
+      getAuth, onAuthStateChanged, signInWithEmailAndPassword,
+      signInWithCustomToken, signOut,
+    } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+    import {
+      getFirestore, collection, query, where, getDocs, orderBy, limit,
+    } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
+
+    const firebaseConfig = {
+      apiKey: 'AIzaSyB_k9w2F0I591-8mUyuHr_5B-TVQea0Tfo',
+      authDomain: 'huzz-10264.firebaseapp.com',
+      projectId: 'huzz-10264',
+      storageBucket: 'huzz-10264.firebasestorage.app',
+      messagingSenderId: '19254029866',
+      appId: '1:19254029866:web:fe891e5819c8c94c589d53',
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const functions = getFunctions(app, 'us-central1');
+
+    const main = document.getElementById('main');
+    const bottomNav = document.getElementById('bottomNav');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const params = new URLSearchParams(location.search);
+    const startMode = params.get('mode') === 'login' ? 'login' : params.get('mode') === 'signup' ? 'signup' : 'welcome';
+
+    let signupSessionId = '';
+    let signupStep = 'email';
+    let currentScreen = 'discover';
+
+    function esc(s) {
+      return String(s || '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[c]));
+    }
+
+    function showErr(msg) {
+      const el = main.querySelector('.err');
+      if (el) el.textContent = msg;
+      else main.insertAdjacentHTML('beforeend', `<div class="err">${esc(msg)}</div>`);
+    }
+
+    function renderWelcome() {
+      main.classList.add('no-nav');
+      bottomNav.classList.remove('on');
+      logoutBtn.classList.add('hidden');
+      main.innerHTML = `
+        <div class="card">
+          <h2>Welcome back</h2>
+          <p class="sub">Sign up or log in to use Discover, Chats, Clubs, and Live on the web.</p>
+          <button type="button" class="btn btn-primary" id="goSignup">Sign up with email</button>
+          <button type="button" class="btn btn-outline" id="goLogin">Log in</button>
+        </div>`;
+      document.getElementById('goSignup').onclick = () => renderSignup();
+      document.getElementById('goLogin').onclick = () => renderLogin();
+    }
+
+    function renderLogin() {
+      main.classList.add('no-nav');
+      bottomNav.classList.remove('on');
+      logoutBtn.classList.add('hidden');
+      main.innerHTML = `
+        <div class="card">
+          <h2>Log in</h2>
+          <p class="sub">Use the same email and password as the Android app.</p>
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" type="email" autocomplete="email" inputmode="email" />
+          <label for="loginPass">Password</label>
+          <input id="loginPass" type="password" autocomplete="current-password" />
+          <button type="button" class="btn btn-primary" id="loginSubmit">Log in</button>
+          <button type="button" class="btn btn-outline" id="loginToSignup">Create account</button>
+        </div>`;
+      document.getElementById('loginToSignup').onclick = () => renderSignup();
+      document.getElementById('loginSubmit').onclick = async () => {
+        const btn = document.getElementById('loginSubmit');
+        btn.disabled = true;
+        main.querySelector('.err')?.remove();
+        try {
+          await signInWithEmailAndPassword(
+            auth,
+            document.getElementById('loginEmail').value.trim(),
+            document.getElementById('loginPass').value
+          );
+        } catch (e) {
+          showErr(e.message || 'Could not log in.');
+          btn.disabled = false;
+        }
+      };
+    }
+
+    function renderSignup() {
+      signupStep = 'email';
+      signupSessionId = '';
+      main.classList.add('no-nav');
+      bottomNav.classList.remove('on');
+      logoutBtn.classList.add('hidden');
+      drawSignupStep();
+    }
+
+    function drawSignupStep() {
+      if (signupStep === 'email') {
+        main.innerHTML = `
+          <div class="card">
+            <h2>Sign up</h2>
+            <p class="step-hint">Step 1 of 4 — verify your email</p>
+            <label for="suEmail">Email</label>
+            <input id="suEmail" type="email" autocomplete="email" />
+            <button type="button" class="btn btn-primary" id="suSendOtp">Send code</button>
+            <button type="button" class="btn btn-outline" id="suToLogin">Already have an account</button>
+          </div>`;
+        document.getElementById('suToLogin').onclick = () => renderLogin();
+        document.getElementById('suSendOtp').onclick = async () => {
+          const btn = document.getElementById('suSendOtp');
+          btn.disabled = true;
+          main.querySelector('.err')?.remove();
+          try {
+            const fn = httpsCallable(functions, 'sendSignupEmailOtp');
+            await fn({ email: document.getElementById('suEmail').value.trim() });
+            main.dataset.email = document.getElementById('suEmail').value.trim();
+            signupStep = 'otp';
+            drawSignupStep();
+          } catch (e) {
+            showErr(e.message || 'Could not send code.');
+            btn.disabled = false;
+          }
+        };
+      } else if (signupStep === 'otp') {
+        main.innerHTML = `
+          <div class="card">
+            <h2>Enter code</h2>
+            <p class="step-hint">Step 2 of 4 — check your inbox</p>
+            <label for="suOtp">6-digit code</label>
+            <input id="suOtp" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+            <button type="button" class="btn btn-primary" id="suVerifyOtp">Verify</button>
+          </div>`;
+        document.getElementById('suVerifyOtp').onclick = async () => {
+          const btn = document.getElementById('suVerifyOtp');
+          btn.disabled = true;
+          main.querySelector('.err')?.remove();
+          try {
+            const fn = httpsCallable(functions, 'verifySignupEmailOtp');
+            const res = await fn({
+              email: main.dataset.email || '',
+              code: document.getElementById('suOtp').value.trim(),
+            });
+            signupSessionId = res.data.sessionId;
+            if (!signupSessionId) throw new Error('Invalid response');
+            signupStep = 'profile';
+            drawSignupStep();
+          } catch (e) {
+            showErr(e.message || 'Invalid code.');
+            btn.disabled = false;
+          }
+        };
+      } else if (signupStep === 'profile') {
+        main.innerHTML = `
+          <div class="card">
+            <h2>Your profile</h2>
+            <p class="step-hint">Step 3 of 4 — pick a username</p>
+            <label for="suName">Name</label>
+            <input id="suName" type="text" autocomplete="name" />
+            <label for="suUser">Username</label>
+            <input id="suUser" type="text" autocomplete="username" autocapitalize="none" />
+            <button type="button" class="btn btn-primary" id="suNext">Continue</button>
+          </div>`;
+        document.getElementById('suNext').onclick = () => {
+          const name = document.getElementById('suName').value.trim();
+          const username = document.getElementById('suUser').value.trim();
+          if (name.length < 2) return showErr('Name is too short.');
+          if (username.length < 3) return showErr('Username is too short.');
+          main.dataset.name = name;
+          main.dataset.username = username;
+          signupStep = 'password';
+          drawSignupStep();
+        };
+      } else if (signupStep === 'password') {
+        main.innerHTML = `
+          <div class="card">
+            <h2>Create password</h2>
+            <p class="step-hint">Step 4 of 4</p>
+            <label for="suPass">Password</label>
+            <input id="suPass" type="password" autocomplete="new-password" />
+            <button type="button" class="btn btn-primary" id="suFinish">Create account</button>
+          </div>`;
+        document.getElementById('suFinish').onclick = async () => {
+          const btn = document.getElementById('suFinish');
+          btn.disabled = true;
+          main.querySelector('.err')?.remove();
+          try {
+            const fn = httpsCallable(functions, 'finalizeSignupWithSession');
+            const res = await fn({
+              sessionId: signupSessionId,
+              password: document.getElementById('suPass').value,
+              name: main.dataset.name,
+              username: main.dataset.username,
+            });
+            if (!res.data.customToken) throw new Error('Signup failed.');
+            await signInWithCustomToken(auth, res.data.customToken);
+          } catch (e) {
+            showErr(e.message || 'Could not create account.');
+            btn.disabled = false;
+          }
+        };
+      }
+    }
+
+    async function renderDiscover(user) {
+      main.innerHTML = `
+        <div class="card">
+          <h2>Discover</h2>
+          <p class="sub">Swipe, filter, and match with people near you. Full swipe deck works best in the Android app — your account works on both.</p>
+          <a class="btn btn-outline" href="https://play.google.com/store/apps/details?id=com.huzz.app">Open in Android app</a>
+        </div>
+        <div class="card">
+          <strong>On web</strong>
+          <p class="sub" style="margin-top:8px;margin-bottom:0">Browse Chats and Clubs below. Discovery swiping is coming to web — use the app for the full deck today.</p>
+        </div>`;
+    }
+
+    async function renderChats(user) {
+      main.innerHTML = `<div class="card"><h2>Chats</h2><p class="sub">Loading matches…</p></div>`;
+      try {
+        const q = query(
+          collection(db, 'matches'),
+          where('uids', 'array-contains', user.uid),
+          orderBy('updatedAt', 'desc'),
+          limit(30)
+        );
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          main.innerHTML = `
+            <div class="card">
+              <h2>Chats</h2>
+              <div class="empty">No matches yet. Open Discover in the app to start connecting.</div>
+            </div>`;
+          return;
+        }
+        const rows = snap.docs.map((d) => {
+          const data = d.data();
+          const other = (data.uids || []).find((u) => u !== user.uid) || 'Match';
+          const status = data.status || 'active';
+          return `<div class="list-item"><strong>Match</strong><span>User ${esc(String(other).slice(0, 8))}… · ${esc(status)}</span></div>`;
+        }).join('');
+        main.innerHTML = `<div class="card"><h2>Chats</h2><p class="sub">Your matches — open the app to message.</p>${rows}</div>`;
+      } catch (e) {
+        main.innerHTML = `
+          <div class="card">
+            <h2>Chats</h2>
+            <div class="empty">${esc(e.message || 'Could not load chats.')}</div>
+          </div>`;
+      }
+    }
+
+    async function renderClubs(user) {
+      main.innerHTML = `<div class="card"><h2>Clubs</h2><p class="sub">Loading clubs…</p></div>`;
+      try {
+        const q = query(
+          collection(db, 'clubs'),
+          where('isPublic', '==', true),
+          orderBy('updatedAt', 'desc'),
+          limit(20)
+        );
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          main.innerHTML = `
+            <div class="card">
+              <h2>Clubs</h2>
+              <div class="empty">No public clubs yet. Create one in the app.</div>
+            </div>`;
+          return;
+        }
+        const rows = snap.docs.map((d) => {
+          const c = d.data();
+          return `<div class="list-item"><strong>${esc(c.name || 'Club')}</strong><span>${esc(c.description || 'Public club')}</span><span class="pill">${Number(c.memberCount || 0)} members</span></div>`;
+        }).join('');
+        main.innerHTML = `<div class="card"><h2>Clubs</h2><p class="sub">Public clubs — join and voice chat in the app.</p>${rows}</div>`;
+      } catch (e) {
+        main.innerHTML = `
+          <div class="card">
+            <h2>Clubs</h2>
+            <div class="empty">${esc(e.message || 'Could not load clubs.')}</div>
+          </div>`;
+      }
+    }
+
+    async function renderLive(user) {
+      main.innerHTML = `
+        <div class="card">
+          <h2>Live</h2>
+          <p class="sub">60-second random sessions with text chat. Live matching uses mic/camera — open the Android app to go live.</p>
+          <a class="btn btn-outline" href="https://play.google.com/store/apps/details?id=com.huzz.app">Go Live in app</a>
+        </div>`;
+    }
+
+    async function showAppScreen(screen, user) {
+      currentScreen = screen;
+      document.querySelectorAll('.nav-item').forEach((n) => {
+        n.classList.toggle('on', n.dataset.screen === screen);
+      });
+      if (screen === 'discover') await renderDiscover(user);
+      else if (screen === 'chats') await renderChats(user);
+      else if (screen === 'clubs') await renderClubs(user);
+      else if (screen === 'live') await renderLive(user);
+    }
+
+    function enterApp(user) {
+      main.classList.remove('no-nav');
+      bottomNav.classList.add('on');
+      logoutBtn.classList.remove('hidden');
+      document.querySelectorAll('.nav-item').forEach((btn) => {
+        btn.onclick = () => showAppScreen(btn.dataset.screen, user);
+      });
+      showAppScreen('discover', user);
+    }
+
+    logoutBtn.onclick = () => signOut(auth);
+
+    onAuthStateChanged(auth, (user) => {
+      main.querySelector('.err')?.remove();
+      if (user) {
+        enterApp(user);
+      } else if (startMode === 'login') {
+        renderLogin();
+      } else if (startMode === 'signup') {
+        renderSignup();
+      } else {
+        renderWelcome();
+      }
+    });
+  </script>
+</body>
+</html>
