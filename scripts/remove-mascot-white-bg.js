@@ -7,6 +7,7 @@
 const path = require('path');
 const fs = require('fs');
 const { PNG } = require('pngjs');
+const { fillInteriorHoles } = require('./fill-mascot-interior-holes');
 
 const imagesDir = path.join(__dirname, '..', 'assets', 'images');
 const files = ['app-logo.png', 'stop-touching.png'];
@@ -98,6 +99,8 @@ async function main() {
       console.log('Backup:', backup);
     }
     await removeBackground(inputPath, inputPath);
+    const { filled } = fillInteriorHoles(inputPath, inputPath);
+    console.log('Interior holes filled:', filled);
   }
   console.log('Done. Re-run restores from *.bak.png if needed.');
 }

@@ -17,6 +17,7 @@
     "keystore:create": "bash scripts/create-upload-keystore.sh",
     "remove-typing-bg": "node scripts/remove-bg-from-typing-assets.js",
     "remove-mascot-bg": "node scripts/remove-mascot-white-bg.js",
+    "fill-mascot-holes": "node scripts/fill-mascot-interior-holes.js",
     "remove-wrong-password-bg": "node scripts/remove-wrong-password-bg.js"
   },
   "dependencies": {
