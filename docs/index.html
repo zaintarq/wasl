@@ -143,10 +143,6 @@
       transform-style: preserve-3d;
     }
 
-    .mascot-btn:not(.mascot-busy) {
-      animation: mascotFloat 3.6s ease-in-out infinite;
-    }
-
     .mascot-inner {
       width: min(300px, 78vw);
       height: min(300px, 78vw);
@@ -166,11 +162,6 @@
         drop-shadow(0 4px 0 rgba(0, 50, 100, 0.12))
         drop-shadow(0 18px 32px rgba(0, 40, 90, 0.28))
         drop-shadow(0 2px 8px rgba(255, 255, 255, 0.15));
-    }
-
-    @keyframes mascotFloat {
-      0%, 100% { transform: translate3d(0, 0, 0) rotateX(0deg); }
-      50% { transform: translate3d(0, -14px, 12px) rotateX(2deg); }
     }
 
     .mascot-inner.emerge-shake { animation: mascotEmergeShake 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
@@ -385,98 +376,98 @@
     }
 
     .contact-card {
-      padding: 22px 18px 20px;
+      padding: 18px 16px 16px;
       border-radius: 22px;
-      background: linear-gradient(160deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.07) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.42);
+      background: linear-gradient(160deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%);
+      border: 1.5px solid rgba(255, 255, 255, 0.48);
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
       box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.28) inset,
+        0 1px 0 rgba(255, 255, 255, 0.32) inset,
         0 20px 44px rgba(0, 40, 90, 0.22);
-      text-align: center;
     }
 
     .founder-top {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
+      gap: 12px;
+      margin-bottom: 12px;
     }
 
     .founder-avatar {
-      width: 56px;
-      height: 56px;
+      width: 48px;
+      height: 48px;
+      flex-shrink: 0;
       border-radius: 50%;
       display: grid;
       place-items: center;
-      font-size: 1.35rem;
+      font-size: 1.15rem;
       font-weight: 800;
       color: var(--twitter-blue-deep);
       background: linear-gradient(180deg, #ffffff 0%, #e8f4ff 100%);
       border: 2px solid rgba(255, 255, 255, 0.85);
-      box-shadow: 0 8px 20px rgba(0, 50, 100, 0.2);
+      box-shadow: 0 6px 16px rgba(0, 50, 100, 0.18);
+    }
+
+    .founder-headings {
+      text-align: left;
+      min-width: 0;
     }
 
     .founder-kicker {
       font-family: "Kaushan Script", cursive;
-      font-size: 1.55rem;
-      line-height: 1.15;
+      font-size: 1.45rem;
+      line-height: 1.1;
       color: #fff;
       text-shadow: 0 2px 12px rgba(0, 40, 90, 0.2);
       margin: 0;
     }
 
     .founder-lead {
-      font-size: 0.86rem;
-      line-height: 1.55;
+      font-size: 0.8rem;
+      line-height: 1.45;
       color: var(--on-blue-soft);
-      max-width: 28ch;
-      margin: 0 auto 16px;
+      margin: 3px 0 0;
     }
 
     .founder-links {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    @media (max-width: 380px) {
+      .founder-links { grid-template-columns: 1fr; }
     }
 
     .founder-link {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 13px 16px;
-      border-radius: 16px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 12px 13px;
+      border-radius: 14px;
       text-decoration: none;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(240, 248, 255, 0.92) 100%);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(240, 248, 255, 0.94) 100%);
       border: 1px solid rgba(255, 255, 255, 0.95);
       box-shadow:
         0 1px 0 rgba(255, 255, 255, 0.9) inset,
-        0 10px 22px rgba(0, 45, 95, 0.16);
+        0 8px 18px rgba(0, 45, 95, 0.14);
       transition: transform 0.2s ease, box-shadow 0.2s ease;
+      min-width: 0;
     }
 
     .founder-link:hover {
       transform: translateY(-2px);
       box-shadow:
         0 1px 0 rgba(255, 255, 255, 0.9) inset,
-        0 14px 28px rgba(0, 45, 95, 0.22);
+        0 12px 24px rgba(0, 45, 95, 0.2);
     }
 
     .founder-link:active { transform: translateY(0); }
 
-    .founder-link-main {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
-      min-width: 0;
-    }
-
     .founder-link-label {
-      font-size: 0.68rem;
+      font-size: 0.62rem;
       font-weight: 700;
       letter-spacing: 0.06em;
       text-transform: uppercase;
@@ -484,30 +475,26 @@
     }
 
     .founder-link-value {
-      font-size: 0.92rem;
+      font-size: 0.82rem;
       font-weight: 700;
       color: var(--twitter-blue-deep);
       word-break: break-word;
+      line-height: 1.3;
     }
 
     .founder-link-arrow {
-      flex-shrink: 0;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      font-size: 0.95rem;
+      align-self: flex-end;
+      font-size: 0.85rem;
+      font-weight: 700;
       color: var(--twitter-blue-deep);
-      background: rgba(25, 146, 228, 0.12);
+      opacity: 0.55;
     }
 
     .founder-app {
-      margin-top: 14px;
-      padding-top: 14px;
-      border-top: 1px solid rgba(255, 255, 255, 0.22);
-      font-size: 0.78rem;
+      margin-top: 11px;
+      font-size: 0.76rem;
       color: var(--on-blue-muted);
+      text-align: center;
     }
 
     .founder-app a {
@@ -519,8 +506,8 @@
     .founder-app a:hover { text-decoration: underline; }
 
     @media (prefers-reduced-motion: reduce) {
-      .mascot-btn, .mascot-inner, .bg-orbs span { animation: none !important; }
-      .btn:hover, .btn-outline:hover { transform: none; }
+      .mascot-inner, .bg-orbs span { animation: none !important; }
+      .btn:hover, .btn-outline:hover, .founder-link:hover { transform: none; }
     }
   </style>
 </head>
@@ -553,6 +540,29 @@
         <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
       </div>
 
+      <section class="contact-card" aria-label="Speak to the founder">
+        <div class="founder-top">
+          <div class="founder-avatar" aria-hidden="true">Z</div>
+          <div class="founder-headings">
+            <p class="founder-kicker">Speak to the founder</p>
+            <p class="founder-lead">Questions, feedback, or ideas — reach Zain directly.</p>
+          </div>
+        </div>
+        <div class="founder-links">
+          <a class="founder-link" href="mailto:zain.tariq@mail.com">
+            <span class="founder-link-label">Email</span>
+            <span class="founder-link-value">zain.tariq@mail.com</span>
+            <span class="founder-link-arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="founder-link" href="https://instagram.com/izaintariq" target="_blank" rel="noopener">
+            <span class="founder-link-label">Instagram</span>
+            <span class="founder-link-value">@izaintariq</span>
+            <span class="founder-link-arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+        <p class="founder-app">Follow Huzz · <a href="https://instagram.com/huzz.app" target="_blank" rel="noopener">@huzz.app</a></p>
+      </section>
+
       <section class="about" aria-label="About Huzz">
         <h2>About Huzz</h2>
         <p>
@@ -565,31 +575,6 @@
           and <strong>Live</strong> for short, spontaneous sessions with new people.
           One account works on the web and Android.
         </p>
-      </section>
-
-      <section class="contact-card" aria-label="Speak to the founder">
-        <div class="founder-top">
-          <div class="founder-avatar" aria-hidden="true">Z</div>
-          <p class="founder-kicker">Speak to the founder</p>
-        </div>
-        <p class="founder-lead">Questions, feedback, or a partnership idea — reach Zain directly.</p>
-        <div class="founder-links">
-          <a class="founder-link" href="mailto:zain.tariq@mail.com">
-            <span class="founder-link-main">
-              <span class="founder-link-label">Email</span>
-              <span class="founder-link-value">zain.tariq@mail.com</span>
-            </span>
-            <span class="founder-link-arrow" aria-hidden="true">→</span>
-          </a>
-          <a class="founder-link" href="https://instagram.com/izaintariq" target="_blank" rel="noopener">
-            <span class="founder-link-main">
-              <span class="founder-link-label">Instagram</span>
-              <span class="founder-link-value">@izaintariq</span>
-            </span>
-            <span class="founder-link-arrow" aria-hidden="true">→</span>
-          </a>
-        </div>
-        <p class="founder-app">Follow the app on Instagram · <a href="https://instagram.com/huzz.app" target="_blank" rel="noopener">@huzz.app</a></p>
       </section>
 
       <div class="site-footer">
