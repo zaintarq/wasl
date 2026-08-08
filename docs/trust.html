@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Privacy & Features — Huzz</title>
+  <meta name="description" content="How Huzz protects your privacy and what features we build for safe, authentic connection." />
+  <link rel="icon" href="assets/icon-512.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #eff6ff;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --blue: #1992e4;
+      --blue-deep: #0b7ec4;
+      --border: #e2e8f0;
+      --max: 720px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      background: linear-gradient(180deg, #dbeafe 0%, var(--bg) 30%, #f8fafc 100%);
+      color: var(--text);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+    .top {
+      background: linear-gradient(165deg, #1992e4 0%, #1178b8 100%);
+      color: #fff;
+      padding: max(20px, env(safe-area-inset-top)) 20px 28px;
+      text-align: center;
+    }
+    .top a.back {
+      display: inline-block;
+      color: rgba(255,255,255,0.9);
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .top h1 { font-size: 1.75rem; font-weight: 800; margin-bottom: 6px; }
+    .top p { font-size: 0.95rem; opacity: 0.92; max-width: 520px; margin: 0 auto; }
+    main {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 24px 18px 48px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
+    }
+    h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--blue-deep);
+      margin-bottom: 10px;
+    }
+    h3 {
+      font-size: 0.98rem;
+      font-weight: 700;
+      margin: 14px 0 6px;
+      color: var(--text);
+    }
+    p, li { color: var(--muted); font-size: 0.92rem; }
+    ul { padding-left: 1.2rem; margin: 8px 0; }
+    li { margin-bottom: 6px; }
+    .pill {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #dbeafe;
+      color: var(--blue-deep);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+    .contact-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .contact-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      font-size: 0.92rem;
+    }
+    .contact-row strong { color: var(--text); min-width: 100px; }
+    a { color: var(--blue-deep); font-weight: 600; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    footer {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--muted);
+      padding: 8px 0 24px;
+    }
+    footer nav { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="back" href="index.html">← Back to Huzz</a>
+    <h1>Privacy &amp; Features</h1>
+    <p>What Huzz does, how we protect you, and how we keep the community 18+ and accountable.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <span class="pill">Contact</span>
+      <h2>Get in touch</h2>
+      <div class="contact-grid">
+        <div class="contact-row">
+          <strong>Email</strong>
+          <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a>
+        </div>
+        <div class="contact-row">
+          <strong>Huzz (app)</strong>
+          <a href="https://instagram.com/huzz.app" target="_blank" rel="noopener">@huzz.app on Instagram</a>
+        </div>
+        <div class="contact-row">
+          <strong>Founder</strong>
+          <a href="https://instagram.com/izaintariq" target="_blank" rel="noopener">@izaintariq on Instagram</a>
+        </div>
+      </div>
+      <p style="margin-top: 12px;">For safety emergencies, report in-app first, then email us. If someone is in immediate danger, contact local emergency services.</p>
+    </section>
+
+    <section class="card">
+      <span class="pill">Features</span>
+      <h2>What you get in Huzz</h2>
+      <h3>Discover &amp; match</h3>
+      <ul>
+        <li>Swipe or grid browse of nearby profiles with photos, bio, and preferences</li>
+        <li>Filters for country and discovery settings</li>
+        <li>Mutual likes open private chat automatically</li>
+        <li>Direct message option when you want to skip the wait</li>
+      </ul>
+      <h3>Private chat</h3>
+      <ul>
+        <li>One-to-one messaging with read receipts and reactions</li>
+        <li>Voice notes, photo sharing, and reply threads</li>
+        <li>AI conversation starters and optional message toxicity checks</li>
+        <li>Block, report, and unmatch at any time</li>
+      </ul>
+      <h3>Clubs</h3>
+      <ul>
+        <li>Join public clubs or enter with an invite code</li>
+        <li>Group text and voice-room style spaces for community hangouts</li>
+        <li>Club owners and admins can moderate membership</li>
+      </ul>
+      <h3>Live</h3>
+      <ul>
+        <li>Short, spontaneous live video sessions with another signed-in user</li>
+        <li>In-session text chat alongside video</li>
+        <li>Skip or leave anytime — no obligation to stay</li>
+      </ul>
+      <h3>Mehram supervision (optional)</h3>
+      <ul>
+        <li>Girls in a conversation can invite a trusted Mehram via a secure link — no Mehram account required</li>
+        <li>View-only or reply permissions, revocable at any time</li>
+        <li>Real-time message visibility for accountable, respectful chatting</li>
+      </ul>
+      <h3>Trust &amp; verification</h3>
+      <ul>
+        <li><strong>18+ age check</strong> — facial age verification via ZoiVera (on-device scan; only a signed pass/fail is stored)</li>
+        <li><strong>Photo verification</strong> (optional) — separate from the age gate; earns a verified badge on your profile</li>
+        <li>Location used for matching and safety (city/region level)</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <span class="pill">Privacy</span>
+      <h2>How we handle your data</h2>
+      <ul>
+        <li><strong>18+ only.</strong> Age verification is required before likes, matches, chat, live, and clubs. Age status is set server-side — you cannot fake it from the app.</li>
+        <li><strong>On-device age scan.</strong> ZoiVera runs facial estimation in your browser. Photos and video frames are not uploaded to Huzz or ZoiVera servers for that check.</li>
+        <li><strong>Minimal retention mindset.</strong> We store what we need to run the app: account, profile, messages, safety logs, and session metadata — not more than necessary.</li>
+        <li><strong>You control connection.</strong> Block anyone instantly. Reports go to our moderation queue.</li>
+        <li><strong>Mehram tokens expire.</strong> Supervision links are time-limited, revocable, and hashed on our servers.</li>
+        <li><strong>Live sessions.</strong> Real-time video uses encrypted WebRTC (LiveKit). Sessions are short-lived by design.</li>
+        <li><strong>No selling your data.</strong> We do not sell personal information to advertisers. Huzz has no ad network in the app.</li>
+        <li><strong>Account deletion.</strong> Email us to request deletion of your account and associated data.</li>
+      </ul>
+      <p style="margin-top: 10px;">Full legal detail: <a href="privacy.html">Privacy Policy</a> · <a href="child-safety.html">Child Safety Standards</a></p>
+    </section>
+
+    <section class="card">
+      <span class="pill">Safety</span>
+      <h2>Community standards</h2>
+      <ul>
+        <li>Zero tolerance for minors, grooming, harassment, hate, scams, or non-consensual content</li>
+        <li>In-app report and block on profiles, chats, and live</li>
+        <li>Automated and human review for flagged messages where configured</li>
+        <li>Device and account bans for serious or repeat abuse</li>
+        <li>Meet in public, tell someone where you are, trust your instincts — we say this because we mean it</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <span class="pill">Transparency</span>
+      <h2>What we are building toward</h2>
+      <p>Huzz is open-source friendly and community-driven. We ship iteratively: age assurance, Mehram supervision, live video, clubs, and stronger moderation are active areas — not marketing promises on a slide deck.</p>
+      <p style="margin-top: 10px;">This page is updated as features go live. Last updated: August 2026.</p>
+    </section>
+  </main>
+
+  <footer>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="child-safety.html">Child Safety</a>
+    </nav>
+    <p>© 2026 Huzz · Adults 18+ only</p>
+  </footer>
+</body>
+</html>
