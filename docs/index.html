@@ -11,31 +11,23 @@
   <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg-top: #f8fafc;
-      --bg-mid: #eff6ff;
-      --bg-bottom: #dbeafe;
+      --twitter-blue: #1da1f2;
+      --twitter-blue-deep: #1991db;
       --surface: #ffffff;
-      --text: #0f172a;
-      --text-secondary: #475569;
-      --text-muted: #94a3b8;
+      --text: #0f1419;
+      --text-secondary: #536471;
+      --text-muted: #8899a6;
       --accent: #e11d48;
       --accent-pressed: #be123c;
-      --blue: #2563eb;
+      --link: #1d9bf0;
       --green: #059669;
-      --border: #e2e8f0;
-      --rose-bg: #fff1f2;
-      --rose-border: #fda4af;
-      --sky-bg: #eff6ff;
-      --sky-border: #7dd3fc;
-      --violet-bg: #f5f3ff;
-      --violet-border: #c4b5fd;
-      --amber-bg: #fffbeb;
-      --amber-border: #fcd34d;
-      --emerald-bg: #ecfdf5;
+      --border: #eff3f4;
       --max: 400px;
       --gutter: 16px;
+      --radius-lg: 20px;
       --radius-md: 16px;
-      --shadow-btn: 0 6px 14px rgba(190, 18, 60, 0.28);
+      --shadow-card: 0 8px 28px rgba(0, 0, 0, 0.12);
+      --shadow-btn: 0 4px 14px rgba(225, 29, 72, 0.28);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -44,18 +36,11 @@
       min-height: 100%;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: var(--text);
-      background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-bottom) 100%);
+      background: var(--twitter-blue);
+      background-image: linear-gradient(180deg, #1da1f2 0%, #1991db 100%);
       background-attachment: fixed;
     }
 
-    .page {
-      min-height: 100dvh;
-      display: flex;
-      justify-content: center;
-      padding: 0 var(--gutter) max(88px, calc(76px + env(safe-area-inset-bottom)));
-    }
-
-    /* Always-visible auth bar at top */
     .site-header {
       position: sticky;
       top: 0;
@@ -68,47 +53,45 @@
       justify-content: space-between;
       gap: 8px;
       padding: max(10px, env(safe-area-inset-top)) var(--gutter) 10px;
-      background: rgba(248, 250, 252, 0.94);
-      backdrop-filter: blur(10px);
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
+      box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
     }
 
     .site-header-brand {
       font-family: "Kaushan Script", cursive;
       font-size: 1.45rem;
-      color: #1c1917;
-      flex-shrink: 0;
+      color: var(--text);
     }
 
-    .header-auth {
-      display: flex;
-      gap: 8px;
-      flex-shrink: 0;
-    }
+    .header-auth { display: flex; gap: 8px; }
 
     .header-auth a {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 10px 14px;
+      padding: 9px 14px;
       border-radius: 999px;
-      font-family: Inter, system-ui, sans-serif;
       font-size: 0.82rem;
       font-weight: 700;
       text-decoration: none;
-      white-space: nowrap;
     }
 
     .header-auth .signup-link {
       background: var(--accent);
       color: #fff !important;
-      box-shadow: 0 4px 12px rgba(225, 29, 72, 0.35);
     }
 
     .header-auth .login-link {
-      background: #fff;
-      color: var(--blue) !important;
-      border: 2px solid rgba(37, 99, 235, 0.45);
+      background: var(--surface);
+      color: var(--text) !important;
+      border: 1.5px solid #cfd9de;
+    }
+
+    .page {
+      display: flex;
+      justify-content: center;
+      padding: 16px var(--gutter) max(88px, calc(76px + env(safe-area-inset-bottom)));
     }
 
     .shell {
@@ -116,7 +99,15 @@
       max-width: var(--max);
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
+    }
+
+    /* White card — all content sits here, blue stays behind */
+    .main-card {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
     }
 
     .hero {
@@ -124,6 +115,7 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
+      padding: 24px 20px 8px;
     }
 
     .mascot-btn {
@@ -131,7 +123,7 @@
       background: transparent;
       padding: 0;
       cursor: pointer;
-      width: min(220px, 62vw);
+      width: min(200px, 56vw);
       aspect-ratio: 1;
       margin-bottom: 4px;
       -webkit-tap-highlight-color: transparent;
@@ -152,13 +144,13 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: drop-shadow(0 10px 20px rgba(37, 99, 235, 0.12));
+      filter: drop-shadow(0 8px 16px rgba(15, 20, 25, 0.1));
       pointer-events: none;
     }
 
     @keyframes float {
       0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-12px); }
+      50% { transform: translateY(-10px); }
     }
 
     .mascot-inner.emerge-shake { animation: mascotEmergeShake 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
@@ -174,47 +166,44 @@
     @keyframes mascotShrink { from { transform: scale(1); } to { transform: scale(0.34); } }
     @keyframes mascotReturn { from { transform: scale(0.34); } to { transform: scale(1); } }
 
-    .mascot-hint { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px; }
+    .mascot-hint { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 6px; }
 
     .brand {
       font-family: "Kaushan Script", cursive;
-      font-size: clamp(2.6rem, 11vw, 3.4rem);
-      color: #1c1917;
+      font-size: clamp(2.4rem, 10vw, 3.1rem);
+      color: var(--text);
       line-height: 1.1;
     }
 
     .brand-line {
-      width: 96px;
+      width: 88px;
       height: 3px;
       margin: 6px auto 10px;
       border-radius: 2px;
-      background: linear-gradient(90deg, #1d4ed8, #2563eb, #3b82f6);
-      opacity: 0.85;
+      background: var(--accent);
+      opacity: 0.9;
     }
 
     .tagline-main {
       font-family: "Kaushan Script", cursive;
-      font-size: 1.05rem;
+      font-size: 1rem;
       color: var(--text-secondary);
       line-height: 1.45;
-      padding: 0 8px;
     }
 
     .tagline-sub {
       font-family: "Kaushan Script", cursive;
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       color: var(--text-muted);
       margin-top: 4px;
-      padding: 0 8px;
     }
 
     .cta-stack {
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      width: 100%;
-      position: relative;
-      z-index: 2;
+      gap: 10px;
+      padding: 8px 20px 20px;
+      border-bottom: 1px solid var(--border);
     }
 
     .btn {
@@ -222,19 +211,13 @@
       align-items: center;
       justify-content: center;
       width: 100%;
-      min-height: 56px;
-      padding: 16px 20px;
-      border-radius: 22px;
-      font-family: Inter, system-ui, sans-serif;
-      font-size: 1rem;
+      min-height: 52px;
+      padding: 14px 18px;
+      border-radius: 999px;
+      font-size: 0.95rem;
       font-weight: 700;
-      letter-spacing: 0.01em;
       text-decoration: none;
-      border: none;
-      cursor: pointer;
-      transition: transform 0.15s ease;
-      -webkit-appearance: none;
-      appearance: none;
+      transition: transform 0.15s ease, opacity 0.15s ease;
     }
 
     .btn:active { transform: scale(0.98); }
@@ -246,20 +229,88 @@
     }
 
     .btn-outline {
-      background: #fff;
+      background: var(--surface);
       color: var(--text) !important;
-      border: 2px solid rgba(37, 99, 235, 0.45);
+      border: 1.5px solid #cfd9de;
     }
 
     .btn-ghost {
       background: transparent;
-      color: var(--blue) !important;
-      font-size: 0.9rem;
-      min-height: 44px;
+      color: var(--text-secondary) !important;
+      font-size: 0.88rem;
+      min-height: 40px;
       font-weight: 600;
     }
 
-    /* Sticky bottom auth dock — always on screen on phone */
+    .about {
+      padding: 20px 22px 22px;
+    }
+
+    .about h2 {
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.2rem;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    .about p {
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: var(--text-secondary);
+      margin-bottom: 11px;
+    }
+
+    .about p:last-child { margin-bottom: 0; }
+
+    .about p strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* On blue bg — light text only for footer bits outside the card */
+    .below-card {
+      text-align: center;
+      padding: 0 6px;
+    }
+
+    .safety-line {
+      font-size: 0.78rem;
+      color: rgba(255, 255, 255, 0.92);
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .safety-line strong { font-weight: 700; }
+
+    .legal {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+    }
+
+    .legal a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      opacity: 0.95;
+    }
+
+    .legal a:hover { text-decoration: underline; }
+
+    .footer {
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.75);
+      line-height: 1.55;
+    }
+
+    .footer a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
     .bottom-dock {
       position: fixed;
       left: 50%;
@@ -272,20 +323,18 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       padding: 10px var(--gutter) max(12px, env(safe-area-inset-bottom));
-      background: rgba(255, 255, 255, 0.97);
+      background: var(--surface);
       border-top: 1px solid var(--border);
-      box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
-      backdrop-filter: blur(12px);
+      box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.1);
     }
 
     .bottom-dock a {
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 50px;
-      border-radius: 16px;
-      font-family: Inter, system-ui, sans-serif;
-      font-size: 0.92rem;
+      min-height: 48px;
+      border-radius: 999px;
+      font-size: 0.9rem;
       font-weight: 700;
       text-decoration: none;
     }
@@ -296,73 +345,13 @@
     }
 
     .bottom-dock .dock-login {
-      background: #fff;
-      color: var(--blue) !important;
-      border: 2px solid rgba(37, 99, 235, 0.45);
-    }
-
-    .about {
-      width: 100%;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: 20px 18px;
-      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
+      color: var(--text) !important;
+      border: 1.5px solid #cfd9de;
     }
-
-    .about h2 {
-      font-family: "Kaushan Script", cursive;
-      font-size: 1.25rem;
-      color: var(--text);
-      margin-bottom: 12px;
-      text-align: center;
-    }
-
-    .about p {
-      font-size: 0.92rem;
-      line-height: 1.65;
-      color: var(--text-secondary);
-      margin-bottom: 12px;
-    }
-
-    .about p:last-child { margin-bottom: 0; }
-
-    .about p strong {
-      color: var(--text);
-      font-weight: 600;
-    }
-
-    .safety-line {
-      font-size: 0.72rem;
-      color: var(--text-secondary);
-      line-height: 1.45;
-      text-align: center;
-      padding: 0 4px;
-    }
-
-    .safety-line strong { color: var(--green); }
-
-    .legal {
-      display: flex;
-      justify-content: center;
-      gap: 14px;
-      font-size: 0.78rem;
-    }
-
-    .legal a { color: var(--blue); text-decoration: none; font-weight: 600; }
-
-    .footer {
-      text-align: center;
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    .footer a { color: var(--blue); text-decoration: none; }
 
     @media (prefers-reduced-motion: reduce) {
-      .mascot-btn { animation: none !important; }
-      .mascot-inner { animation: none !important; }
+      .mascot-btn, .mascot-inner { animation: none !important; }
     }
   </style>
 </head>
@@ -377,50 +366,52 @@
 
   <div class="page">
     <div class="shell">
-      <header class="hero">
-        <button type="button" class="mascot-btn" id="mascotBtn" aria-label="Huzz mascot — tap for a surprise">
-          <div class="mascot-inner" id="mascotInner">
-            <img id="mascotImg" src="assets/app-logo.png" alt="" width="220" height="220" />
-          </div>
-        </button>
-        <p class="mascot-hint">Tap the mascot</p>
-        <h1 class="brand">Huzz</h1>
-        <div class="brand-line" aria-hidden="true"></div>
-        <p class="tagline-main">Connect authentically. Connect freely.</p>
-        <p class="tagline-sub">Open-source &amp; community-driven</p>
-      </header>
+      <article class="main-card">
+        <header class="hero">
+          <button type="button" class="mascot-btn" id="mascotBtn" aria-label="Huzz mascot — tap for a surprise">
+            <div class="mascot-inner" id="mascotInner">
+              <img id="mascotImg" src="assets/app-logo.png" alt="" width="200" height="200" />
+            </div>
+          </button>
+          <p class="mascot-hint">Tap the mascot</p>
+          <h1 class="brand">Huzz</h1>
+          <div class="brand-line" aria-hidden="true"></div>
+          <p class="tagline-main">Connect authentically. Connect freely.</p>
+          <p class="tagline-sub">Open-source &amp; community-driven</p>
+        </header>
 
-      <div class="cta-stack" id="auth">
-        <a class="btn btn-primary" href="app.html?mode=signup">Sign up with email</a>
-        <a class="btn btn-outline" href="app.html?mode=login">Log in</a>
-        <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
+        <div class="cta-stack" id="auth">
+          <a class="btn btn-primary" href="app.html?mode=signup">Sign up with email</a>
+          <a class="btn btn-outline" href="app.html?mode=login">Log in</a>
+          <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
+        </div>
+
+        <section class="about" aria-label="About Huzz">
+          <h2>About Huzz</h2>
+          <p>
+            Huzz helps you <strong>meet people nearby</strong> and connect when the interest is mutual.
+            Browse profiles, refine who you see with filters, and start private chats with your matches —
+            including voice notes, translation, and AI conversation starters.
+          </p>
+          <p>
+            Beyond one-to-one chat, Huzz offers <strong>clubs</strong> for group text and voice rooms,
+            and <strong>Live</strong> for short, spontaneous sessions with new people.
+            One account works on the web and Android.
+          </p>
+        </section>
+      </article>
+
+      <div class="below-card">
+        <p class="safety-line"><strong>Stay safe</strong> — meet in public, trust your gut, and block or report anyone who makes you uncomfortable.</p>
+        <nav class="legal">
+          <a href="privacy.html">Privacy</a>
+          <a href="child-safety.html">Child Safety</a>
+        </nav>
+        <footer class="footer">
+          <p>18+ adults only · <a href="mailto:support@huzz.com">support@huzz.com</a></p>
+          <p>© Huzz 2026</p>
+        </footer>
       </div>
-
-      <section class="about" aria-label="About Huzz">
-        <h2>About Huzz</h2>
-        <p>
-          Huzz helps you <strong>meet people nearby</strong> and connect when the interest is mutual.
-          Browse profiles, refine who you see with filters, and start private chats with your matches —
-          including voice notes, translation, and AI conversation starters.
-        </p>
-        <p>
-          Beyond one-to-one chat, Huzz offers <strong>clubs</strong> for group text and voice rooms,
-          and <strong>Live</strong> for short, spontaneous sessions with new people.
-          Sign up on the web or Android — your account works across both.
-        </p>
-      </section>
-
-      <p class="safety-line"><strong>Stay safe</strong> — meet in public, trust your gut, block or report from any profile or chat.</p>
-
-      <nav class="legal">
-        <a href="privacy.html">Privacy</a>
-        <a href="child-safety.html">Child Safety</a>
-      </nav>
-
-      <footer class="footer">
-        <p>18+ · <a href="mailto:support@huzz.com">support@huzz.com</a></p>
-        <p>© Huzz 2026</p>
-      </footer>
     </div>
   </div>
 
