@@ -90,6 +90,9 @@
       aspect-ratio: 1;
       margin-bottom: 8px;
       -webkit-tap-highlight-color: transparent;
+    }
+
+    .mascot-btn:not(.mascot-busy) {
       animation: float 3.2s ease-in-out infinite;
     }
 
@@ -113,16 +116,13 @@
     }
 
     @keyframes float {
-      0%, 100% { transform: translateY(0) scale(1); }
-      50% { transform: translateY(-14px) scale(1.02); }
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-14px); }
     }
 
-    .mascot-inner.emerge {
-      animation: mascotEmerge 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    }
-
-    .mascot-inner.shake {
-      animation: mascotShake 0.18s ease-out forwards;
+    /* Tap: angry image emerges from small + shake (matches app WelcomeMascotBlock) */
+    .mascot-inner.emerge-shake {
+      animation: mascotEmergeShake 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
 
     .mascot-inner.shrink-out {
@@ -133,19 +133,15 @@
       animation: mascotReturn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
 
-    @keyframes mascotEmerge {
+    @keyframes mascotEmergeShake {
       0% { transform: scale(0.34) rotate(0deg); }
-      55% { transform: scale(1.06) rotate(0deg); }
-      100% { transform: scale(1) rotate(0deg); }
-    }
-
-    @keyframes mascotShake {
-      0% { transform: scale(1) rotate(0deg); }
-      45% { transform: scale(1) rotate(-5deg); }
+      45% { transform: scale(1.06) rotate(0deg); }
+      72% { transform: scale(1) rotate(-5deg); }
       100% { transform: scale(1) rotate(0deg); }
     }
 
     @keyframes mascotShrink {
+      from { transform: scale(1) rotate(0deg); }
       to { transform: scale(0.34) rotate(0deg); }
     }
 
@@ -621,46 +617,62 @@
       var LOGO = 'assets/app-logo.png';
       var ANGRY = 'assets/stop-touching.png';
       var ANGRY_MS = 1000;
+      var EMERGE_SHAKE_MS = 520;
+      var SHRINK_MS = 180;
+      var RETURN_MS = 340;
       var btn = document.getElementById('mascotBtn');
       var inner = document.getElementById('mascotInner');
       var img = document.getElementById('mascotImg');
       var angryTimer = null;
       var busy = false;
 
+      new Image().src = ANGRY;
+
       function clearAnimClasses() {
-        inner.classList.remove('emerge', 'shake', 'shrink-out', 'return-in');
+        inner.classList.remove('emerge-shake', 'shrink-out', 'return-in');
       }
 
-      function runClass(name, ms) {
-        clearAnimClasses();
-        void inner.offsetWidth;
-        inner.classList.add(name);
-        return new Promise(function (resolve) {
-          setTimeout(resolve, ms || 300);
-        });
+      function wait(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms); });
       }
 
       btn.addEventListener('click', function () {
         if (busy) return;
         busy = true;
+        btn.classList.add('mascot-busy');
         if (angryTimer) clearTimeout(angryTimer);
 
-        btn.style.animation = 'none';
-        runClass('emerge', 350).then(function () {
-          img.src = ANGRY;
-          return runClass('shake', 180);
-        }).then(function () {
-          angryTimer = setTimeout(function () {
-            runClass('shrink-out', 180).then(function () {
-              img.src = LOGO;
-              return runClass('return-in', 340);
-            }).then(function () {
-              clearAnimClasses();
-              btn.style.animation = '';
-              busy = false;
-            });
-          }, ANGRY_MS);
-        });
+        clearAnimClasses();
+        inner.style.transform = '';
+
+        // Match app: swap to angry first, then emerge from small (not bounce the happy logo)
+        img.src = ANGRY;
+        inner.style.transform = 'scale(0.34)';
+        void inner.offsetWidth;
+        inner.classList.add('emerge-shake');
+
+        angryTimer = setTimeout(function () {
+          clearAnimClasses();
+          inner.style.transform = 'scale(1)';
+          void inner.offsetWidth;
+          inner.classList.add('shrink-out');
+
+          wait(SHRINK_MS).then(function () {
+            img.src = LOGO;
+            clearAnimClasses();
+            inner.style.transform = 'scale(0.34)';
+            void inner.offsetWidth;
+            inner.classList.add('return-in');
+
+            return wait(RETURN_MS);
+          }).then(function () {
+            clearAnimClasses();
+            inner.style.transform = '';
+            btn.classList.remove('mascot-busy');
+            busy = false;
+            angryTimer = null;
+          });
+        }, ANGRY_MS);
       });
 
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
