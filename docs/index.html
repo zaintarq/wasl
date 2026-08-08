@@ -301,98 +301,35 @@
       border: 2px solid rgba(37, 99, 235, 0.45);
     }
 
-    .features-card {
+    .about {
       width: 100%;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      overflow: hidden;
-      box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
+      padding: 20px 18px;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
     }
 
-    .features-card-head {
-      padding: 12px 14px 0;
+    .about h2 {
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.25rem;
+      color: var(--text);
+      margin-bottom: 12px;
       text-align: center;
     }
 
-    .features-card-head h2 {
-      font-family: "Kaushan Script", cursive;
-      font-size: 1.15rem;
-      color: var(--text);
-    }
-
-    .features-card-head p {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-
-    .tab-row {
-      display: flex;
-      gap: 6px;
-      padding: 12px 12px 0;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-
-    .tab-row::-webkit-scrollbar { display: none; }
-
-    .tab {
-      flex: 1 0 auto;
-      min-width: 0;
-      padding: 8px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--bg-top);
-      font-size: 0.72rem;
-      font-weight: 700;
+    .about p {
+      font-size: 0.92rem;
+      line-height: 1.65;
       color: var(--text-secondary);
-      cursor: pointer;
-      white-space: nowrap;
+      margin-bottom: 12px;
     }
 
-    .tab.on.discover { background: var(--rose-bg); border-color: var(--rose-border); color: var(--accent); }
-    .tab.on.chats { background: var(--sky-bg); border-color: var(--sky-border); color: var(--blue); }
-    .tab.on.clubs { background: var(--violet-bg); border-color: var(--violet-border); color: #7c3aed; }
-    .tab.on.live { background: var(--amber-bg); border-color: var(--amber-border); color: #b45309; }
+    .about p:last-child { margin-bottom: 0; }
 
-    .tab-panel { display: none; padding: 8px 0 4px; }
-    .tab-panel.on { display: block; }
-
-    .feat-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 11px 14px;
-      border-top: 1px solid var(--border);
-    }
-
-    .feat-row:first-child { border-top: none; }
-
-    .feat-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1rem;
-      flex-shrink: 0;
-    }
-
-    .feat-text strong {
-      display: block;
-      font-size: 0.82rem;
-      font-weight: 700;
+    .about p strong {
       color: var(--text);
-    }
-
-    .feat-text span {
-      display: block;
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      margin-top: 1px;
+      font-weight: 600;
     }
 
     .safety-line {
@@ -459,45 +396,18 @@
         <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
       </div>
 
-      <section class="features-card" aria-label="App features">
-        <div class="features-card-head">
-          <h2>What you get</h2>
-          <p>Same four tabs — on web and Android</p>
-        </div>
-        <div class="tab-row" role="tablist">
-          <button type="button" class="tab on discover" role="tab" data-tab="discover" aria-selected="true">Discover</button>
-          <button type="button" class="tab chats" role="tab" data-tab="chats">Chats</button>
-          <button type="button" class="tab clubs" role="tab" data-tab="clubs">Clubs</button>
-          <button type="button" class="tab live" role="tab" data-tab="live">Live</button>
-        </div>
-
-        <div class="tab-panel on" id="panel-discover" role="tabpanel">
-          <div class="feat-row"><div class="feat-icon" style="background:var(--rose-bg)">❤️</div><div class="feat-text"><strong>Swipe deck</strong><span>Like or skip profiles</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--sky-bg)">🎚</div><div class="feat-text"><strong>Filters</strong><span>Country &amp; preferences</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--violet-bg)">▦</div><div class="feat-text"><strong>Grid view</strong><span>Browse at a glance</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--emerald-bg)">📍</div><div class="feat-text"><strong>Nearby</strong><span>People in your area</span></div></div>
-        </div>
-
-        <div class="tab-panel" id="panel-chats" role="tabpanel">
-          <div class="feat-row"><div class="feat-icon" style="background:var(--sky-bg)">💬</div><div class="feat-text"><strong>Text chat</strong><span>Instant messages</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--violet-bg)">🎤</div><div class="feat-text"><strong>Voice notes</strong><span>Send audio clips</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--emerald-bg)">🌐</div><div class="feat-text"><strong>Translate</strong><span>Chat in any language</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--amber-bg)">✨</div><div class="feat-text"><strong>AI openers</strong><span>Break the ice</span></div></div>
-        </div>
-
-        <div class="tab-panel" id="panel-clubs" role="tabpanel">
-          <div class="feat-row"><div class="feat-icon" style="background:var(--emerald-bg)">🎙</div><div class="feat-text"><strong>Voice rooms</strong><span>Talk live with mic</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--sky-bg)">💬</div><div class="feat-text"><strong>Text chat</strong><span>Messages in the room</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--amber-bg)">🔒</div><div class="feat-text"><strong>Private clubs</strong><span>Invite-only access</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--violet-bg)">#</div><div class="feat-text"><strong>Invite codes</strong><span>Share with friends</span></div></div>
-        </div>
-
-        <div class="tab-panel" id="panel-live" role="tabpanel">
-          <div class="feat-row"><div class="feat-icon" style="background:var(--rose-bg)">⏱</div><div class="feat-text"><strong>60 seconds</strong><span>Timed session</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--sky-bg)">💬</div><div class="feat-text"><strong>Text chat</strong><span>Type in real time</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--amber-bg)">🔀</div><div class="feat-text"><strong>Skip</strong><span>Next person</span></div></div>
-          <div class="feat-row"><div class="feat-icon" style="background:var(--violet-bg)">📹</div><div class="feat-text"><strong>Video soon</strong><span>Random video later</span></div></div>
-        </div>
+      <section class="about" aria-label="About Huzz">
+        <h2>About Huzz</h2>
+        <p>
+          Huzz helps you <strong>meet people nearby</strong> and connect when the interest is mutual.
+          Browse profiles, refine who you see with filters, and start private chats with your matches —
+          including voice notes, translation, and AI conversation starters.
+        </p>
+        <p>
+          Beyond one-to-one chat, Huzz offers <strong>clubs</strong> for group text and voice rooms,
+          and <strong>Live</strong> for short, spontaneous sessions with new people.
+          Sign up on the web or Android — your account works across both.
+        </p>
       </section>
 
       <p class="safety-line"><strong>Stay safe</strong> — meet in public, trust your gut, block or report from any profile or chat.</p>
@@ -564,20 +474,6 @@
             }, 340);
           }, 180);
         }, 1000);
-      });
-
-      document.querySelectorAll('.tab-row .tab').forEach(function (tab) {
-        tab.addEventListener('click', function () {
-          var id = tab.getAttribute('data-tab');
-          document.querySelectorAll('.tab-row .tab').forEach(function (t) {
-            t.classList.remove('on');
-            t.setAttribute('aria-selected', 'false');
-          });
-          document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('on'); });
-          tab.classList.add('on');
-          tab.setAttribute('aria-selected', 'true');
-          document.getElementById('panel-' + id).classList.add('on');
-        });
       });
     })();
   </script>
