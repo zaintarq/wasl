@@ -12,13 +12,15 @@
   <style>
     :root {
       --twitter-blue: #1da1f2;
-      --twitter-blue-deep: #1991db;
+      --twitter-blue-deep: #0d8bd9;
+      --twitter-blue-glow: #4fc3ff;
       --on-blue: #ffffff;
-      --on-blue-soft: rgba(255, 255, 255, 0.88);
+      --on-blue-soft: rgba(255, 255, 255, 0.9);
       --on-blue-muted: rgba(255, 255, 255, 0.72);
-      --accent: #e11d48;
-      --max: 400px;
-      --gutter: 16px;
+      --glass: rgba(255, 255, 255, 0.14);
+      --glass-border: rgba(255, 255, 255, 0.28);
+      --max: 440px;
+      --gutter: 18px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,60 +29,73 @@
       min-height: 100%;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: var(--on-blue);
-      background: var(--twitter-blue);
-      background-image: linear-gradient(180deg, #1da1f2 0%, #1991db 100%);
+      background: var(--twitter-blue-deep);
+      overflow-x: hidden;
+    }
+
+    /* Layered 3D sky — depth without clutter */
+    body {
+      background-image:
+        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 255, 255, 0.22) 0%, transparent 55%),
+        radial-gradient(ellipse 70% 50% at 85% 15%, rgba(79, 195, 255, 0.35) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 45% at 10% 75%, rgba(13, 139, 217, 0.5) 0%, transparent 55%),
+        linear-gradient(165deg, #1da1f2 0%, #1590e0 42%, #0d8bd9 100%);
       background-attachment: fixed;
     }
 
-    .site-header {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      width: 100%;
-      max-width: calc(var(--max) + var(--gutter) * 2);
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: max(10px, env(safe-area-inset-top)) var(--gutter) 10px;
-      background: transparent;
+    .bg-orbs {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
     }
 
-    .site-header-brand {
-      font-family: "Kaushan Script", cursive;
-      font-size: 1.45rem;
-      color: var(--on-blue);
+    .bg-orbs span {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(40px);
+      opacity: 0.45;
+      animation: orbDrift 18s ease-in-out infinite;
     }
 
-    .header-auth { display: flex; gap: 8px; }
-
-    .header-auth a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 9px 14px;
-      border-radius: 999px;
-      font-size: 0.82rem;
-      font-weight: 700;
-      text-decoration: none;
+    .bg-orbs span:nth-child(1) {
+      width: 280px;
+      height: 280px;
+      top: -60px;
+      right: -40px;
+      background: rgba(255, 255, 255, 0.25);
     }
 
-    .header-auth .signup-link {
-      background: #fff;
-      color: var(--twitter-blue) !important;
+    .bg-orbs span:nth-child(2) {
+      width: 220px;
+      height: 220px;
+      bottom: 18%;
+      left: -70px;
+      background: rgba(79, 195, 255, 0.35);
+      animation-delay: -6s;
     }
 
-    .header-auth .login-link {
-      background: transparent;
-      color: #fff !important;
-      border: 1.5px solid rgba(255, 255, 255, 0.85);
+    .bg-orbs span:nth-child(3) {
+      width: 160px;
+      height: 160px;
+      top: 42%;
+      right: 8%;
+      background: rgba(255, 255, 255, 0.18);
+      animation-delay: -11s;
+    }
+
+    @keyframes orbDrift {
+      0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+      50% { transform: translate3d(0, -18px, 0) scale(1.06); }
     }
 
     .page {
+      position: relative;
+      z-index: 1;
       display: flex;
       justify-content: center;
-      padding: 8px var(--gutter) max(88px, calc(76px + env(safe-area-inset-bottom)));
+      padding: max(16px, env(safe-area-inset-top)) var(--gutter) max(92px, calc(80px + env(safe-area-inset-bottom)));
     }
 
     .shell {
@@ -88,7 +103,7 @@
       max-width: var(--max);
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 22px;
     }
 
     .hero {
@@ -96,28 +111,50 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
+      perspective: 900px;
+    }
+
+    .mascot-stage {
+      position: relative;
+      margin-bottom: 2px;
+    }
+
+    .mascot-glow {
+      position: absolute;
+      left: 50%;
+      bottom: 8%;
+      transform: translateX(-50%);
+      width: 72%;
+      height: 18%;
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(0, 60, 120, 0.35) 0%, transparent 72%);
+      filter: blur(6px);
+      z-index: 0;
     }
 
     .mascot-btn {
+      position: relative;
+      z-index: 1;
       border: none;
       background: transparent;
       padding: 0;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
+      transform-style: preserve-3d;
     }
 
     .mascot-btn:not(.mascot-busy) {
-      animation: float 3.2s ease-in-out infinite;
+      animation: mascotFloat 3.6s ease-in-out infinite;
     }
 
     .mascot-inner {
-      width: min(200px, 56vw);
-      height: min(200px, 56vw);
-      margin-bottom: 4px;
+      width: min(300px, 78vw);
+      height: min(300px, 78vw);
       display: flex;
       align-items: center;
       justify-content: center;
       transform-origin: center center;
+      transform-style: preserve-3d;
     }
 
     .mascot-btn img {
@@ -125,12 +162,15 @@
       height: 100%;
       object-fit: contain;
       pointer-events: none;
-      filter: drop-shadow(0 10px 28px rgba(0, 0, 0, 0.14));
+      filter:
+        drop-shadow(0 4px 0 rgba(0, 50, 100, 0.12))
+        drop-shadow(0 18px 32px rgba(0, 40, 90, 0.28))
+        drop-shadow(0 2px 8px rgba(255, 255, 255, 0.15));
     }
 
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
+    @keyframes mascotFloat {
+      0%, 100% { transform: translate3d(0, 0, 0) rotateX(0deg); }
+      50% { transform: translate3d(0, -14px, 12px) rotateX(2deg); }
     }
 
     .mascot-inner.emerge-shake { animation: mascotEmergeShake 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
@@ -146,43 +186,58 @@
     @keyframes mascotShrink { from { transform: scale(1); } to { transform: scale(0.34); } }
     @keyframes mascotReturn { from { transform: scale(0.34); } to { transform: scale(1); } }
 
-    .mascot-hint { font-size: 0.68rem; color: var(--on-blue-muted); margin-bottom: 6px; }
+    .mascot-hint {
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--on-blue-muted);
+      margin-bottom: 4px;
+    }
 
     .brand {
       font-family: "Kaushan Script", cursive;
-      font-size: clamp(2.5rem, 11vw, 3.2rem);
-      color: var(--on-blue);
-      line-height: 1.1;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      font-size: clamp(3.6rem, 16vw, 4.8rem);
+      line-height: 0.95;
+      color: #fff;
+      letter-spacing: 0.02em;
+      text-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.5),
+        0 3px 0 #0a7ec4,
+        0 5px 0 #086faa,
+        0 7px 0 #065f96,
+        0 9px 0 #044f7c,
+        0 14px 22px rgba(0, 40, 90, 0.45);
+      transform: translateZ(20px);
     }
 
     .brand-line {
-      width: 88px;
-      height: 3px;
-      margin: 6px auto 10px;
-      border-radius: 2px;
-      background: #fff;
-      opacity: 0.95;
+      width: 110px;
+      height: 4px;
+      margin: 10px auto 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, transparent, #fff 20%, #fff 80%, transparent);
+      box-shadow: 0 2px 8px rgba(255, 255, 255, 0.35);
     }
 
     .tagline-main {
       font-family: "Kaushan Script", cursive;
-      font-size: 1.05rem;
+      font-size: clamp(1.1rem, 4.5vw, 1.25rem);
       color: var(--on-blue-soft);
       line-height: 1.45;
+      text-shadow: 0 2px 12px rgba(0, 40, 90, 0.2);
     }
 
     .tagline-sub {
       font-family: "Kaushan Script", cursive;
-      font-size: 0.88rem;
+      font-size: 0.92rem;
       color: var(--on-blue-muted);
-      margin-top: 4px;
+      margin-top: 5px;
     }
 
     .cta-stack {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 11px;
       width: 100%;
     }
 
@@ -191,48 +246,90 @@
       align-items: center;
       justify-content: center;
       width: 100%;
-      min-height: 52px;
-      padding: 14px 18px;
+      min-height: 54px;
+      padding: 14px 20px;
       border-radius: 999px;
-      font-size: 0.95rem;
+      font-size: 0.96rem;
       font-weight: 700;
       text-decoration: none;
-      transition: transform 0.15s ease, opacity 0.15s ease;
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, background 0.22s ease;
     }
-
-    .btn:active { transform: scale(0.98); }
 
     .btn-primary {
-      background: #fff;
-      color: var(--twitter-blue) !important;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+      background: linear-gradient(180deg, #ffffff 0%, #eef8ff 100%);
+      color: var(--twitter-blue-deep) !important;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.9) inset,
+        0 -2px 0 rgba(0, 100, 160, 0.08) inset,
+        0 8px 20px rgba(0, 50, 100, 0.22),
+        0 2px 4px rgba(0, 40, 90, 0.12);
     }
 
-    .btn-outline {
-      background: transparent;
-      color: #fff !important;
-      border: 2px solid rgba(255, 255, 255, 0.9);
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.9) inset,
+        0 -2px 0 rgba(0, 100, 160, 0.08) inset,
+        0 12px 28px rgba(0, 50, 100, 0.28),
+        0 4px 8px rgba(0, 40, 90, 0.14);
     }
+
+    .btn-primary:active { transform: translateY(1px) scale(0.99); }
+
+    .btn-outline {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%);
+      color: #fff !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.45);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.25) inset,
+        0 8px 18px rgba(0, 40, 90, 0.18);
+    }
+
+    .btn-outline:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.65);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.1) 100%);
+    }
+
+    .btn-outline:active { transform: translateY(1px) scale(0.99); }
 
     .btn-ghost {
       background: transparent;
       color: var(--on-blue-soft) !important;
       font-size: 0.88rem;
-      min-height: 40px;
+      min-height: 42px;
       font-weight: 600;
+      box-shadow: none;
+    }
+
+    .btn-ghost:hover { color: #fff !important; }
+
+    .about {
+      padding: 20px 18px;
+      border-radius: 22px;
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.2) inset,
+        0 16px 40px rgba(0, 40, 90, 0.18);
     }
 
     .about h2 {
       font-family: "Kaushan Script", cursive;
-      font-size: 1.2rem;
+      font-size: 1.35rem;
       color: var(--on-blue);
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       text-align: center;
+      text-shadow: 0 2px 10px rgba(0, 40, 90, 0.15);
     }
 
     .about p {
       font-size: 0.9rem;
-      line-height: 1.7;
+      line-height: 1.72;
       color: var(--on-blue-soft);
       margin-bottom: 11px;
       text-align: center;
@@ -299,54 +396,64 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       padding: 10px var(--gutter) max(12px, env(safe-area-inset-bottom));
-      background: transparent;
+      background: linear-gradient(180deg, transparent 0%, rgba(13, 139, 217, 0.55) 35%, rgba(8, 111, 170, 0.85) 100%);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
     }
 
     .bottom-dock a {
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 48px;
+      min-height: 50px;
       border-radius: 999px;
-      font-size: 0.9rem;
+      font-size: 0.92rem;
       font-weight: 700;
       text-decoration: none;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
     .bottom-dock .dock-signup {
-      background: #fff;
-      color: var(--twitter-blue) !important;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+      background: linear-gradient(180deg, #ffffff 0%, #eef8ff 100%);
+      color: var(--twitter-blue-deep) !important;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.85) inset,
+        0 6px 16px rgba(0, 50, 100, 0.22);
     }
+
+    .bottom-dock .dock-signup:active { transform: scale(0.98); }
 
     .bottom-dock .dock-login {
-      background: transparent;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
       color: #fff !important;
-      border: 2px solid rgba(255, 255, 255, 0.9);
+      border: 1.5px solid rgba(255, 255, 255, 0.45);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset;
     }
 
+    .bottom-dock .dock-login:active { transform: scale(0.98); }
+
     @media (prefers-reduced-motion: reduce) {
-      .mascot-plate, .mascot-inner { animation: none !important; }
+      .mascot-btn, .mascot-inner, .bg-orbs span { animation: none !important; }
+      .btn:hover, .btn-outline:hover { transform: none; }
     }
   </style>
 </head>
 <body>
-  <header class="site-header">
-    <span class="site-header-brand">Huzz</span>
-    <div class="header-auth">
-      <a class="login-link" href="app.html?mode=login">Log in</a>
-      <a class="signup-link" href="app.html?mode=signup">Sign up</a>
-    </div>
-  </header>
+  <div class="bg-orbs" aria-hidden="true">
+    <span></span><span></span><span></span>
+  </div>
 
   <div class="page">
     <div class="shell">
       <header class="hero">
-        <button type="button" class="mascot-btn" id="mascotBtn" aria-label="Huzz mascot — tap for a surprise">
-          <div class="mascot-inner" id="mascotInner">
-            <img id="mascotImg" src="assets/app-logo.png" alt="" width="200" height="200" />
-          </div>
-        </button>
+        <div class="mascot-stage">
+          <div class="mascot-glow" aria-hidden="true"></div>
+          <button type="button" class="mascot-btn" id="mascotBtn" aria-label="Huzz mascot — tap for a surprise">
+            <div class="mascot-inner" id="mascotInner">
+              <img id="mascotImg" src="assets/app-logo.png" alt="" width="300" height="300" />
+            </div>
+          </button>
+        </div>
         <p class="mascot-hint">Tap the mascot</p>
         <h1 class="brand">Huzz</h1>
         <div class="brand-line" aria-hidden="true"></div>
