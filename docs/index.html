@@ -11,9 +11,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --twitter-blue: #1788d4;
-      --twitter-blue-deep: #0a78b8;
-      --twitter-blue-glow: #3aa8de;
+      --twitter-blue: #1992e4;
+      --twitter-blue-deep: #0b7ec4;
+      --twitter-blue-glow: #42b4ec;
       --on-blue: #ffffff;
       --on-blue-soft: rgba(255, 255, 255, 0.9);
       --on-blue-muted: rgba(255, 255, 255, 0.72);
@@ -36,10 +36,10 @@
     /* Layered 3D sky — depth without clutter */
     body {
       background-image:
-        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 255, 255, 0.10) 0%, transparent 55%),
-        radial-gradient(ellipse 70% 50% at 85% 15%, rgba(58, 168, 222, 0.20) 0%, transparent 50%),
-        radial-gradient(ellipse 60% 45% at 10% 75%, rgba(10, 120, 184, 0.38) 0%, transparent 55%),
-        linear-gradient(165deg, #1788d4 0%, #1074b0 42%, #0a78b8 100%);
+        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 255, 255, 0.12) 0%, transparent 55%),
+        radial-gradient(ellipse 70% 50% at 85% 15%, rgba(66, 180, 236, 0.23) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 45% at 10% 75%, rgba(11, 126, 196, 0.41) 0%, transparent 55%),
+        linear-gradient(165deg, #1992e4 0%, #1178b8 42%, #0b7ec4 100%);
       background-attachment: fixed;
     }
 
@@ -55,7 +55,7 @@
       position: absolute;
       border-radius: 50%;
       filter: blur(40px);
-      opacity: 0.30;
+      opacity: 0.33;
       animation: orbDrift 18s ease-in-out infinite;
     }
 
@@ -64,7 +64,7 @@
       height: 280px;
       top: -60px;
       right: -40px;
-      background: rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.16);
     }
 
     .bg-orbs span:nth-child(2) {
@@ -72,7 +72,7 @@
       height: 220px;
       bottom: 18%;
       left: -70px;
-      background: rgba(58, 168, 222, 0.20);
+      background: rgba(66, 180, 236, 0.23);
       animation-delay: -6s;
     }
 
@@ -81,7 +81,7 @@
       height: 160px;
       top: 42%;
       right: 8%;
-      background: rgba(255, 255, 255, 0.10);
+      background: rgba(255, 255, 255, 0.12);
       animation-delay: -11s;
     }
 
