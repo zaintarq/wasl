@@ -21,6 +21,7 @@
       --accent: #e11d48;
       --accent-pressed: #be123c;
       --blue: #2563eb;
+      --green: #059669;
       --border: #e2e8f0;
       --rose-bg: #fff1f2;
       --rose-border: #fda4af;
@@ -30,6 +31,8 @@
       --violet-border: #c4b5fd;
       --amber-bg: #fffbeb;
       --amber-border: #fcd34d;
+      --emerald-bg: #ecfdf5;
+      --emerald-border: #6ee7b7;
       --max: 440px;
       --radius-lg: 20px;
       --radius-md: 16px;
@@ -70,25 +73,93 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
+      animation: heroIn 0.7s ease-out both;
     }
 
-    .mascot {
+    @keyframes heroIn {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .mascot-btn {
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
       width: min(280px, 78vw);
       aspect-ratio: 1;
       margin-bottom: 8px;
-      animation: float 4s ease-in-out infinite;
+      -webkit-tap-highlight-color: transparent;
+      animation: float 3.2s ease-in-out infinite;
     }
 
-    .mascot img {
+    .mascot-inner {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+      will-change: transform;
+    }
+
+    .mascot-btn img {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: drop-shadow(0 12px 24px rgba(37, 99, 235, 0.12));
+      filter: drop-shadow(0 12px 24px rgba(37, 99, 235, 0.14));
+      pointer-events: none;
+      user-select: none;
     }
 
     @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-6px); }
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-14px) scale(1.02); }
+    }
+
+    .mascot-inner.emerge {
+      animation: mascotEmerge 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    .mascot-inner.shake {
+      animation: mascotShake 0.18s ease-out forwards;
+    }
+
+    .mascot-inner.shrink-out {
+      animation: mascotShrink 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+    }
+
+    .mascot-inner.return-in {
+      animation: mascotReturn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    @keyframes mascotEmerge {
+      0% { transform: scale(0.34) rotate(0deg); }
+      55% { transform: scale(1.06) rotate(0deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+
+    @keyframes mascotShake {
+      0% { transform: scale(1) rotate(0deg); }
+      45% { transform: scale(1) rotate(-5deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+
+    @keyframes mascotShrink {
+      to { transform: scale(0.34) rotate(0deg); }
+    }
+
+    @keyframes mascotReturn {
+      from { transform: scale(0.34) rotate(0deg); }
+      to { transform: scale(1) rotate(0deg); }
+    }
+
+    .mascot-hint {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: -4px;
+      margin-bottom: 4px;
+      opacity: 0.85;
     }
 
     .brand {
@@ -107,6 +178,12 @@
       border-radius: 2px;
       background: linear-gradient(90deg, #1d4ed8, #2563eb, #3b82f6);
       opacity: 0.85;
+      animation: lineGrow 0.8s ease-out 0.25s both;
+    }
+
+    @keyframes lineGrow {
+      from { width: 0; opacity: 0; }
+      to { width: 112px; opacity: 0.85; }
     }
 
     .tagline-main {
@@ -125,34 +202,155 @@
       padding: 0 12px;
     }
 
-    .features {
+    .features-intro {
       width: 100%;
-      display: grid;
-      gap: 10px;
+      text-align: center;
     }
 
-    .pill {
+    .features-intro h2 {
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.5rem;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .features-intro p {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    .tab-section {
+      width: 100%;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.55s ease, transform 0.55s ease;
+    }
+
+    .tab-section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .tab-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 14px 16px;
+      gap: 10px;
+      padding: 12px 14px;
       border-radius: var(--radius-md);
       border: 1px solid;
-      font-size: 0.92rem;
-      font-weight: 600;
+      margin-bottom: 10px;
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.05rem;
+    }
+
+    .tab-header.discover { background: var(--rose-bg); border-color: var(--rose-border); }
+    .tab-header.chats { background: var(--sky-bg); border-color: var(--sky-border); }
+    .tab-header.clubs { background: var(--violet-bg); border-color: var(--violet-border); }
+    .tab-header.live { background: var(--amber-bg); border-color: var(--amber-border); }
+
+    .tab-header span:first-child { font-size: 1.2rem; }
+
+    .section-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .feature-cell {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 8px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .feature-cell:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 10px;
+      font-size: 1.15rem;
+    }
+
+    .feature-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .feature-caption {
+      font-size: 0.72rem;
+      color: var(--text-muted);
       line-height: 1.35;
     }
 
-    .pill-icon {
-      font-size: 1.25rem;
-      line-height: 1;
-      flex-shrink: 0;
+    .safety {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--green);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.55s ease, transform 0.55s ease;
     }
 
-    .pill.discover { background: var(--rose-bg); border-color: var(--rose-border); }
-    .pill.chats { background: var(--sky-bg); border-color: var(--sky-border); }
-    .pill.clubs { background: var(--violet-bg); border-color: var(--violet-border); }
-    .pill.live { background: var(--amber-bg); border-color: var(--amber-border); }
+    .safety.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .safety-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 20px;
+      background: var(--emerald-bg);
+      border: 1px solid var(--emerald-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 1.1rem;
+    }
+
+    .safety h3 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .safety p {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
 
     .actions {
       width: 100%;
@@ -184,9 +382,7 @@
       box-shadow: var(--shadow-btn);
     }
 
-    .btn-primary:hover {
-      background: var(--accent-pressed);
-    }
+    .btn-primary:hover { background: var(--accent-pressed); }
 
     .btn-outline {
       background: rgba(255, 255, 255, 0.9);
@@ -221,39 +417,181 @@
     }
 
     .footer a { color: var(--blue); text-decoration: none; }
+
+    .age-note {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hero, .brand-line, .mascot-btn, .tab-section, .safety, .feature-cell {
+        animation: none !important;
+        transition: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="page">
     <div class="shell">
       <header class="hero">
-        <div class="mascot">
-          <img src="assets/app-logo.png" alt="Huzz mascot" width="280" height="280" />
-        </div>
+        <button
+          type="button"
+          class="mascot-btn"
+          id="mascotBtn"
+          aria-label="Huzz mascot — tap for a surprise"
+        >
+          <div class="mascot-inner" id="mascotInner">
+            <img id="mascotImg" src="assets/app-logo.png" alt="" width="280" height="280" />
+          </div>
+        </button>
+        <p class="mascot-hint">Tap the mascot 👆</p>
         <h1 class="brand">Huzz</h1>
         <div class="brand-line" aria-hidden="true"></div>
         <p class="tagline-main">Connect authentically. Connect freely.</p>
         <p class="tagline-sub">Open-source &amp; community-driven</p>
       </header>
 
-      <section class="features" aria-label="App features">
-        <div class="pill discover">
-          <span class="pill-icon">✦</span>
-          <span>Discover people near you and connect when it&apos;s mutual</span>
+      <div class="features-intro">
+        <h2>Everything in the app</h2>
+        <p>Four tabs — same features you get on Android.</p>
+      </div>
+
+      <!-- Discover / Home -->
+      <section class="tab-section" data-reveal>
+        <div class="tab-header discover">
+          <span>✦</span>
+          <span>Discover — people near you</span>
         </div>
-        <div class="pill chats">
-          <span class="pill-icon">💬</span>
-          <span>Private chats with people you matched</span>
-        </div>
-        <div class="pill clubs">
-          <span class="pill-icon">🎙</span>
-          <span>Join clubs — text chat and voice spaces</span>
-        </div>
-        <div class="pill live">
-          <span class="pill-icon">⚡</span>
-          <span>Go Live for short random sessions</span>
+        <p class="section-label">What you get</p>
+        <div class="feature-grid">
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--rose-bg)">❤️</div>
+            <p class="feature-title">Swipe deck</p>
+            <p class="feature-caption">Like or skip profiles</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--sky-bg)">🎚</div>
+            <p class="feature-title">Filters</p>
+            <p class="feature-caption">Country &amp; preferences</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--violet-bg)">▦</div>
+            <p class="feature-title">Grid view</p>
+            <p class="feature-caption">Browse at a glance</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--emerald-bg)">📍</div>
+            <p class="feature-title">Nearby</p>
+            <p class="feature-caption">People in your area</p>
+          </div>
         </div>
       </section>
+
+      <!-- Chats -->
+      <section class="tab-section" data-reveal>
+        <div class="tab-header chats">
+          <span>💬</span>
+          <span>Chats — private with matches</span>
+        </div>
+        <p class="section-label">What you get</p>
+        <div class="feature-grid">
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--sky-bg)">💬</div>
+            <p class="feature-title">Text chat</p>
+            <p class="feature-caption">Instant messages</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--violet-bg)">🎤</div>
+            <p class="feature-title">Voice notes</p>
+            <p class="feature-caption">Send audio clips</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--emerald-bg)">🌐</div>
+            <p class="feature-title">Translate</p>
+            <p class="feature-caption">Chat in any language</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--amber-bg)">✨</div>
+            <p class="feature-title">AI openers</p>
+            <p class="feature-caption">Break the ice</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Clubs -->
+      <section class="tab-section" data-reveal>
+        <div class="tab-header clubs">
+          <span>🎙</span>
+          <span>Clubs — voice &amp; text spaces</span>
+        </div>
+        <p class="section-label">What you get</p>
+        <div class="feature-grid">
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--emerald-bg)">🎙</div>
+            <p class="feature-title">Voice rooms</p>
+            <p class="feature-caption">Talk live with mic</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--sky-bg)">💬</div>
+            <p class="feature-title">Text chat</p>
+            <p class="feature-caption">Messages in the room</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--amber-bg)">🔒</div>
+            <p class="feature-title">Private clubs</p>
+            <p class="feature-caption">Invite-only access</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--violet-bg)">#</div>
+            <p class="feature-title">Invite codes</p>
+            <p class="feature-caption">Share with friends</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live -->
+      <section class="tab-section" data-reveal>
+        <div class="tab-header live">
+          <span>⚡</span>
+          <span>Live — random sessions</span>
+        </div>
+        <p class="section-label">What you get</p>
+        <div class="feature-grid">
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--rose-bg)">⏱</div>
+            <p class="feature-title">60 seconds</p>
+            <p class="feature-caption">Timed session</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--sky-bg)">💬</div>
+            <p class="feature-title">Text chat</p>
+            <p class="feature-caption">Type in real time</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--amber-bg)">🔀</div>
+            <p class="feature-title">Skip</p>
+            <p class="feature-caption">Next person</p>
+          </div>
+          <div class="feature-cell">
+            <div class="feature-icon" style="background:var(--violet-bg)">📹</div>
+            <p class="feature-title">Video soon</p>
+            <p class="feature-caption">Random video later</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="safety" data-reveal>
+        <div class="safety-icon">🛡</div>
+        <div>
+          <h3>Stay safe</h3>
+          <p>Meet in public first, trust your gut, and block or report anyone who makes you uncomfortable — from their profile or in chat.</p>
+        </div>
+      </aside>
 
       <div class="actions">
         <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=com.huzz.app">
@@ -263,6 +601,8 @@
           Contact support
         </a>
       </div>
+
+      <p class="age-note">18+ only · Social &amp; dating app for adults</p>
 
       <nav class="legal">
         <a href="privacy.html">Privacy Policy</a>
@@ -275,5 +615,71 @@
       </footer>
     </div>
   </div>
+
+  <script>
+    (function () {
+      var LOGO = 'assets/app-logo.png';
+      var ANGRY = 'assets/stop-touching.png';
+      var ANGRY_MS = 1000;
+      var btn = document.getElementById('mascotBtn');
+      var inner = document.getElementById('mascotInner');
+      var img = document.getElementById('mascotImg');
+      var angryTimer = null;
+      var busy = false;
+
+      function clearAnimClasses() {
+        inner.classList.remove('emerge', 'shake', 'shrink-out', 'return-in');
+      }
+
+      function runClass(name, ms) {
+        clearAnimClasses();
+        void inner.offsetWidth;
+        inner.classList.add(name);
+        return new Promise(function (resolve) {
+          setTimeout(resolve, ms || 300);
+        });
+      }
+
+      btn.addEventListener('click', function () {
+        if (busy) return;
+        busy = true;
+        if (angryTimer) clearTimeout(angryTimer);
+
+        btn.style.animation = 'none';
+        runClass('emerge', 350).then(function () {
+          img.src = ANGRY;
+          return runClass('shake', 180);
+        }).then(function () {
+          angryTimer = setTimeout(function () {
+            runClass('shrink-out', 180).then(function () {
+              img.src = LOGO;
+              return runClass('return-in', 340);
+            }).then(function () {
+              clearAnimClasses();
+              btn.style.animation = '';
+              busy = false;
+            });
+          }, ANGRY_MS);
+        });
+      });
+
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      var revealEls = document.querySelectorAll('[data-reveal]');
+      if ('IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('visible');
+              io.unobserve(entry.target);
+            }
+          });
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+        revealEls.forEach(function (el) { io.observe(el); });
+      } else {
+        revealEls.forEach(function (el) { el.classList.add('visible'); });
+      }
+    })();
+  </script>
 </body>
 </html>
