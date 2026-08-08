@@ -84,18 +84,60 @@
       margin-bottom: 10px;
     }
     .contact-grid {
-      display: grid;
-      gap: 10px;
-      margin-top: 10px;
-    }
-    .contact-row {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      font-size: 0.92rem;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 4px;
     }
-    .contact-row strong { color: var(--text); min-width: 100px; }
+
+    .founder-link-light {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 16px;
+      border-radius: 14px;
+      text-decoration: none;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .founder-link-light:hover {
+      border-color: #bfdbfe;
+      box-shadow: 0 8px 20px rgba(25, 146, 228, 0.1);
+    }
+
+    .founder-link-light-main {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .founder-link-light-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    .founder-link-light-value {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--blue-deep);
+    }
+
+    .founder-link-light-arrow {
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .founder-app-note {
+      margin-top: 12px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
     a { color: var(--blue-deep); font-weight: 600; text-decoration: none; }
     a:hover { text-decoration: underline; }
     footer {
@@ -116,23 +158,27 @@
 
   <main>
     <section class="card">
-      <span class="pill">Contact</span>
-      <h2>Get in touch</h2>
+      <span class="pill">Founder</span>
+      <h2>Speak to the founder</h2>
+      <p>Questions, feedback, or a partnership idea — reach Zain directly.</p>
       <div class="contact-grid">
-        <div class="contact-row">
-          <strong>Email</strong>
-          <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a>
-        </div>
-        <div class="contact-row">
-          <strong>Huzz (app)</strong>
-          <a href="https://instagram.com/huzz.app" target="_blank" rel="noopener">@huzz.app on Instagram</a>
-        </div>
-        <div class="contact-row">
-          <strong>Founder</strong>
-          <a href="https://instagram.com/izaintariq" target="_blank" rel="noopener">@izaintariq on Instagram</a>
-        </div>
+        <a class="founder-link-light" href="mailto:zain.tariq@mail.com">
+          <span class="founder-link-light-main">
+            <span class="founder-link-light-label">Email</span>
+            <span class="founder-link-light-value">zain.tariq@mail.com</span>
+          </span>
+          <span class="founder-link-light-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="founder-link-light" href="https://instagram.com/izaintariq" target="_blank" rel="noopener">
+          <span class="founder-link-light-main">
+            <span class="founder-link-light-label">Instagram</span>
+            <span class="founder-link-light-value">@izaintariq</span>
+          </span>
+          <span class="founder-link-light-arrow" aria-hidden="true">→</span>
+        </a>
       </div>
-      <p style="margin-top: 12px;">For safety emergencies, report in-app first, then email us. If someone is in immediate danger, contact local emergency services.</p>
+      <p class="founder-app-note">Follow Huzz on Instagram · <a href="https://instagram.com/huzz.app" target="_blank" rel="noopener">@huzz.app</a></p>
+      <p style="margin-top: 12px;">For safety emergencies, report in-app first, then email. If someone is in immediate danger, contact local emergency services.</p>
     </section>
 
     <section class="card">
