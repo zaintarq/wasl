@@ -52,7 +52,63 @@
       min-height: 100dvh;
       display: flex;
       justify-content: center;
-      padding: max(20px, env(safe-area-inset-top)) var(--gutter) max(28px, env(safe-area-inset-bottom));
+      padding: 0 var(--gutter) max(88px, calc(76px + env(safe-area-inset-bottom)));
+    }
+
+    /* Always-visible auth bar at top */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      width: 100%;
+      max-width: calc(var(--max) + var(--gutter) * 2);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: max(10px, env(safe-area-inset-top)) var(--gutter) 10px;
+      background: rgba(248, 250, 252, 0.94);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .site-header-brand {
+      font-family: "Kaushan Script", cursive;
+      font-size: 1.45rem;
+      color: #1c1917;
+      flex-shrink: 0;
+    }
+
+    .header-auth {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .header-auth a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-family: Inter, system-ui, sans-serif;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .header-auth .signup-link {
+      background: var(--accent);
+      color: #fff !important;
+      box-shadow: 0 4px 12px rgba(225, 29, 72, 0.35);
+    }
+
+    .header-auth .login-link {
+      background: #fff;
+      color: var(--blue) !important;
+      border: 2px solid rgba(37, 99, 235, 0.45);
     }
 
     .shell {
@@ -157,6 +213,8 @@
       flex-direction: column;
       gap: 12px;
       width: 100%;
+      position: relative;
+      z-index: 2;
     }
 
     .btn {
@@ -164,37 +222,83 @@
       align-items: center;
       justify-content: center;
       width: 100%;
-      min-height: 52px;
-      padding: 14px 20px;
+      min-height: 56px;
+      padding: 16px 20px;
       border-radius: 22px;
-      font-family: "Kaushan Script", cursive;
-      font-size: 1.1rem;
-      letter-spacing: 0.3px;
+      font-family: Inter, system-ui, sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
       text-decoration: none;
       border: none;
       cursor: pointer;
       transition: transform 0.15s ease;
+      -webkit-appearance: none;
+      appearance: none;
     }
 
     .btn:active { transform: scale(0.98); }
 
     .btn-primary {
       background: var(--accent);
-      color: #fff;
+      color: #fff !important;
       box-shadow: var(--shadow-btn);
     }
 
     .btn-outline {
-      background: rgba(255, 255, 255, 0.92);
-      color: var(--text);
-      border: 2px solid rgba(37, 99, 235, 0.35);
+      background: #fff;
+      color: var(--text) !important;
+      border: 2px solid rgba(37, 99, 235, 0.45);
     }
 
     .btn-ghost {
       background: transparent;
-      color: var(--blue);
-      font-size: 0.95rem;
+      color: var(--blue) !important;
+      font-size: 0.9rem;
       min-height: 44px;
+      font-weight: 600;
+    }
+
+    /* Sticky bottom auth dock — always on screen on phone */
+    .bottom-dock {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 0;
+      z-index: 60;
+      width: 100%;
+      max-width: var(--max);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 10px var(--gutter) max(12px, env(safe-area-inset-bottom));
+      background: rgba(255, 255, 255, 0.97);
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+      backdrop-filter: blur(12px);
+    }
+
+    .bottom-dock a {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 50px;
+      border-radius: 16px;
+      font-family: Inter, system-ui, sans-serif;
+      font-size: 0.92rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .bottom-dock .dock-signup {
+      background: var(--accent);
+      color: #fff !important;
+    }
+
+    .bottom-dock .dock-login {
+      background: #fff;
+      color: var(--blue) !important;
+      border: 2px solid rgba(37, 99, 235, 0.45);
     }
 
     .features-card {
@@ -326,6 +430,14 @@
   </style>
 </head>
 <body>
+  <header class="site-header">
+    <span class="site-header-brand">Huzz</span>
+    <div class="header-auth">
+      <a class="login-link" href="app.html?mode=login">Log in</a>
+      <a class="signup-link" href="app.html?mode=signup">Sign up</a>
+    </div>
+  </header>
+
   <div class="page">
     <div class="shell">
       <header class="hero">
@@ -341,7 +453,7 @@
         <p class="tagline-sub">Open-source &amp; community-driven</p>
       </header>
 
-      <div class="cta-stack">
+      <div class="cta-stack" id="auth">
         <a class="btn btn-primary" href="app.html?mode=signup">Sign up with email</a>
         <a class="btn btn-outline" href="app.html?mode=login">Log in</a>
         <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
@@ -401,6 +513,11 @@
       </footer>
     </div>
   </div>
+
+  <nav class="bottom-dock" aria-label="Sign up or log in">
+    <a class="dock-login" href="app.html?mode=login">Log in</a>
+    <a class="dock-signup" href="app.html?mode=signup">Sign up</a>
+  </nav>
 
   <script>
     (function () {
