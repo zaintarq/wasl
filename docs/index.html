@@ -361,9 +361,9 @@
     }
 
     .mission-card {
-      padding: 20px 18px;
+      padding: 22px 18px 20px;
       border-radius: 22px;
-      background: linear-gradient(145deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%);
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
       border: 1px solid var(--glass-border);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
@@ -373,65 +373,78 @@
     }
 
     .mission-card h2 {
-      font-family: "Kaushan Script", cursive;
-      font-size: 1.35rem;
-      color: var(--on-blue);
-      margin-bottom: 8px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+      margin-bottom: 6px;
       text-align: center;
-      text-shadow: 0 2px 10px rgba(0, 40, 90, 0.15);
     }
 
     .mission-lead {
-      font-size: 0.86rem;
-      line-height: 1.6;
+      font-size: 0.82rem;
+      line-height: 1.55;
       color: var(--on-blue-soft);
       text-align: center;
-      margin-bottom: 14px;
+      margin-bottom: 18px;
+      max-width: 34ch;
+      margin-left: auto;
+      margin-right: auto;
     }
 
     .mission-grid {
       display: grid;
-      gap: 8px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
       list-style: none;
     }
 
     .mission-item {
       display: flex;
-      gap: 10px;
-      align-items: flex-start;
-      padding: 11px 12px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.16);
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px 12px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      min-height: 100%;
     }
 
     .mission-icon {
       flex-shrink: 0;
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
       display: grid;
       place-items: center;
-      font-size: 0.85rem;
-      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+      background: rgba(255, 255, 255, 0.12);
     }
 
-    .mission-copy {
-      min-width: 0;
+    .mission-icon svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.75;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .mission-copy strong {
       display: block;
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       font-weight: 700;
       color: #fff;
-      margin-bottom: 2px;
+      line-height: 1.25;
+      margin-bottom: 4px;
     }
 
     .mission-copy span {
-      font-size: 0.78rem;
+      display: block;
+      font-size: 0.72rem;
       line-height: 1.45;
-      color: var(--on-blue-soft);
+      color: var(--on-blue-muted);
     }
 
     .site-footer {
@@ -677,45 +690,57 @@
         <p class="mission-lead">Huzz is for adults who want to meet in a halal, respectful way — with accountability built into the experience.</p>
         <ul class="mission-grid">
           <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">🛡️</span>
+            <span class="mission-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
             <div class="mission-copy">
               <strong>Mehram supervision</strong>
-              <span>Sisters can invite a trusted Mehram to view or join a private chat — no extra account needed.</span>
+              <span>Invite a trusted Mehram to view or join a private chat.</span>
             </div>
           </li>
           <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">💬</span>
+            <span class="mission-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
             <div class="mission-copy">
               <strong>Match &amp; chat</strong>
-              <span>Discover nearby profiles, match with intention, and talk privately with voice notes and translation.</span>
+              <span>Discover profiles, match with intention, and talk privately.</span>
             </div>
           </li>
           <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">📹</span>
+            <span class="mission-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+            </span>
             <div class="mission-copy">
               <strong>Live Random</strong>
-              <span>Short, timed live video sessions with another real signed-in user — skip or leave anytime.</span>
+              <span>Short live video sessions with another signed-in user.</span>
             </div>
           </li>
           <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">👥</span>
+            <span class="mission-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
             <div class="mission-copy">
               <strong>Clubs</strong>
-              <span>Join community spaces for group chat and voice rooms — hang out beyond one-to-one.</span>
+              <span>Community spaces for group chat and voice rooms.</span>
             </div>
           </li>
           <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">✓</span>
+            <span class="mission-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
             <div class="mission-copy">
               <strong>18+ verified</strong>
-              <span>Age assurance before likes, matches, chat, live, and clubs — adults only, always.</span>
+              <span>Age assurance before likes, matches, chat, live, and clubs.</span>
             </div>
           </li>
           <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">⚡</span>
+            <span class="mission-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+            </span>
             <div class="mission-copy">
               <strong>Safety first</strong>
-              <span>Block, report, and unmatch instantly. Meet in public and keep your wali or Mehram in the loop.</span>
+              <span>Block, report, and unmatch. Meet in public, stay accountable.</span>
             </div>
           </li>
         </ul>
