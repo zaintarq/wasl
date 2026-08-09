@@ -96,6 +96,16 @@ export function createWebApp(ctx) {
   let discoverCandidates = [];
   let meProfile = null;
   let unsubscribers = [];
+  let screenGen = 0;
+
+  function bumpScreen() {
+    screenGen += 1;
+    return screenGen;
+  }
+
+  function isStale(gen) {
+    return gen !== screenGen;
+  }
 
   function clearListeners() {
     unsubscribers.forEach((fn) => { try { fn(); } catch {} });
@@ -292,17 +302,28 @@ export function createWebApp(ctx) {
 
   async function loadDiscoverCandidates(uid) {
     meProfile = await loadMe(uid);
-    const [usersSnap, sentSnap, blocksSnap] = await Promise.all([
-      getDocs(query(collection(db, 'users'), limit(200))),
-      getDocs(collection(db, 'users', uid, 'likesSent')),
-      getDocs(collection(db, 'users', uid, 'blocks')),
-    ]);
-    const swiped = new Set(sentSnap.docs.map((d) => d.id));
-    const blocked = new Set(blocksSnap.docs.map((d) => d.id));
-    const all = usersSnap.docs
+    let swiped = new Set();
+    let blocked = new Set();
+    try {
+      const sentSnap = await getDocs(collection(db, 'users', uid, 'likesSent'));
+      swiped = new Set(sentSnap.docs.map((d) => d.id));
+    } catch (e) {
+      console.warn('[discover] likesSent', e?.message || e);
+    }
+    try {
+      const blocksSnap = await getDocs(collection(db, 'users', uid, 'blocks'));
+      blocked = new Set(blocksSnap.docs.map((d) => d.id));
+    } catch (e) {
+      console.warn('[discover] blocks', e?.message || e);
+    }
+    const usersSnap = await getDocs(query(
+      collection(db, 'users'),
+      orderBy('createdAt', 'desc'),
+      limit(80)
+    ));
+    return usersSnap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((u) => filterCandidate(meProfile, u, swiped, blocked));
-    return all;
   }
 
   async function likeUser(from, to) {
@@ -389,16 +410,18 @@ export function createWebApp(ctx) {
     };
   }
 
-  async function renderDiscover(user) {
+  async function renderDiscover(user, gen) {
     clearListeners();
     chatMatchId = null;
     clubRoomId = null;
     main.innerHTML = `<div class="card"><h2>Discover</h2><p class="sub">Loading people near you…</p></div>`;
     try {
       discoverCandidates = await loadDiscoverCandidates(user.uid);
+      if (isStale(gen)) return;
       discoverIndex = 0;
       renderDiscoverCard();
     } catch (e) {
+      if (isStale(gen)) return;
       main.innerHTML = `<div class="card"><h2>Discover</h2><div class="empty">${esc(e.message)}</div></div>`;
     }
   }
@@ -414,7 +437,7 @@ export function createWebApp(ctx) {
     return map;
   }
 
-  async function renderChatThread(user, matchId) {
+  async function renderChatThread(user, matchId, gen) {
     clearListeners();
     chatMatchId = matchId;
     const matchSnap = await getDoc(doc(db, 'matches', matchId));
@@ -441,7 +464,7 @@ export function createWebApp(ctx) {
 
     document.getElementById('threadBack').onclick = () => {
       chatMatchId = null;
-      renderChats(user);
+      showAppScreen('chats', user);
     };
 
     const msgsEl = document.getElementById('threadMsgs');
@@ -484,13 +507,14 @@ export function createWebApp(ctx) {
     };
   }
 
-  async function renderChats(user) {
+  async function renderChats(user, gen) {
     clearListeners();
     clubRoomId = null;
     main.innerHTML = `<div class="card"><h2>Chats</h2><p class="sub">Loading…</p></div>`;
     try {
       const qRef = query(collection(db, 'matches'), where('uids', 'array-contains', user.uid));
       const snap = await getDocs(qRef);
+      if (isStale(gen)) return;
       const matches = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => m.status === 'active' || !m.status)
@@ -518,10 +542,11 @@ export function createWebApp(ctx) {
       main.querySelectorAll('[data-mid]').forEach((btn) => {
         btn.onclick = () => {
           chatMatchId = btn.dataset.mid;
-          renderChatThread(user, chatMatchId);
+          renderChatThread(user, chatMatchId, bumpScreen());
         };
       });
     } catch (e) {
+      if (isStale(gen)) return;
       main.innerHTML = `<div class="card"><h2>Chats</h2><div class="empty">${esc(e.message)}</div></div>`;
     }
   }
@@ -546,7 +571,7 @@ export function createWebApp(ctx) {
     });
   }
 
-  async function renderClubRoom(user, clubId) {
+  async function renderClubRoom(user, clubId, gen) {
     clearListeners();
     clubRoomId = clubId;
     const clubSnap = await getDoc(doc(db, 'clubs', clubId));
@@ -569,7 +594,7 @@ export function createWebApp(ctx) {
 
     document.getElementById('clubBack').onclick = () => {
       clubRoomId = null;
-      renderClubs(user);
+      showAppScreen('clubs', user);
     };
 
     const msgsEl = document.getElementById('clubMsgs');
@@ -607,7 +632,7 @@ export function createWebApp(ctx) {
     };
   }
 
-  async function renderClubs(user) {
+  async function renderClubs(user, gen) {
     clearListeners();
     chatMatchId = null;
     main.innerHTML = `<div class="card"><h2>Clubs</h2><p class="sub">Loading…</p></div>`;
@@ -621,6 +646,7 @@ export function createWebApp(ctx) {
         )),
         getDocs(collection(db, 'users', user.uid, 'clubMemberships')),
       ]);
+      if (isStale(gen)) return;
       const joined = new Set(memSnap.docs.map((d) => d.id));
 
       if (!pubSnap.docs.length) {
@@ -650,7 +676,7 @@ export function createWebApp(ctx) {
           try {
             await joinClub(user.uid, btn.dataset.join);
             clubRoomId = btn.dataset.join;
-            await renderClubRoom(user, clubRoomId);
+            renderClubRoom(user, clubRoomId, bumpScreen());
           } catch (e) {
             showErr(e.message);
             btn.disabled = false;
@@ -660,10 +686,11 @@ export function createWebApp(ctx) {
       main.querySelectorAll('[data-open]').forEach((btn) => {
         btn.onclick = () => {
           clubRoomId = btn.dataset.open;
-          renderClubRoom(user, clubRoomId);
+          renderClubRoom(user, clubRoomId, bumpScreen());
         };
       });
     } catch (e) {
+      if (isStale(gen)) return;
       main.innerHTML = `<div class="card"><h2>Clubs</h2><div class="empty">${esc(e.message)}</div></div>`;
     }
   }
@@ -692,14 +719,15 @@ export function createWebApp(ctx) {
     return result;
   }
 
-  async function renderLiveSession(user, sessionId, partnerUid) {
+  async function renderLiveSession(user, sessionId, partnerUid, gen) {
     clearListeners();
     const users = await loadUserMap([partnerUid]);
     const partner = users[partnerUid] || {};
     main.innerHTML = `
       <div class="card live-session">
-        <h2>Live session</h2>
-        <p class="sub">You're connected with ${esc(partner.name || 'someone')}. Text chat works on web — video is best in the Android app.</p>
+        <div class="live-badge">⚡ Live Random</div>
+        <h2>You're live</h2>
+        <p class="sub">Connected with ${esc(partner.name || 'someone')}. Chat here on web — video works best in the Android app.</p>
         <div class="thread-msgs live-msgs" id="liveMsgs"></div>
         <form class="thread-compose" id="liveForm">
           <input id="liveInput" type="text" maxlength="500" placeholder="Say hi…" autocomplete="off" />
@@ -745,14 +773,21 @@ export function createWebApp(ctx) {
         endedBy: user.uid,
         endedReason: 'leave',
       });
-      renderLive(user);
+      showAppScreen('live', user);
     };
   }
 
-  async function renderLive(user) {
+  async function renderLive(user, gen) {
     clearListeners();
     chatMatchId = null;
     clubRoomId = null;
+    main.innerHTML = `
+      <div class="card live-session">
+        <div class="live-badge">⚡ Live Random</div>
+        <h2>Live Random</h2>
+        <p class="sub">Loading…</p>
+      </div>`;
+    if (isStale(gen)) return;
 
     const activeQ = query(
       collection(db, 'liveRandomSessions'),
@@ -761,20 +796,23 @@ export function createWebApp(ctx) {
       limit(1)
     );
     const activeSnap = await getDocs(activeQ);
+    if (isStale(gen)) return;
     if (!activeSnap.empty) {
       const s = activeSnap.docs[0];
       const partner = (s.data().uids || []).find((u) => u !== user.uid) || '';
-      await renderLiveSession(user, s.id, partner);
+      await renderLiveSession(user, s.id, partner, gen);
       return;
     }
 
     main.innerHTML = `
-      <div class="card">
+      <div class="card live-session">
+        <div class="live-badge">⚡ Live Random</div>
         <h2>Live Random</h2>
         <p class="sub">Get matched with another signed-in user for a short session. Text chat works here on the web; camera and mic work best in the Android app.</p>
         <button type="button" class="btn btn-primary" id="liveStart">Find someone live</button>
         <p class="step-hint" id="liveStatus"></p>
       </div>`;
+    if (isStale(gen)) return;
 
     document.getElementById('liveStart').onclick = async () => {
       const btn = document.getElementById('liveStart');
@@ -784,18 +822,20 @@ export function createWebApp(ctx) {
       try {
         const res = await enterLivePool(user.uid);
         if (res.type === 'matched') {
-          await renderLiveSession(user, res.sessionId, res.partnerUid);
+          await renderLiveSession(user, res.sessionId, res.partnerUid, gen);
         } else {
           status.textContent = 'Waiting for a partner… keep this open.';
           const poolUnsub = onSnapshot(doc(db, 'liveRandomPool', 'current'), async (snap) => {
+            if (isStale(gen)) return;
             const w = snap.exists() ? String(snap.data()?.waitingUid || '') : '';
             if (w !== user.uid) {
               poolUnsub();
               const again = await getDocs(activeQ);
+              if (isStale(gen)) return;
               if (!again.empty) {
                 const s = again.docs[0];
                 const partner = (s.data().uids || []).find((u) => u !== user.uid) || '';
-                await renderLiveSession(user, s.id, partner);
+                await renderLiveSession(user, s.id, partner, gen);
               }
             }
           });
@@ -811,18 +851,19 @@ export function createWebApp(ctx) {
   // ─── Navigation ───────────────────────────────────────────────────────
 
   async function showAppScreen(screen, user) {
+    const gen = bumpScreen();
     currentScreen = screen;
     document.querySelectorAll('.nav-item').forEach((n) => {
       n.classList.toggle('on', n.dataset.screen === screen);
     });
-    if (screen === 'discover') await renderDiscover(user);
+    if (screen === 'discover') await renderDiscover(user, gen);
     else if (screen === 'chats') {
-      if (chatMatchId) await renderChatThread(user, chatMatchId);
-      else await renderChats(user);
+      if (chatMatchId) await renderChatThread(user, chatMatchId, gen);
+      else await renderChats(user, gen);
     } else if (screen === 'clubs') {
-      if (clubRoomId) await renderClubRoom(user, clubRoomId);
-      else await renderClubs(user);
-    } else if (screen === 'live') await renderLive(user);
+      if (clubRoomId) await renderClubRoom(user, clubRoomId, gen);
+      else await renderClubs(user, gen);
+    } else if (screen === 'live') await renderLive(user, gen);
   }
 
   function enterApp(user) {

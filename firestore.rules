@@ -240,8 +240,8 @@ service cloud.firestore {
           )
         );
 
-      // Allow users to list matches where they are a participant
-      allow list: if isSignedIn() && !isDisabled();
+      // List queries must match participant constraint (array-contains on uids in client)
+      allow list: if isSignedIn() && !isDisabled() && isMatchParticipant();
       // Allow get when doc doesn't exist (so client can check before create) or when user is participant/admin
       allow get: if !exists(/databases/$(database)/documents/matches/$(matchId))
         || isMatchParticipant()
@@ -369,6 +369,16 @@ service cloud.firestore {
         && request.resource.data.status == 'active';
 
       allow read: if isSignedIn()
+        && !isDisabled()
+        && resource.data.uids is list
+        && resource.data.uids.hasAny([request.auth.uid]);
+
+      allow list: if isSignedIn()
+        && !isDisabled()
+        && resource.data.uids is list
+        && resource.data.uids.hasAny([request.auth.uid]);
+
+      allow get: if isSignedIn()
         && !isDisabled()
         && resource.data.uids is list
         && resource.data.uids.hasAny([request.auth.uid]);
@@ -599,7 +609,8 @@ service cloud.firestore {
       allow get: if isSignedIn() && !isDisabled()
         && (resource.data.isPublic == true || isClubMember(clubId) || isAdmin());
 
-      allow list: if isSignedIn() && !isDisabled();
+      allow list: if isSignedIn() && !isDisabled()
+        && (resource.data.isPublic == true || isClubMember(clubId) || isAdmin());
 
       allow create: if isSignedIn() && !isDisabled()
         && request.resource.data.ownerUid == request.auth.uid
