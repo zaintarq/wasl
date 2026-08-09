@@ -354,7 +354,7 @@ service cloud.firestore {
 
     // Omegle-style random live pool (singleton doc; matching is client-side transaction)
     match /liveRandomPool/{poolId} {
-      allow get: if isSignedIn() && !isDisabled();
+      allow read: if isSignedIn() && !isDisabled();
       allow create, update: if isSignedIn() && !isDisabled();
       allow delete: if false;
     }

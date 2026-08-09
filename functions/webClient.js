@@ -156,7 +156,7 @@ exports.webJoinClub = functions.region('us-central1').https.onCall(async (data, 
       throw new functions.https.HttpsError('not-found', 'Club not found.');
     }
     const club = clubSnap.data() || {};
-    if (club.isPublic !== true) {
+    if (club.isPublic === false) {
       const code = String(data?.inviteCode || '').trim().toUpperCase();
       const expected = String(club.inviteCode || '').trim().toUpperCase();
       if (!code || code !== expected) {
@@ -184,4 +184,130 @@ exports.webJoinClub = functions.region('us-central1').https.onCall(async (data, 
   });
 
   return { joined: true, clubId };
+});
+
+exports.webGetClubRoom = functions.region('us-central1').https.onCall(async (data, context) => {
+  const uid = await assertSignedIn(context);
+  const clubId = String(data?.clubId || '').trim();
+  if (!clubId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing club.');
+  }
+
+  const clubRef = db.collection('clubs').doc(clubId);
+  const clubSnap = await clubRef.get();
+  if (!clubSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Club not found.');
+  }
+
+  const club = clubSnap.data() || {};
+  const isPublic = club.isPublic !== false;
+  const memberSnap = await clubRef.collection('members').doc(uid).get();
+  const isMember = memberSnap.exists;
+
+  if (!isPublic && !isMember) {
+    throw new functions.https.HttpsError('permission-denied', 'Not a member of this club.');
+  }
+
+  let messages = [];
+  if (isMember) {
+    const msgSnap = await clubRef.collection('messages').orderBy('createdAt', 'asc').limit(80).get();
+    messages = msgSnap.docs.map((d) => {
+      const m = d.data() || {};
+      return {
+        id: d.id,
+        fromUid: String(m.fromUid || ''),
+        text: String(m.text || ''),
+      };
+    });
+  }
+
+  return {
+    club: {
+      id: clubId,
+      name: String(club.name || 'Club'),
+      description: String(club.description || ''),
+    },
+    isMember,
+    messages,
+  };
+});
+
+exports.webSendClubMessage = functions.region('us-central1').https.onCall(async (data, context) => {
+  const uid = await assertSignedIn(context);
+  const clubId = String(data?.clubId || '').trim();
+  const text = String(data?.text || '').trim().slice(0, 2000);
+  if (!clubId || !text) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing club or message.');
+  }
+
+  const memberSnap = await db.collection('clubs').doc(clubId).collection('members').doc(uid).get();
+  if (!memberSnap.exists) {
+    throw new functions.https.HttpsError('permission-denied', 'Join this club first.');
+  }
+
+  await db.collection('clubs').doc(clubId).collection('messages').add({
+    fromUid: uid,
+    text,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
+exports.webEnterLivePool = functions.region('us-central1').https.onCall(async (_data, context) => {
+  const uid = await assertSignedIn(context);
+  const poolRef = db.collection('liveRandomPool').doc('current');
+  const sessionRef = db.collection('liveRandomSessions').doc();
+
+  const result = await db.runTransaction(async (tx) => {
+    const poolSnap = await tx.get(poolRef);
+    const waiting = poolSnap.exists ? String(poolSnap.data()?.waitingUid || '').trim() : '';
+
+    if (waiting && waiting !== uid) {
+      tx.set(poolRef, {
+        waitingUid: null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      tx.set(sessionRef, {
+        uids: [uid, waiting].sort(),
+        status: 'active',
+        startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return { type: 'matched', sessionId: sessionRef.id, partnerUid: waiting };
+    }
+
+    tx.set(poolRef, {
+      waitingUid: uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { type: 'waiting' };
+  });
+
+  if (result.type === 'matched') {
+    let partnerName = 'Someone';
+    const p = await db.collection('users').doc(result.partnerUid).get();
+    if (p.exists) partnerName = String(p.data()?.name || 'Someone');
+    return { ...result, partnerName };
+  }
+
+  return result;
+});
+
+exports.webLeaveLivePool = functions.region('us-central1').https.onCall(async (_data, context) => {
+  const uid = await assertSignedIn(context);
+  const poolRef = db.collection('liveRandomPool').doc('current');
+
+  await db.runTransaction(async (tx) => {
+    const poolSnap = await tx.get(poolRef);
+    if (!poolSnap.exists) return;
+    const waiting = String(poolSnap.data()?.waitingUid || '').trim();
+    if (waiting === uid) {
+      tx.set(poolRef, {
+        waitingUid: null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+  });
+
+  return { ok: true };
 });

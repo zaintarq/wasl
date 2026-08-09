@@ -550,69 +550,96 @@ export function createWebApp(ctx) {
   // ─── Clubs ────────────────────────────────────────────────────────────
 
   async function joinClub(uid, clubId) {
-    const res = await httpsCallable(functions, 'webJoinClub')({ clubId: String(clubId) });
-    if (!res.data?.joined) throw new Error('Could not join club.');
+    try {
+      const res = await httpsCallable(functions, 'webJoinClub')({ clubId: String(clubId) });
+      if (!res.data?.joined) throw new Error('Could not join club.');
+    } catch (e) {
+      throw new Error(e.message || 'Could not join club.');
+    }
+  }
+
+  function renderClubMessages(msgsEl, messages, uid) {
+    if (!messages?.length) {
+      msgsEl.innerHTML = `<div class="empty">No messages yet — say hello.</div>`;
+      return;
+    }
+    msgsEl.innerHTML = messages.map((msg) => {
+      const mine = msg.fromUid === uid;
+      return `<div class="bubble ${mine ? 'mine' : 'theirs'}">${esc(msg.text || '')}</div>`;
+    }).join('');
+    msgsEl.scrollTop = msgsEl.scrollHeight;
   }
 
   async function renderClubRoom(user, clubId, gen) {
     clearListeners();
     clubRoomId = clubId;
-    const clubSnap = await getDoc(doc(db, 'clubs', clubId));
-    if (!clubSnap.exists()) {
-      main.innerHTML = `<div class="card"><div class="empty">Club not found.</div></div>`;
-      return;
-    }
-    const club = clubSnap.data();
-    main.innerHTML = `
-      <div class="thread-head">
-        <button type="button" class="thread-back" id="clubBack">← Clubs</button>
-        <strong>${esc(club.name || 'Club')}</strong>
-      </div>
-      <p class="club-desc">${esc(club.description || '')}</p>
-      <div class="thread-msgs" id="clubMsgs"></div>
-      <form class="thread-compose" id="clubForm">
-        <input id="clubInput" type="text" maxlength="2000" placeholder="Message the club…" autocomplete="off" />
-        <button type="submit">Send</button>
-      </form>`;
-
-    document.getElementById('clubBack').onclick = () => {
-      clubRoomId = null;
-      showAppScreen('clubs', user);
-    };
-
-    const msgsEl = document.getElementById('clubMsgs');
-    const qRef = query(
-      collection(db, 'clubs', clubId, 'messages'),
-      orderBy('createdAt', 'asc'),
-      limit(80)
-    );
-    unsubscribers.push(onSnapshot(qRef, (snap) => {
-      if (snap.empty) {
-        msgsEl.innerHTML = `<div class="empty">No messages yet — say hello.</div>`;
+    paint(`<div class="card"><h2>Club</h2><p class="sub">Loading…</p></div>`, gen);
+    try {
+      const res = await httpsCallable(functions, 'webGetClubRoom')({ clubId: String(clubId) });
+      if (isStale(gen)) return;
+      const { club, isMember, messages = [] } = res.data || {};
+      if (!club) {
+        main.innerHTML = `<div class="card"><div class="empty">Club not found.</div></div>`;
         return;
       }
-      msgsEl.innerHTML = snap.docs.map((d) => {
-        const msg = d.data();
-        const mine = msg.fromUid === user.uid;
-        return `<div class="bubble ${mine ? 'mine' : 'theirs'}">${esc(msg.text || '')}</div>`;
-      }).join('');
-      msgsEl.scrollTop = msgsEl.scrollHeight;
-    }, (err) => {
-      msgsEl.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
-    }));
+      if (!isMember) {
+        main.innerHTML = `<div class="card"><div class="empty">Join this club to view messages.</div></div>`;
+        return;
+      }
 
-    document.getElementById('clubForm').onsubmit = async (ev) => {
-      ev.preventDefault();
-      const input = document.getElementById('clubInput');
-      const text = input.value.trim();
-      if (!text) return;
-      input.value = '';
-      await addDoc(collection(db, 'clubs', clubId, 'messages'), {
-        fromUid: user.uid,
-        text: text.slice(0, 2000),
-        createdAt: serverTimestamp(),
-      });
-    };
+      main.innerHTML = `
+        <div class="thread-head">
+          <button type="button" class="thread-back" id="clubBack">← Clubs</button>
+          <strong>${esc(club.name || 'Club')}</strong>
+        </div>
+        <p class="club-desc">${esc(club.description || '')}</p>
+        <div class="thread-msgs" id="clubMsgs"></div>
+        <form class="thread-compose" id="clubForm">
+          <input id="clubInput" type="text" maxlength="2000" placeholder="Message the club…" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>`;
+
+      document.getElementById('clubBack').onclick = () => {
+        clubRoomId = null;
+        showAppScreen('clubs', user);
+      };
+
+      const msgsEl = document.getElementById('clubMsgs');
+      renderClubMessages(msgsEl, messages, user.uid);
+
+      const qRef = query(
+        collection(db, 'clubs', clubId, 'messages'),
+        orderBy('createdAt', 'asc'),
+        limit(80)
+      );
+      unsubscribers.push(onSnapshot(qRef, (snap) => {
+        const rows = snap.docs.map((d) => {
+          const msg = d.data();
+          return { id: d.id, fromUid: msg.fromUid, text: msg.text };
+        });
+        renderClubMessages(msgsEl, rows, user.uid);
+      }, () => {
+        /* realtime optional — initial load already from server */
+      }));
+
+      document.getElementById('clubForm').onsubmit = async (ev) => {
+        ev.preventDefault();
+        const input = document.getElementById('clubInput');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        try {
+          await httpsCallable(functions, 'webSendClubMessage')({
+            clubId: String(clubId),
+            text,
+          });
+        } catch (e) {
+          showErr(e.message || 'Could not send message.');
+        }
+      };
+    } catch (e) {
+      main.innerHTML = `<div class="card"><div class="empty">${esc(e.message || 'Could not open club.')}</div></div>`;
+    }
   }
 
   async function renderClubs(user, gen) {
@@ -671,26 +698,41 @@ export function createWebApp(ctx) {
 
   // ─── Live ─────────────────────────────────────────────────────────────
 
+  let livePollTimer = null;
+
+  function stopLivePoll() {
+    if (livePollTimer) {
+      clearInterval(livePollTimer);
+      livePollTimer = null;
+    }
+  }
+
   async function enterLivePool(uid) {
-    const poolRef = doc(db, 'liveRandomPool', 'current');
-    const sessionRef = doc(collection(db, 'liveRandomSessions'));
-    const sessionId = sessionRef.id;
-    const result = await runTransaction(db, async (tx) => {
-      const poolSnap = await tx.get(poolRef);
-      const waiting = poolSnap.exists() ? String(poolSnap.data()?.waitingUid || '').trim() : '';
-      if (waiting && waiting !== uid) {
-        tx.set(poolRef, { waitingUid: null, updatedAt: serverTimestamp() }, { merge: true });
-        tx.set(sessionRef, {
-          uids: [uid, waiting].sort(),
-          status: 'active',
-          startedAt: serverTimestamp(),
-        });
-        return { type: 'matched', partnerUid: waiting, sessionId };
+    const res = await httpsCallable(functions, 'webEnterLivePool')({});
+    return res.data || { type: 'waiting' };
+  }
+
+  async function pollLiveMatch(user, gen, onWaiting) {
+    stopLivePoll();
+    livePollTimer = setInterval(async () => {
+      if (isStale(gen)) {
+        stopLivePoll();
+        return;
       }
-      tx.set(poolRef, { waitingUid: uid, updatedAt: serverTimestamp() }, { merge: true });
-      return { type: 'waiting' };
-    });
-    return result;
+      try {
+        const liveRes = await httpsCallable(functions, 'webLiveState')({});
+        if (isStale(gen)) return;
+        const s = liveRes.data?.session;
+        if (s?.id) {
+          stopLivePoll();
+          await renderLiveSession(user, s.id, s.partnerUid, gen, s.partnerName);
+        }
+      } catch (err) {
+        console.warn('[live] poll', err?.message || err);
+      }
+    }, 2000);
+    unsubscribers.push(() => stopLivePoll());
+    if (onWaiting) onWaiting();
   }
 
   async function renderLiveSession(user, sessionId, partnerUid, gen, partnerName) {
@@ -780,27 +822,10 @@ export function createWebApp(ctx) {
       try {
         const res = await enterLivePool(user.uid);
         if (res.type === 'matched') {
-          await renderLiveSession(user, res.sessionId, res.partnerUid, gen);
+          await renderLiveSession(user, res.sessionId, res.partnerUid, gen, res.partnerName);
         } else {
           status.textContent = 'Waiting for a partner… keep this open.';
-          const poolUnsub = onSnapshot(doc(db, 'liveRandomPool', 'current'), async (snap) => {
-            if (isStale(gen)) return;
-            const w = snap.exists() ? String(snap.data()?.waitingUid || '') : '';
-            if (w !== user.uid) {
-              poolUnsub();
-              try {
-                const liveRes = await httpsCallable(functions, 'webLiveState')({});
-                if (isStale(gen)) return;
-                const s = liveRes.data?.session;
-                if (s?.id) {
-                  await renderLiveSession(user, s.id, s.partnerUid, gen, s.partnerName);
-                }
-              } catch (err) {
-                console.warn('[live] match wait', err?.message || err);
-              }
-            }
-          });
-          unsubscribers.push(poolUnsub);
+          await pollLiveMatch(user, gen);
         }
       } catch (e) {
         status.textContent = e.message || 'Could not join live.';
