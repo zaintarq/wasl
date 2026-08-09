@@ -107,6 +107,20 @@ export function createWebApp(ctx) {
     return gen !== screenGen;
   }
 
+  function paint(html, gen) {
+    if (isStale(gen)) return false;
+    main.innerHTML = html;
+    return true;
+  }
+
+  function liveShellHtml(body) {
+    return `
+      <div class="card live-session" data-live-root="1">
+        <div class="live-badge">⚡ Live Random</div>
+        ${body}
+      </div>`;
+  }
+
   function clearListeners() {
     unsubscribers.forEach((fn) => { try { fn(); } catch {} });
     unsubscribers = [];
@@ -301,29 +315,12 @@ export function createWebApp(ctx) {
   // ─── Discover ─────────────────────────────────────────────────────────
 
   async function loadDiscoverCandidates(uid) {
-    meProfile = await loadMe(uid);
-    let swiped = new Set();
-    let blocked = new Set();
-    try {
-      const sentSnap = await getDocs(collection(db, 'users', uid, 'likesSent'));
-      swiped = new Set(sentSnap.docs.map((d) => d.id));
-    } catch (e) {
-      console.warn('[discover] likesSent', e?.message || e);
-    }
-    try {
-      const blocksSnap = await getDocs(collection(db, 'users', uid, 'blocks'));
-      blocked = new Set(blocksSnap.docs.map((d) => d.id));
-    } catch (e) {
-      console.warn('[discover] blocks', e?.message || e);
-    }
-    const usersSnap = await getDocs(query(
-      collection(db, 'users'),
-      orderBy('createdAt', 'desc'),
-      limit(80)
-    ));
-    return usersSnap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((u) => filterCandidate(meProfile, u, swiped, blocked));
+    const res = await httpsCallable(functions, 'webDiscoverFeed')({});
+    const data = res.data || {};
+    meProfile = data.me || null;
+    const swiped = new Set(data.swipedIds || []);
+    const blocked = new Set(data.blockedIds || []);
+    return (data.users || []).filter((u) => filterCandidate(meProfile, u, swiped, blocked));
   }
 
   async function likeUser(from, to) {
@@ -356,16 +353,17 @@ export function createWebApp(ctx) {
     }, { merge: true });
   }
 
-  function renderDiscoverCard() {
+  function renderDiscoverCard(gen) {
+    if (isStale(gen)) return;
     const c = discoverCandidates[discoverIndex];
     if (!c) {
-      main.innerHTML = `
+      paint(`
         <div class="card">
           <h2>Discover</h2>
           <div class="empty">No one new right now. Check back later or adjust your profile in the app.</div>
           <button type="button" class="btn btn-outline" id="discRefresh">Refresh</button>
-        </div>`;
-      document.getElementById('discRefresh')?.addEventListener('click', () => renderDiscover(auth.currentUser));
+        </div>`, gen);
+      document.getElementById('discRefresh')?.addEventListener('click', () => showAppScreen('discover', auth.currentUser));
       return;
     }
     const img = photoUrl(c);
@@ -373,7 +371,7 @@ export function createWebApp(ctx) {
     const age = c.age ? `, ${esc(String(c.age))}` : '';
     const bio = esc(c.bio || '');
     const city = esc(c.city || c.location?.city || '');
-    main.innerHTML = `
+    if (!paint(`
       <div class="discover-wrap">
         <div class="discover-card">
           ${img
@@ -391,22 +389,22 @@ export function createWebApp(ctx) {
         </div>
         <p class="discover-count">${discoverIndex + 1} / ${discoverCandidates.length}</p>
       </div>
-      <div id="discToast" class="ok hidden"></div>`;
+      <div id="discToast" class="ok hidden"></div>`, gen)) return;
 
     document.getElementById('discPass').onclick = async () => {
       await passUser(auth.currentUser.uid, c.id);
       discoverIndex += 1;
-      renderDiscoverCard();
+      renderDiscoverCard(gen);
     };
     document.getElementById('discLike').onclick = async () => {
       const res = await likeUser(auth.currentUser.uid, c.id);
       const toast = document.getElementById('discToast');
-      if (res.matched) {
+      if (res.matched && toast) {
         toast.textContent = "It's a match! Open Chats to message.";
         toast.classList.remove('hidden');
       }
       discoverIndex += 1;
-      renderDiscoverCard();
+      renderDiscoverCard(gen);
     };
   }
 
@@ -414,15 +412,14 @@ export function createWebApp(ctx) {
     clearListeners();
     chatMatchId = null;
     clubRoomId = null;
-    main.innerHTML = `<div class="card"><h2>Discover</h2><p class="sub">Loading people near you…</p></div>`;
+    paint(`<div class="card"><h2>Discover</h2><p class="sub">Loading people near you…</p></div>`, gen);
     try {
       discoverCandidates = await loadDiscoverCandidates(user.uid);
       if (isStale(gen)) return;
       discoverIndex = 0;
-      renderDiscoverCard();
+      renderDiscoverCard(gen);
     } catch (e) {
-      if (isStale(gen)) return;
-      main.innerHTML = `<div class="card"><h2>Discover</h2><div class="empty">${esc(e.message)}</div></div>`;
+      paint(`<div class="card"><h2>Discover</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -510,23 +507,16 @@ export function createWebApp(ctx) {
   async function renderChats(user, gen) {
     clearListeners();
     clubRoomId = null;
-    main.innerHTML = `<div class="card"><h2>Chats</h2><p class="sub">Loading…</p></div>`;
+    paint(`<div class="card"><h2>Chats</h2><p class="sub">Loading…</p></div>`, gen);
     try {
-      const qRef = query(collection(db, 'matches'), where('uids', 'array-contains', user.uid));
-      const snap = await getDocs(qRef);
+      const res = await httpsCallable(functions, 'webListMatches')({});
       if (isStale(gen)) return;
-      const matches = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((m) => m.status === 'active' || !m.status)
-        .sort((a, b) => tsMillis(b.lastMessageAt || b.createdAt) - tsMillis(a.lastMessageAt || a.createdAt));
+      const { matches = [], users = {} } = res.data || {};
 
       if (!matches.length) {
-        main.innerHTML = `<div class="card"><h2>Chats</h2><div class="empty">No matches yet — like people in Discover.</div></div>`;
+        paint(`<div class="card"><h2>Chats</h2><div class="empty">No matches yet — like people in Discover.</div></div>`, gen);
         return;
       }
-
-      const otherUids = matches.map((m) => (m.uids || []).find((u) => u !== user.uid)).filter(Boolean);
-      const users = await loadUserMap(otherUids);
 
       const rows = matches.map((m) => {
         const otherUid = (m.uids || []).find((u) => u !== user.uid) || '';
@@ -538,7 +528,7 @@ export function createWebApp(ctx) {
         </button>`;
       }).join('');
 
-      main.innerHTML = `<div class="card"><h2>Chats</h2>${rows}</div>`;
+      if (!paint(`<div class="card"><h2>Chats</h2>${rows}</div>`, gen)) return;
       main.querySelectorAll('[data-mid]').forEach((btn) => {
         btn.onclick = () => {
           chatMatchId = btn.dataset.mid;
@@ -546,8 +536,7 @@ export function createWebApp(ctx) {
         };
       });
     } catch (e) {
-      if (isStale(gen)) return;
-      main.innerHTML = `<div class="card"><h2>Chats</h2><div class="empty">${esc(e.message)}</div></div>`;
+      paint(`<div class="card"><h2>Chats</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -635,40 +624,32 @@ export function createWebApp(ctx) {
   async function renderClubs(user, gen) {
     clearListeners();
     chatMatchId = null;
-    main.innerHTML = `<div class="card"><h2>Clubs</h2><p class="sub">Loading…</p></div>`;
+    paint(`<div class="card"><h2>Clubs</h2><p class="sub">Loading…</p></div>`, gen);
     try {
-      const [pubSnap, memSnap] = await Promise.all([
-        getDocs(query(
-          collection(db, 'clubs'),
-          where('isPublic', '==', true),
-          orderBy('createdAt', 'desc'),
-          limit(30)
-        )),
-        getDocs(collection(db, 'users', user.uid, 'clubMemberships')),
-      ]);
+      const res = await httpsCallable(functions, 'webListClubs')({});
       if (isStale(gen)) return;
-      const joined = new Set(memSnap.docs.map((d) => d.id));
+      const { clubs = [], joinedIds = [] } = res.data || {};
+      const joined = new Set(joinedIds);
 
-      if (!pubSnap.docs.length) {
-        main.innerHTML = `<div class="card"><h2>Clubs</h2><div class="empty">No public clubs yet.</div></div>`;
+      if (!clubs.length) {
+        paint(`<div class="card"><h2>Clubs</h2><div class="empty">No public clubs yet.</div></div>`, gen);
         return;
       }
 
-      const rows = pubSnap.docs.map((d) => {
-        const c = d.data();
-        const isMember = joined.has(d.id);
+      const rows = clubs.map((c) => {
+        const isMember = joined.has(c.id);
         return `<div class="list-item club-row">
           <div>
             <strong>${esc(c.name || 'Club')}</strong>
             <span>${esc(c.description || 'Public club')} · ${Number(c.memberCount || 0)} members</span>
           </div>
           ${isMember
-            ? `<button type="button" class="mini-btn" data-open="${esc(d.id)}">Open</button>`
-            : `<button type="button" class="mini-btn mini-primary" data-join="${esc(d.id)}">Join</button>`}
+            ? `<button type="button" class="mini-btn" data-open="${esc(c.id)}">Open</button>`
+            : `<button type="button" class="mini-btn mini-primary" data-join="${esc(c.id)}">Join</button>`}
         </div>`;
       }).join('');
 
-      main.innerHTML = `<div class="card"><h2>Clubs</h2><p class="sub">Public clubs — join and chat here on the web.</p>${rows}</div>`;
+      if (!paint(`<div class="card"><h2>Clubs</h2><p class="sub">Public clubs — join and chat here on the web.</p>${rows}</div>`, gen)) return;
 
       main.querySelectorAll('[data-join]').forEach((btn) => {
         btn.onclick = async () => {
@@ -690,8 +671,7 @@ export function createWebApp(ctx) {
         };
       });
     } catch (e) {
-      if (isStale(gen)) return;
-      main.innerHTML = `<div class="card"><h2>Clubs</h2><div class="empty">${esc(e.message)}</div></div>`;
+      paint(`<div class="card"><h2>Clubs</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -719,13 +699,10 @@ export function createWebApp(ctx) {
     return result;
   }
 
-  async function renderLiveSession(user, sessionId, partnerUid, gen) {
+  async function renderLiveSession(user, sessionId, partnerUid, gen, partnerName) {
     clearListeners();
-    const users = await loadUserMap([partnerUid]);
-    const partner = users[partnerUid] || {};
-    main.innerHTML = `
-      <div class="card live-session">
-        <div class="live-badge">⚡ Live Random</div>
+    const partner = partnerName ? { name: partnerName } : (await loadUserMap([partnerUid]))[partnerUid] || {};
+    if (!paint(liveShellHtml(`
         <h2>You're live</h2>
         <p class="sub">Connected with ${esc(partner.name || 'someone')}. Chat here on web — video works best in the Android app.</p>
         <div class="thread-msgs live-msgs" id="liveMsgs"></div>
@@ -733,8 +710,7 @@ export function createWebApp(ctx) {
           <input id="liveInput" type="text" maxlength="500" placeholder="Say hi…" autocomplete="off" />
           <button type="submit">Send</button>
         </form>
-        <button type="button" class="btn btn-outline" id="liveEnd">Leave session</button>
-      </div>`;
+        <button type="button" class="btn btn-outline" id="liveEnd">Leave session</button>`), gen)) return;
 
     const msgsEl = document.getElementById('liveMsgs');
     const qRef = query(
@@ -781,38 +757,26 @@ export function createWebApp(ctx) {
     clearListeners();
     chatMatchId = null;
     clubRoomId = null;
-    main.innerHTML = `
-      <div class="card live-session">
-        <div class="live-badge">⚡ Live Random</div>
-        <h2>Live Random</h2>
-        <p class="sub">Loading…</p>
-      </div>`;
+    paint(liveShellHtml(`<h2>Live Random</h2><p class="sub">Loading…</p>`), gen);
     if (isStale(gen)) return;
 
-    const activeQ = query(
-      collection(db, 'liveRandomSessions'),
-      where('uids', 'array-contains', user.uid),
-      where('status', '==', 'active'),
-      limit(1)
-    );
-    const activeSnap = await getDocs(activeQ);
-    if (isStale(gen)) return;
-    if (!activeSnap.empty) {
-      const s = activeSnap.docs[0];
-      const partner = (s.data().uids || []).find((u) => u !== user.uid) || '';
-      await renderLiveSession(user, s.id, partner, gen);
-      return;
+    try {
+      const res = await httpsCallable(functions, 'webLiveState')({});
+      if (isStale(gen)) return;
+      const session = res.data?.session;
+      if (session?.id) {
+        await renderLiveSession(user, session.id, session.partnerUid, gen, session.partnerName);
+        return;
+      }
+    } catch (e) {
+      console.warn('[live] webLiveState', e?.message || e);
     }
 
-    main.innerHTML = `
-      <div class="card live-session">
-        <div class="live-badge">⚡ Live Random</div>
+    if (!paint(liveShellHtml(`
         <h2>Live Random</h2>
         <p class="sub">Get matched with another signed-in user for a short session. Text chat works here on the web; camera and mic work best in the Android app.</p>
         <button type="button" class="btn btn-primary" id="liveStart">Find someone live</button>
-        <p class="step-hint" id="liveStatus"></p>
-      </div>`;
-    if (isStale(gen)) return;
+        <p class="step-hint" id="liveStatus"></p>`), gen)) return;
 
     document.getElementById('liveStart').onclick = async () => {
       const btn = document.getElementById('liveStart');
@@ -830,12 +794,15 @@ export function createWebApp(ctx) {
             const w = snap.exists() ? String(snap.data()?.waitingUid || '') : '';
             if (w !== user.uid) {
               poolUnsub();
-              const again = await getDocs(activeQ);
-              if (isStale(gen)) return;
-              if (!again.empty) {
-                const s = again.docs[0];
-                const partner = (s.data().uids || []).find((u) => u !== user.uid) || '';
-                await renderLiveSession(user, s.id, partner, gen);
+              try {
+                const liveRes = await httpsCallable(functions, 'webLiveState')({});
+                if (isStale(gen)) return;
+                const s = liveRes.data?.session;
+                if (s?.id) {
+                  await renderLiveSession(user, s.id, s.partnerUid, gen, s.partnerName);
+                }
+              } catch (err) {
+                console.warn('[live] match wait', err?.message || err);
               }
             }
           });
@@ -856,6 +823,11 @@ export function createWebApp(ctx) {
     document.querySelectorAll('.nav-item').forEach((n) => {
       n.classList.toggle('on', n.dataset.screen === screen);
     });
+
+    if (screen === 'live') {
+      paint(liveShellHtml(`<h2>Live Random</h2><p class="sub">Loading…</p>`), gen);
+    }
+
     if (screen === 'discover') await renderDiscover(user, gen);
     else if (screen === 'chats') {
       if (chatMatchId) await renderChatThread(user, chatMatchId, gen);

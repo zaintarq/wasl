@@ -125,10 +125,10 @@ service cloud.firestore {
       // Allow users to create their own document (onboarding)
       allow create: if isSignedIn() && request.auth.uid == uid;
 
-      // NOTE: This allows signed-in users to read profiles for discovery.
-      allow get: if (isSignedIn() && request.auth.uid == uid)
-        || (isSignedIn() && !isDisabled());
-      allow list: if isSignedIn() && !isDisabled();
+      // Signed-in users can read profiles for discovery (web + app)
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid || !isDisabled()
+      );
 
       // Owners can update their profile
       // Cannot self-promote to admin or disable themselves.

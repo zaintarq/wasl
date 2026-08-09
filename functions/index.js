@@ -1740,6 +1740,9 @@ exports.finalizeSignupWithSession = functions.region('us-central1').https.onCall
       matchCountry: '',
       emailVerified: false,
       profileComplete: false,
+      ageChecked18Plus: false,
+      ageCheckMethod: null,
+      ageCheckProvider: null,
       approvalStatus: 'approved',
       isDisabled: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2059,3 +2062,7 @@ exports.clearAppUpdateAlert = functions.region('us-central1').https.onCall(async
 
   return { cleared: true };
 });
+
+Object.assign(exports, require('./mehram'));
+Object.assign(exports, require('./zoivera'));
+Object.assign(exports, require('./webClient'));
