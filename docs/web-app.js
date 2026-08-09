@@ -15,11 +15,19 @@ function tsMillis(v) {
 }
 
 function photoUrl(user) {
-  const photos = user?.photos;
+  if (!user) return '';
+  const images = user.images;
+  if (Array.isArray(images)) {
+    const hit = images.find((x) => typeof x === 'string' && String(x).trim());
+    if (hit) return String(hit).trim();
+  }
+  if (user.photoURL && String(user.photoURL).trim()) return String(user.photoURL).trim();
+  if (user.photoUrl && String(user.photoUrl).trim()) return String(user.photoUrl).trim();
+  const photos = user.photos;
   if (Array.isArray(photos) && photos.length) {
     const p = photos[0];
-    if (typeof p === 'string') return p;
-    if (p?.url) return p.url;
+    if (typeof p === 'string' && p.trim()) return p.trim();
+    if (p?.url) return String(p.url);
   }
   return '';
 }
@@ -133,9 +141,8 @@ export function createWebApp(ctx) {
   }
 
   function showErr(msg) {
-    const el = main.querySelector('.err');
-    if (el) el.textContent = msg;
-    else main.insertAdjacentHTML('beforeend', `<div class="err">${esc(msg)}</div>`);
+    main.querySelector('.err')?.remove();
+    main.insertAdjacentHTML('beforeend', `<div class="err">${esc(msg)}</div>`);
   }
 
   async function loadMe(uid) {
@@ -543,21 +550,8 @@ export function createWebApp(ctx) {
   // ─── Clubs ────────────────────────────────────────────────────────────
 
   async function joinClub(uid, clubId) {
-    const cid = String(clubId);
-    await runTransaction(db, async (tx) => {
-      const clubRef = doc(db, 'clubs', cid);
-      const clubSnap = await tx.get(clubRef);
-      if (!clubSnap.exists()) throw new Error('Club not found.');
-      const memberRef = doc(db, 'clubs', cid, 'members', uid);
-      const memberSnap = await tx.get(memberRef);
-      if (memberSnap.exists()) return;
-      tx.set(memberRef, {
-        uid, role: 'member', canSpeak: false, joinedAt: serverTimestamp(),
-      });
-      tx.set(doc(db, 'users', uid, 'clubMemberships', cid), {
-        clubId: cid, role: 'member', joinedAt: serverTimestamp(),
-      });
-    });
+    const res = await httpsCallable(functions, 'webJoinClub')({ clubId: String(clubId) });
+    if (!res.data?.joined) throw new Error('Could not join club.');
   }
 
   async function renderClubRoom(user, clubId, gen) {

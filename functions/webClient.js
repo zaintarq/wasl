@@ -8,6 +8,9 @@ const db = admin.firestore();
 
 function stripUser(id, raw) {
   const d = raw || {};
+  const images = Array.isArray(d.images)
+    ? d.images.filter((x) => typeof x === 'string' && String(x).trim())
+    : [];
   const photos = Array.isArray(d.photos) ? d.photos.slice(0, 8) : [];
   return {
     id: String(id),
@@ -18,7 +21,9 @@ function stripUser(id, raw) {
     city: String(d.city || d.location?.city || ''),
     religion: String(d.religion || ''),
     genderPreferences: Array.isArray(d.genderPreferences) ? d.genderPreferences : [],
+    images,
     photos,
+    photoURL: String(d.photoURL || d.photoUrl || ''),
     isDisabled: d.isDisabled === true,
   };
 }
@@ -132,4 +137,51 @@ exports.webLiveState = functions.region('us-central1').https.onCall(async (_data
       partnerName,
     },
   };
+});
+
+exports.webJoinClub = functions.region('us-central1').https.onCall(async (data, context) => {
+  const uid = await assertSignedIn(context);
+  const clubId = String(data?.clubId || '').trim();
+  if (!clubId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing club.');
+  }
+
+  const clubRef = db.collection('clubs').doc(clubId);
+  const memberRef = clubRef.collection('members').doc(uid);
+  const membershipRef = db.collection('users').doc(uid).collection('clubMemberships').doc(clubId);
+
+  await db.runTransaction(async (tx) => {
+    const clubSnap = await tx.get(clubRef);
+    if (!clubSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Club not found.');
+    }
+    const club = clubSnap.data() || {};
+    if (club.isPublic !== true) {
+      const code = String(data?.inviteCode || '').trim().toUpperCase();
+      const expected = String(club.inviteCode || '').trim().toUpperCase();
+      if (!code || code !== expected) {
+        throw new functions.https.HttpsError('permission-denied', 'Invalid invite code for this private club.');
+      }
+    }
+
+    const memberSnap = await tx.get(memberRef);
+    if (memberSnap.exists) return;
+
+    tx.set(memberRef, {
+      uid,
+      role: 'member',
+      canSpeak: club.micMode === 'open',
+      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.set(membershipRef, {
+      clubId,
+      role: 'member',
+      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.update(clubRef, {
+      memberCount: admin.firestore.FieldValue.increment(1),
+    });
+  });
+
+  return { joined: true, clubId };
 });
