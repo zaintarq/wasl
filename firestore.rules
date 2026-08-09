@@ -64,6 +64,43 @@ service cloud.firestore {
         );
     }
 
+    function mehramAccessPath(accessId) {
+      return /databases/$(database)/documents/mehramAccess/$(accessId);
+    }
+
+    function mehramAccessIdFromAuth() {
+      return request.auth.token.get('mehramAccessId', '');
+    }
+
+    function isMehramAuth() {
+      return request.auth != null
+        && request.auth.token.get('mehram', false) == true
+        && mehramAccessIdFromAuth() is string
+        && mehramAccessIdFromAuth().size() > 0;
+    }
+
+    function mehramAccessActiveForMatch(matchId) {
+      return isMehramAuth()
+        && request.auth.token.get('matchId', '') == matchId
+        && exists(mehramAccessPath(mehramAccessIdFromAuth()))
+        && get(mehramAccessPath(mehramAccessIdFromAuth())).data.get('status', '') == 'active'
+        && get(mehramAccessPath(mehramAccessIdFromAuth())).data.get('matchId', '') == matchId
+        && get(mehramAccessPath(mehramAccessIdFromAuth())).data.get('expiresAt', request.time) > request.time;
+    }
+
+    function canMehramReplyInMatch(matchId) {
+      return mehramAccessActiveForMatch(matchId)
+        && get(mehramAccessPath(mehramAccessIdFromAuth())).data.get('permission', '') == 'reply';
+    }
+
+    function isMatchGirlForMehram(matchId) {
+      return isSignedIn()
+        && !isDisabled()
+        && exists(/databases/$(database)/documents/matches/$(matchId))
+        && get(/databases/$(database)/documents/matches/$(matchId)).data.get('mehram', null) != null
+        && get(/databases/$(database)/documents/matches/$(matchId)).data.mehram.get('girlUid', '') == request.auth.uid;
+    }
+
     function clubMemberPath(clubId) {
       return /databases/$(database)/documents/clubs/$(clubId)/members/$(request.auth.uid);
     }
@@ -103,7 +140,14 @@ service cloud.firestore {
       allow update: if (
         isSignedIn() 
         && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).changedKeys().hasAny(['isDisabled'])
+        && !request.resource.data.diff(resource.data).changedKeys().hasAny([
+          'isDisabled',
+          'ageChecked18Plus',
+          'ageCheckAt',
+          'ageCheckMethod',
+          'ageCheckProvider',
+          'ageCheckJti',
+        ])
       ) || isAdmin();
       
       // Allow setDoc with merge (used in setUser function)
@@ -209,27 +253,43 @@ service cloud.firestore {
 
       // Messages within a match
       match /messages/{messageId} {
-        allow get, list: if (isAdmin()) || (isSignedIn() && !isDisabled() && canSendMessageInMatch(matchId));
+        allow get, list: if (isAdmin())
+          || (isSignedIn() && !isDisabled() && canSendMessageInMatch(matchId))
+          || mehramAccessActiveForMatch(matchId);
 
         allow create: if isSignedIn()
           && !isDisabled()
-          && canSendMessageInMatch(matchId)
-          && request.resource.data.fromUid == request.auth.uid
           && (
-            // Text message
             (
-              request.resource.data.text is string
+              canSendMessageInMatch(matchId)
+              && request.resource.data.fromUid == request.auth.uid
+              && (
+                // Text message
+                (
+                  request.resource.data.text is string
+                  && request.resource.data.text.size() > 0
+                  && request.resource.data.text.size() <= 2000
+                )
+                // Voice note message
+                || (
+                  request.resource.data.type == 'voice'
+                  && request.resource.data.audioUrl is string
+                  && request.resource.data.audioUrl.size() > 8
+                  && request.resource.data.durationMs is int
+                  && request.resource.data.durationMs >= 1000
+                  && request.resource.data.durationMs <= 15000
+                )
+              )
+            )
+            || (
+              canMehramReplyInMatch(matchId)
+              && request.resource.data.senderType == 'mehram'
+              && request.resource.data.fromUid == get(mehramAccessPath(mehramAccessIdFromAuth())).data.get('girlUserId', '')
+              && request.resource.data.mehramAccessId == mehramAccessIdFromAuth()
+              && request.resource.data.text is string
               && request.resource.data.text.size() > 0
               && request.resource.data.text.size() <= 2000
-            )
-            // Voice note message
-            || (
-              request.resource.data.type == 'voice'
-              && request.resource.data.audioUrl is string
-              && request.resource.data.audioUrl.size() > 8
-              && request.resource.data.durationMs is int
-              && request.resource.data.durationMs >= 1000
-              && request.resource.data.durationMs <= 15000
+              && request.resource.data.type == 'text'
             )
           );
 
@@ -345,6 +405,15 @@ service cloud.firestore {
     }
 
     // Reports
+    // Mehram supervision access (writes via Cloud Functions; clients read own session)
+    match /mehramAccess/{accessId} {
+      allow get: if isAdmin()
+        || (isSignedIn() && resource.data.girlUserId == request.auth.uid)
+        || (isMehramAuth() && mehramAccessIdFromAuth() == accessId);
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
     match /reports/{reportId} {
       allow create: if isSignedIn() && !isDisabled();
 
@@ -527,8 +596,10 @@ service cloud.firestore {
 
     // Clubs — voice + chat spaces
     match /clubs/{clubId} {
-      allow read: if isSignedIn() && !isDisabled()
+      allow get: if isSignedIn() && !isDisabled()
         && (resource.data.isPublic == true || isClubMember(clubId) || isAdmin());
+
+      allow list: if isSignedIn() && !isDisabled();
 
       allow create: if isSignedIn() && !isDisabled()
         && request.resource.data.ownerUid == request.auth.uid
