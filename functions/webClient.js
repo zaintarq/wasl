@@ -201,8 +201,25 @@ exports.webGetClubRoom = functions.region('us-central1').https.onCall(async (dat
 
   const club = clubSnap.data() || {};
   const isPublic = club.isPublic !== false;
-  const memberSnap = await clubRef.collection('members').doc(uid).get();
-  const isMember = memberSnap.exists;
+  const membershipRef = db.collection('users').doc(uid).collection('clubMemberships').doc(clubId);
+  const [memberSnap, membershipSnap] = await Promise.all([
+    clubRef.collection('members').doc(uid).get(),
+    membershipRef.get(),
+  ]);
+
+  let isMember = memberSnap.exists || membershipSnap.exists;
+
+  // Repair partial joins (membership doc without club member doc)
+  if (membershipSnap.exists && !memberSnap.exists) {
+    const membership = membershipSnap.data() || {};
+    await clubRef.collection('members').doc(uid).set({
+      uid,
+      role: String(membership.role || 'member'),
+      canSpeak: club.micMode === 'open',
+      joinedAt: membership.joinedAt || admin.firestore.FieldValue.serverTimestamp(),
+    });
+    isMember = true;
+  }
 
   if (!isPublic && !isMember) {
     throw new functions.https.HttpsError('permission-denied', 'Not a member of this club.');
@@ -241,8 +258,21 @@ exports.webSendClubMessage = functions.region('us-central1').https.onCall(async 
   }
 
   const memberSnap = await db.collection('clubs').doc(clubId).collection('members').doc(uid).get();
-  if (!memberSnap.exists) {
+  const membershipSnap = await db.collection('users').doc(uid).collection('clubMemberships').doc(clubId).get();
+  if (!memberSnap.exists && !membershipSnap.exists) {
     throw new functions.https.HttpsError('permission-denied', 'Join this club first.');
+  }
+
+  if (membershipSnap.exists && !memberSnap.exists) {
+    const clubSnap = await db.collection('clubs').doc(clubId).get();
+    const club = clubSnap.data() || {};
+    const membership = membershipSnap.data() || {};
+    await db.collection('clubs').doc(clubId).collection('members').doc(uid).set({
+      uid,
+      role: String(membership.role || 'member'),
+      canSpeak: club.micMode === 'open',
+      joinedAt: membership.joinedAt || admin.firestore.FieldValue.serverTimestamp(),
+    });
   }
 
   await db.collection('clubs').doc(clubId).collection('messages').add({

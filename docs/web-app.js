@@ -607,20 +607,21 @@ export function createWebApp(ctx) {
       const msgsEl = document.getElementById('clubMsgs');
       renderClubMessages(msgsEl, messages, user.uid);
 
-      const qRef = query(
-        collection(db, 'clubs', clubId, 'messages'),
-        orderBy('createdAt', 'asc'),
-        limit(80)
-      );
-      unsubscribers.push(onSnapshot(qRef, (snap) => {
-        const rows = snap.docs.map((d) => {
-          const msg = d.data();
-          return { id: d.id, fromUid: msg.fromUid, text: msg.text };
-        });
-        renderClubMessages(msgsEl, rows, user.uid);
-      }, () => {
-        /* realtime optional — initial load already from server */
-      }));
+      stopClubPoll();
+      clubPollTimer = setInterval(async () => {
+        if (isStale(gen)) {
+          stopClubPoll();
+          return;
+        }
+        try {
+          const poll = await httpsCallable(functions, 'webGetClubRoom')({ clubId: String(clubId) });
+          if (isStale(gen)) return;
+          renderClubMessages(msgsEl, poll.data?.messages || [], user.uid);
+        } catch {
+          /* keep last messages on poll failure */
+        }
+      }, 3000);
+      unsubscribers.push(() => stopClubPoll());
 
       document.getElementById('clubForm').onsubmit = async (ev) => {
         ev.preventDefault();
@@ -633,6 +634,8 @@ export function createWebApp(ctx) {
             clubId: String(clubId),
             text,
           });
+          const poll = await httpsCallable(functions, 'webGetClubRoom')({ clubId: String(clubId) });
+          renderClubMessages(msgsEl, poll.data?.messages || [], user.uid);
         } catch (e) {
           showErr(e.message || 'Could not send message.');
         }
@@ -678,7 +681,7 @@ export function createWebApp(ctx) {
           try {
             await joinClub(user.uid, btn.dataset.join);
             clubRoomId = btn.dataset.join;
-            renderClubRoom(user, clubRoomId, bumpScreen());
+            await renderClubRoom(user, clubRoomId, bumpScreen());
           } catch (e) {
             showErr(e.message);
             btn.disabled = false;
@@ -686,9 +689,13 @@ export function createWebApp(ctx) {
         };
       });
       main.querySelectorAll('[data-open]').forEach((btn) => {
-        btn.onclick = () => {
+        btn.onclick = async () => {
           clubRoomId = btn.dataset.open;
-          renderClubRoom(user, clubRoomId, bumpScreen());
+          try {
+            await renderClubRoom(user, clubRoomId, bumpScreen());
+          } catch (e) {
+            showErr(e.message || 'Could not open club.');
+          }
         };
       });
     } catch (e) {
@@ -699,11 +706,19 @@ export function createWebApp(ctx) {
   // ─── Live ─────────────────────────────────────────────────────────────
 
   let livePollTimer = null;
+  let clubPollTimer = null;
 
   function stopLivePoll() {
     if (livePollTimer) {
       clearInterval(livePollTimer);
       livePollTimer = null;
+    }
+  }
+
+  function stopClubPoll() {
+    if (clubPollTimer) {
+      clearInterval(clubPollTimer);
+      clubPollTimer = null;
     }
   }
 
