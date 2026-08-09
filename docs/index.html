@@ -116,16 +116,16 @@
 
     .mascot-stage {
       position: relative;
-      margin-bottom: 2px;
+      margin-bottom: 6px;
     }
 
     .mascot-glow {
       position: absolute;
       left: 50%;
-      bottom: 8%;
+      bottom: 6%;
       transform: translateX(-50%);
-      width: 72%;
-      height: 18%;
+      width: 78%;
+      height: 20%;
       border-radius: 50%;
       background: radial-gradient(ellipse, rgba(0, 60, 120, 0.35) 0%, transparent 72%);
       filter: blur(6px);
@@ -144,8 +144,8 @@
     }
 
     .mascot-inner {
-      width: min(300px, 78vw);
-      height: min(300px, 78vw);
+      width: min(360px, 90vw);
+      height: min(360px, 90vw);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -223,6 +223,22 @@
       font-size: 0.92rem;
       color: var(--on-blue-muted);
       margin-top: 5px;
+    }
+
+    .hero-intro {
+      margin-top: 14px;
+      padding: 0 6px;
+      max-width: 36ch;
+    }
+
+    .hero-intro p {
+      font-size: 0.88rem;
+      line-height: 1.65;
+      color: var(--on-blue-soft);
+    }
+
+    .hero-intro p + p {
+      margin-top: 8px;
     }
 
     .cta-stack {
@@ -447,6 +463,65 @@
       color: var(--on-blue-muted);
     }
 
+    .story-card {
+      padding: 22px 18px;
+      border-radius: 22px;
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.2) inset,
+        0 16px 40px rgba(0, 40, 90, 0.18);
+    }
+
+    .story-card h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .story-lead {
+      font-size: 0.82rem;
+      line-height: 1.6;
+      color: var(--on-blue-soft);
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .story-blocks {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      list-style: none;
+    }
+
+    .story-block {
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .story-blocks li:first-child {
+      padding-top: 0;
+      border-top: none;
+    }
+
+    .story-block h3 {
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .story-block p {
+      font-size: 0.8rem;
+      line-height: 1.62;
+      color: var(--on-blue-muted);
+    }
+
     .site-footer {
       text-align: center;
       padding: 0 4px;
@@ -637,7 +712,7 @@
           <div class="mascot-glow" aria-hidden="true"></div>
           <button type="button" class="mascot-btn" id="mascotBtn" aria-label="Huzz mascot — tap for a surprise">
             <div class="mascot-inner" id="mascotInner">
-              <img id="mascotImg" src="assets/app-logo.png" alt="" width="300" height="300" />
+              <img id="mascotImg" src="assets/app-logo.png" alt="" width="360" height="360" />
             </div>
           </button>
         </div>
@@ -646,6 +721,10 @@
         <div class="brand-line" aria-hidden="true"></div>
         <p class="tagline-main">Connect authentically. Connect freely.</p>
         <p class="tagline-sub">Halal-minded · intentional · community-built</p>
+        <div class="hero-intro">
+          <p>Huzz is a dating and discovery app for adults who want to meet with purpose — not noise, not games, not wasted time.</p>
+          <p>Create a profile, discover people nearby, match when interest goes both ways, and talk in a space built for respect and accountability.</p>
+        </div>
       </header>
 
       <div class="cta-stack" id="auth">
@@ -742,6 +821,25 @@
               <strong>Safety first</strong>
               <span>Block, report, and unmatch. Meet in public, stay accountable.</span>
             </div>
+          </li>
+        </ul>
+      </section>
+
+      <section class="story-card" aria-label="About the Huzz experience">
+        <h2>What Huzz actually is</h2>
+        <p class="story-lead">A modern app for halal-minded connection — on Android and the web, with one account.</p>
+        <ul class="story-blocks">
+          <li class="story-block">
+            <h3>Discover &amp; match with intention</h3>
+            <p>Browse real profiles with photos, bio, and preferences. Filter who you see, like people you are genuinely interested in, and open a private chat when you both match. Send voice notes, photos, and messages with translation when you need it.</p>
+          </li>
+          <li class="story-block">
+            <h3>Accountability built in</h3>
+            <p>Sisters can invite a Mehram into any conversation — view-only or with reply access — without them needing a Huzz account. Every user passes 18+ age verification before they can like, match, chat, go live, or join clubs. Block and report are always one tap away.</p>
+          </li>
+          <li class="story-block">
+            <h3>Clubs, Live, and community</h3>
+            <p>Join clubs for group chat and voice-room hangouts, or jump into Live Random for a short, timed video session with another signed-in user. Huzz is not just swiping — it is meeting, talking, and building toward something real, in a way that fits how you live your values.</p>
           </li>
         </ul>
       </section>
