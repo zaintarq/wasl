@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Huzz Business Use Case Document</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 22mm 20mm 24mm 20mm;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11pt;
+      line-height: 1.55;
+      color: #111111;
+    }
+
+    .doc {
+      width: 100%;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-wrap: break-word;
+    }
+
+    .title {
+      font-size: 20pt;
+      font-weight: 700;
+      color: #1da1f2;
+      margin: 0 0 4px 0;
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      font-size: 10.5pt;
+      color: #444444;
+      margin: 0 0 16px 0;
+      line-height: 1.4;
+    }
+
+    .rule {
+      border: none;
+      border-top: 3px solid #1da1f2;
+      margin: 0 0 18px 0;
+    }
+
+    table.meta {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 20px 0;
+      font-size: 9.5pt;
+      table-layout: fixed;
+    }
+
+    table.meta td {
+      border: 1px solid #d0dce4;
+      padding: 7px 9px;
+      vertical-align: top;
+      width: 50%;
+    }
+
+    table.meta td.label {
+      background: #eef6fc;
+      color: #0d4f7c;
+      font-weight: 700;
+      width: 32%;
+    }
+
+    table.meta td.value {
+      width: 68%;
+    }
+
+    h2 {
+      font-size: 12pt;
+      color: #0d4f7c;
+      margin: 18px 0 8px 0;
+      padding: 0 0 4px 0;
+      border-bottom: 1px solid #dddddd;
+      page-break-after: avoid;
+    }
+
+    h3 {
+      font-size: 10.5pt;
+      color: #222222;
+      margin: 12px 0 6px 0;
+      page-break-after: avoid;
+    }
+
+    p {
+      margin: 0 0 9px 0;
+    }
+
+    ul, ol {
+      margin: 4px 0 10px 0;
+      padding-left: 20px;
+    }
+
+    li {
+      margin: 0 0 5px 0;
+    }
+
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 12px 0;
+      font-size: 9.5pt;
+      table-layout: fixed;
+      page-break-inside: avoid;
+    }
+
+    table.data th,
+    table.data td {
+      border: 1px solid #c8d3da;
+      padding: 7px 8px;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+      word-wrap: break-word;
+    }
+
+    table.data th {
+      background: #e8f4fc;
+      color: #0d4f7c;
+      font-weight: 700;
+    }
+
+    .box {
+      border-left: 4px solid #1da1f2;
+      background: #f8fbfd;
+      padding: 10px 12px;
+      margin: 8px 0 12px 0;
+      page-break-inside: avoid;
+    }
+
+    .footer {
+      margin-top: 22px;
+      padding-top: 12px;
+      border-top: 2px solid #1da1f2;
+      font-size: 10pt;
+      color: #333333;
+      page-break-inside: avoid;
+    }
+  </style>
+</head>
+<body>
+<div class="doc">
+
+  <div class="title">Business Use Case Document</div>
+  <div class="subtitle">Merchant onboarding submission for Huzz — digital mobile application and software publishing business</div>
+  <hr class="rule" />
+
+  <table class="meta">
+    <tr><td class="label">Legal business name</td><td>Huzz</td></tr>
+    <tr><td class="label">Legal owner</td><td>Saud (Individual / Sole Proprietor)</td></tr>
+    <tr><td class="label">NTN</td><td>3120282643905</td></tr>
+    <tr><td class="label">CNIC</td><td>31202-8264390-5</td></tr>
+    <tr><td class="label">FBR activity</td><td>Software publishing</td></tr>
+    <tr><td class="label">Business address</td><td>Rafi St 3, Hafiz Colony, Bahawalpur, Punjab, Pakistan</td></tr>
+    <tr><td class="label">Contact email</td><td>zain.tariq@mail.com</td></tr>
+    <tr><td class="label">Mobile</td><td>+92 322 7004634</td></tr>
+    <tr><td class="label">Website</td><td>https://zaintarq.github.io/huzz/</td></tr>
+    <tr><td class="label">Android app</td><td>com.huzz.app (Google Play)</td></tr>
+    <tr><td class="label">Bank</td><td>Allied Bank Limited (ABL)</td></tr>
+    <tr><td class="label">IBAN</td><td>PK44ABPA0010160625280014</td></tr>
+    <tr><td class="label">Document date</td><td>10 August 2026</td></tr>
+    <tr><td class="label">Purpose</td><td>Payment gateway merchant KYC review</td></tr>
+  </table>
+
+  <h2>1. Executive Summary</h2>
+  <p>
+    Huzz is a digital-only mobile software business operated by Saud as an individual software publisher registered with the
+    Federal Board of Revenue (FBR) under NTN 3120282643905. The business develops, publishes, and operates a social discovery
+    mobile application for adults aged 18 and above. Users can create profiles, discover members, match, chat privately, join
+    public clubs, and use optional live session features.
+  </p>
+  <p>
+    Huzz does not sell physical products and does not use cash-on-delivery. All services are delivered electronically through
+    the Android application and a limited companion website. Payment gateway integration is required to accept electronic
+    payments from customers in Pakistan for optional premium digital features and subscriptions. Settlement will be received in
+    the verified Allied Bank account listed above.
+  </p>
+
+  <h2>2. Detailed Business Description</h2>
+  <h3>2.1 Nature of business</h3>
+  <p>
+    Huzz operates in software publishing and digital services. The primary product is the Huzz Android application distributed
+    through Google Play. Supporting systems include cloud authentication, database storage, messaging, moderation, and push
+    notifications. The business is home-based and operated from Bahawalpur, Punjab, Pakistan.
+  </p>
+  <h3>2.2 Problem solved</h3>
+  <p>
+    Users need a mobile-first platform to meet people in a structured environment with reporting, blocking, and moderation tools.
+    Huzz provides profile-based discovery, mutual matching, private messaging, and admin review of reported behaviour.
+  </p>
+  <h3>2.3 Revenue model</h3>
+  <ul>
+    <li>Free tier: account creation, profile setup, and limited app features.</li>
+    <li>Paid tier: premium visibility, enhanced filters, extra messaging privileges, or subscription access.</li>
+    <li>All revenue is digital. No shipping or physical fulfillment.</li>
+    <li>Expected average ticket size: PKR 500 to PKR 5,000.</li>
+    <li>Expected launch volume: fewer than 500 transactions per month.</li>
+  </ul>
+
+  <h2>3. Products and Services</h2>
+  <table class="data">
+    <tr>
+      <th style="width:22%">Product</th>
+      <th style="width:48%">Description</th>
+      <th style="width:30%">Delivery</th>
+    </tr>
+    <tr>
+      <td>Android app</td>
+      <td>Main product on Google Play under com.huzz.app</td>
+      <td>Digital download and login</td>
+    </tr>
+    <tr>
+      <td>Account hosting</td>
+      <td>Registration, login, profile photos, preferences</td>
+      <td>Instant digital activation</td>
+    </tr>
+    <tr>
+      <td>Discovery and matching</td>
+      <td>Browse profiles, like/pass, create mutual matches</td>
+      <td>Real-time in-app service</td>
+    </tr>
+    <tr>
+      <td>Private messaging</td>
+      <td>One-to-one chat between permitted users</td>
+      <td>Real-time digital messaging</td>
+    </tr>
+    <tr>
+      <td>Public clubs</td>
+      <td>Community chat spaces under platform rules</td>
+      <td>Digital chat in app/web</td>
+    </tr>
+    <tr>
+      <td>Live sessions</td>
+      <td>Optional short live sessions between signed-in users</td>
+      <td>Digital in-app service</td>
+    </tr>
+    <tr>
+      <td>Premium services</td>
+      <td>Paid features unlocked after successful payment</td>
+      <td>Instant account entitlement</td>
+    </tr>
+    <tr>
+      <td>Support</td>
+      <td>Billing, access, and account assistance</td>
+      <td>Email support</td>
+    </tr>
+  </table>
+
+  <h2>4. Target Market</h2>
+  <ul>
+    <li>Primary geography: Pakistan at launch.</li>
+    <li>Customer age: strictly 18 years and above.</li>
+    <li>Device: Android smartphones and limited web access.</li>
+    <li>Onboarding: email registration, profile completion, acceptance of terms and privacy policy.</li>
+    <li>Prohibited use: fraud, harassment, spam, impersonation, and illegal activity.</li>
+  </ul>
+
+  <h2>5. Product and Service Delivery Model</h2>
+  <h3>5.1 Customer journey</h3>
+  <ol>
+    <li>Customer discovers Huzz through Google Play, website, or referral.</li>
+    <li>Customer installs the app or opens the web companion.</li>
+    <li>Customer registers using email authentication.</li>
+    <li>Customer completes onboarding and accepts terms and privacy policy.</li>
+    <li>Customer uses free digital features within platform limits.</li>
+    <li>Customer selects a premium digital package inside the app or website.</li>
+    <li>Customer completes payment on the licensed payment gateway checkout page.</li>
+    <li>Gateway sends payment result to Huzz through secure callback or API.</li>
+    <li>Huzz activates the purchased digital entitlement on the account within seconds.</li>
+    <li>Customer may contact support by email for billing or access issues.</li>
+  </ol>
+
+  <h3>5.2 Fulfillment timeline</h3>
+  <table class="data">
+    <tr>
+      <th style="width:40%">Event</th>
+      <th style="width:60%">Timeline</th>
+    </tr>
+    <tr>
+      <td>Payment authorization</td>
+      <td>Real time at checkout</td>
+    </tr>
+    <tr>
+      <td>Digital service activation</td>
+      <td>Instant to 5 minutes after successful payment</td>
+    </tr>
+    <tr>
+      <td>Customer confirmation</td>
+      <td>Immediate in app; email receipt where enabled</td>
+    </tr>
+    <tr>
+      <td>Support response</td>
+      <td>Within 2 business days</td>
+    </tr>
+    <tr>
+      <td>Approved refund processing</td>
+      <td>Within 7 to 10 business days</td>
+    </tr>
+  </table>
+
+  <h3>5.3 No physical delivery</h3>
+  <p>
+    Huzz sells access to software features only. There are no parcels, couriers, warehouses, or pickup points. Disputes usually
+    relate to duplicate payment, failed activation, or account access rather than non-delivery of physical goods.
+  </p>
+
+  <h2>6. Payment Gateway Use Case</h2>
+  <p>
+    Huzz requires a licensed payment gateway to accept electronic payments for premium digital services. The gateway will be used
+    only for lawful digital commerce related to the Huzz application. Funds will settle to the declared Allied Bank account
+    after gateway fees.
+  </p>
+  <h3>6.1 Expected transaction types</h3>
+  <ul>
+    <li>One-time digital purchases such as premium unlocks or feature packs.</li>
+    <li>Recurring subscription payments for premium membership, if enabled.</li>
+    <li>No physical goods, gambling, crypto, or unlicensed financial services.</li>
+  </ul>
+  <h3>6.2 Merchant controls</h3>
+  <ul>
+    <li>Payments initiated only by authenticated users inside the official app or website.</li>
+    <li>Server-side verification before unlocking paid features.</li>
+    <li>Transaction logs retained for reconciliation and dispute handling.</li>
+    <li>Manual review of suspicious payment activity.</li>
+  </ul>
+
+  <h2>7. Refund and Cancellation Policy</h2>
+  <div class="box">
+    Huzz provides instant digital services. Refunds are granted only for verified payment errors, failed digital activation,
+    or where required by law. This policy is communicated through app terms and support email.
+  </div>
+
+  <table class="data">
+    <tr>
+      <th style="width:34%">Scenario</th>
+      <th style="width:66%">Policy</th>
+    </tr>
+    <tr>
+      <td>Duplicate payment</td>
+      <td>Full refund of duplicate amount within 7 business days after verification</td>
+    </tr>
+    <tr>
+      <td>Payment successful but service not activated</td>
+      <td>Full refund or immediate activation within 7 business days</td>
+    </tr>
+    <tr>
+      <td>Accidental purchase within 24 hours</td>
+      <td>Refund may be approved if service was not materially used</td>
+    </tr>
+    <tr>
+      <td>Extended technical outage for paid users</td>
+      <td>Service extension or partial/full refund depending on impact</td>
+    </tr>
+    <tr>
+      <td>Change of mind after use</td>
+      <td>No refund unless required by law</td>
+    </tr>
+    <tr>
+      <td>Account banned for abuse or fraud</td>
+      <td>No refund for unused paid period</td>
+    </tr>
+    <tr>
+      <td>Chargeback claim</td>
+      <td>Investigated using transaction logs; account may be suspended during review</td>
+    </tr>
+  </table>
+
+  <h3>7.1 Refund request procedure</h3>
+  <ol>
+    <li>Customer emails zain.tariq@mail.com from the registered account email.</li>
+    <li>Customer provides name, registered email or phone, transaction date, amount, reference ID, and reason.</li>
+    <li>Huzz verifies payment records and entitlement usage.</li>
+    <li>Approved refunds are processed within 7 to 10 business days.</li>
+    <li>Customer receives email confirmation when refund is completed.</li>
+  </ol>
+
+  <h3>7.2 Subscription cancellation</h3>
+  <ul>
+    <li>Customers may cancel recurring subscriptions in account settings or by email.</li>
+    <li>Cancellation stops future billing but does not refund the current paid period unless required by law.</li>
+    <li>Access continues until the end of the already paid period.</li>
+  </ul>
+
+  <h2>8. Compliance and Risk Controls</h2>
+  <ul>
+    <li>Platform is restricted to users aged 18 and above.</li>
+    <li>Users can block and report other users.</li>
+    <li>Admin moderation reviews reported behaviour and repeat offenders.</li>
+    <li>Privacy policy is published on the official website.</li>
+    <li>No sale of illegal goods, gambling products, or unlicensed financial services.</li>
+    <li>Gateway settlement reports are reconciled against internal order logs.</li>
+  </ul>
+
+  <h2>9. Operational Details</h2>
+  <table class="data">
+    <tr>
+      <th style="width:34%">Item</th>
+      <th style="width:66%">Detail</th>
+    </tr>
+    <tr>
+      <td>Business premises</td>
+      <td>Home-based office, Rafi St 3, Hafiz Colony, Bahawalpur</td>
+    </tr>
+    <tr>
+      <td>Business hours</td>
+      <td>Monday to Saturday, 10:00 to 19:00 PKT</td>
+    </tr>
+    <tr>
+      <td>Support channel</td>
+      <td>zain.tariq@mail.com</td>
+    </tr>
+    <tr>
+      <td>Settlement account</td>
+      <td>ABL IBAN PK44ABPA0010160625280014</td>
+    </tr>
+    <tr>
+      <td>Expected chargeback risk</td>
+      <td>Low due to instant digital fulfillment and support records</td>
+    </tr>
+  </table>
+
+  <h2>10. Declaration</h2>
+  <p>
+    I declare that the information in this Business Use Case Document is true and accurate to the best of my knowledge. Huzz is
+    a legitimate software publishing and digital services business. All payments processed through the requested gateway will
+    relate to lawful digital products and services offered through the Huzz platform. Supporting FBR registration, NTN
+    certificate, and business address documents are submitted separately.
+  </p>
+
+  <div class="footer">
+    <strong>Authorized signatory:</strong> Saud<br />
+    <strong>For:</strong> Huzz (Software publishing)<br />
+    <strong>NTN:</strong> 3120282643905<br />
+    <strong>Email:</strong> zain.tariq@mail.com<br />
+    <strong>Date:</strong> 10 August 2026<br /><br />
+    Submitted for payment gateway merchant onboarding and KYC review.
+  </div>
+
+</div>
+</body>
+</html>
