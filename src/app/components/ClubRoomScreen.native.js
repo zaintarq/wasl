@@ -144,7 +144,7 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
       <SafeAreaView style={styles.safe}>
         <LiveTypographyProvider>
           <LiveText style={styles.err}>Missing club.</LiveText>
-          <LiveContentWidth style={{ padding: LIVE_SCREEN_GUTTER }}>
+          <LiveContentWidth style={{ paddingVertical: LIVE_SCREEN_GUTTER }}>
             <LiveRetroButton
               variant="blue"
               onPress={() => onNavigate('clubs')}
@@ -565,7 +565,7 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.blue,
   },
   sendBtnText: { color: '#fff', fontWeight: '800' },
-  joinGate: { flex: 1, padding: LIVE_SCREEN_GUTTER, justifyContent: 'center', gap: 12 },
+  joinGate: { flex: 1, paddingVertical: LIVE_SCREEN_GUTTER, justifyContent: 'center', gap: 12 },
   joinTitle: { fontSize: 22, color: tokens.colors.text },
   joinHint: { ...tokens.typography.bodySmall, color: tokens.colors.textSecondary, lineHeight: 22 },
   codeInput: {

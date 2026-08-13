@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/images/icon-1024.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0a0a0a"
+      "backgroundColor": "#FBCFE8"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -20,7 +20,7 @@
       "usesAppleSignIn": true,
       "icon": "./assets/images/icon-1024.png",
       "infoPlist": {
-        "NSCameraUsageDescription": "Huzz Live uses your camera so your match can see you during a random live session.",
+        "NSCameraUsageDescription": "Huzz uses your camera for 18+ age verification, Live video chat, and club voice spaces.",
         "NSMicrophoneUsageDescription": "Huzz uses the microphone for Live video chat and club voice spaces.",
         "NSLocationWhenInUseUsageDescription": "Huzz needs your location (city/region) to show nearby matches and keep the community safe. Location is required to use the app.",
         "NSContactsUsageDescription": "Optional: import contacts in Settings if you want to block people you know from finding you on Huzz.",
@@ -32,7 +32,7 @@
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon-1024.png",
-        "backgroundColor": "#0a0a0a"
+        "backgroundColor": "#FBCFE8"
       },
       "permissions": [
         "android.permission.CAMERA",

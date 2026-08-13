@@ -1,7 +1,6 @@
 import { Platform, Dimensions } from 'react-native';
 import * as Application from 'expo-application';
 import { sha256 } from '../utils/hash';
-import { vpnDetectionService } from './vpnDetectionService';
 
 async function getDeviceId() {
   try {
@@ -43,11 +42,6 @@ export async function collectDeviceSnapshot() {
       : String(Platform.constants?.systemName || 'iOS');
 
   let ipData = { ipAddress: '', country: '', city: '', region: '' };
-  try {
-    ipData = await vpnDetectionService.getCurrentIpAddress();
-  } catch {
-    /* optional */
-  }
 
   const parts = [
     deviceId,

@@ -18,7 +18,11 @@
     "remove-typing-bg": "node scripts/remove-bg-from-typing-assets.js",
     "remove-mascot-bg": "node scripts/remove-mascot-white-bg.js",
     "fill-mascot-holes": "node scripts/fill-mascot-interior-holes.js",
-    "remove-wrong-password-bg": "node scripts/remove-wrong-password-bg.js"
+    "remove-wrong-password-bg": "node scripts/remove-wrong-password-bg.js",
+    "games:build": "cd games/client && npm run build",
+    "games:server": "cd games/server && npm start",
+    "games:dev": "cd games/client && npm run dev",
+    "games:smoke": "cd games/client && node ../scripts/smoke-games.js"
   },
   "dependencies": {
     "@expo-google-fonts/kaushan-script": "^0.4.1",
@@ -71,7 +75,9 @@
     "react-native-screens": "4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "0.21.2",
-    "react-native-worklets": "0.5.1"
+    "react-native-webview": "^14.0.1",
+    "react-native-worklets": "0.5.1",
+    "zoivera-sdk": "^1.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

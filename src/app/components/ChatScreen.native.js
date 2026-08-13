@@ -30,6 +30,9 @@ import {
   translationService,
   aiSuggestionService,
 } from '../../services/firebaseService';
+import { mehramService } from '../../services/mehramService';
+import { MehramBanner } from '../../ui/components/chats/MehramBanner.native';
+import { MehramPanel } from '../../ui/components/chats/MehramPanel.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
@@ -118,6 +121,7 @@ function MessageBubbleRow({
   translateState,
   onPressTranslate,
   onHideTranslation,
+  mehramLabel,
 }) {
   const translateX = useSharedValue(0);
 
@@ -145,7 +149,8 @@ function MessageBubbleRow({
     transform: [{ translateX: translateX.value }],
   }));
 
-  const mine = item?.fromUid === meUid;
+  const mine = item?.fromUid === meUid && String(item?.senderType || '') !== 'mehram';
+  const isMehramMsg = String(item?.senderType || '') === 'mehram';
   const created = toDate(item?.createdAt);
   const readAt = toDate(item?.readAt);
   const isRead = !!readAt;
@@ -168,11 +173,14 @@ function MessageBubbleRow({
   return (
     <GestureDetector gesture={swipeReplyGesture}>
       <View style={st.bubbleSwipeWrap}>
+        {isMehramMsg && mehramLabel ? (
+          <Text style={[st.mehramSenderLabel, mine ? st.mehramSenderLabelMine : null]}>{mehramLabel}</Text>
+        ) : null}
         <Animated.View style={[st.bubbleAnimatedWrap, mine ? st.bubbleAnimatedWrapMine : null, bubbleAnimatedStyle]}>
           <HuzzPressable
             onPress={() => onOpenActions(item)}
             onLongPress={() => onReport(item)}
-            style={[st.bubble, mine ? st.bubbleMine : st.bubbleTheirs]}
+            style={[st.bubble, mine ? st.bubbleMine : isMehramMsg ? st.bubbleMehram : st.bubbleTheirs]}
           >
             {reply ? (
               <View style={st.replyPreview}>
@@ -282,6 +290,8 @@ export function ChatScreen({ onNavigate, matchId }) {
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [aiMode, setAiMode] = useState('reply_suggestions');
   const [aiLoading, setAiLoading] = useState(false);
+  const [myProfile, setMyProfile] = useState(null);
+  const [mehramPanelOpen, setMehramPanelOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,6 +311,41 @@ export function ChatScreen({ onNavigate, matchId }) {
       cancelled = true;
     };
   }, [meUid]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!meUid) return;
+    (async () => {
+      try {
+        const res = await userService.getUserById(meUid);
+        if (!cancelled) setMyProfile(res?.data || null);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [meUid]);
+
+  const mehramMeta = match?.mehram && match.mehram.active ? match.mehram : null;
+  const isGirl = mehramService.isGirlUser(myProfile);
+  const mehramDisplayLabel = useMemo(() => {
+    if (!mehramMeta) return null;
+    const name = mehramMeta.girlDisplayName || myProfile?.name || 'Her';
+    return `👤 ${name}'s Mehram`;
+  }, [mehramMeta, myProfile?.name]);
+
+  const canAddMehram = useMemo(() => {
+    if (!isGirl || !match) return false;
+    const created = toDate(match.createdAt);
+    const ageMs = created ? Date.now() - created.getTime() : 0;
+    const msgCount = Array.isArray(messages) ? messages.filter((m) => !m._type && !m._skeleton).length : 0;
+    return ageMs >= 10 * 60 * 1000 || msgCount >= 2;
+  }, [isGirl, match, messages]);
+
+  const chatDurationHint =
+    'Keep chatting a little longer before adding a Mehram (about 10 minutes or a few messages).';
 
   const persistChatLanguage = useCallback(async (code) => {
     const c = String(code || 'en').trim().toLowerCase();
@@ -792,6 +837,14 @@ export function ChatScreen({ onNavigate, matchId }) {
                     onNavigate('datePlanning', { matchId });
                   },
                 },
+                ...(isGirl
+                  ? [
+                      {
+                        text: mehramMeta ? 'Mehram settings' : '🛡️ Add Mehram',
+                        onPress: () => setMehramPanelOpen(true),
+                      },
+                    ]
+                  : []),
                 {
                   text: 'Report user',
                   onPress: async () => {
@@ -848,6 +901,16 @@ export function ChatScreen({ onNavigate, matchId }) {
           keyExtractor={(item) => String(item?.id)}
           inverted
           extraData={{ otherIsTyping, translationById, chatTranslateLang }}
+          ListFooterComponent={
+            mehramMeta ? (
+              <MehramBanner mehram={mehramMeta} isGirl={isGirl} otherName={otherUser?.name} />
+            ) : isGirl ? (
+              <HuzzPressable style={styles.mehramPrompt} onPress={() => setMehramPanelOpen(true)} haptic="light">
+                <Text style={styles.mehramPromptTitle}>🛡️ Add a Mehram</Text>
+                <Text style={styles.mehramPromptBody}>Keep someone you trust in the conversation.</Text>
+              </HuzzPressable>
+            ) : undefined
+          }
           ListHeaderComponent={
             isActive && otherIsTyping ? (
               <View style={styles.typingInline} pointerEvents="none" accessibilityLabel="Typing">
@@ -909,6 +972,9 @@ export function ChatScreen({ onNavigate, matchId }) {
                 meUid={meUid}
                 playingId={playingId}
                 styles={styles}
+                mehramLabel={
+                  String(item?.senderType || '') === 'mehram' ? mehramDisplayLabel : null
+                }
                 onOpenActions={openMessageActions}
                 onSwipeReply={handleSwipeReply}
                 onTogglePlay={togglePlay}
@@ -1201,6 +1267,16 @@ export function ChatScreen({ onNavigate, matchId }) {
             </View>
           </View>
         </Modal>
+
+        <MehramPanel
+          visible={mehramPanelOpen}
+          onClose={() => setMehramPanelOpen(false)}
+          matchId={matchId}
+          mehram={mehramMeta}
+          myProfile={myProfile}
+          canAddMehram={canAddMehram}
+          chatDurationHint={chatDurationHint}
+        />
       </KeyboardAwareLayout>
     </SafeAreaView>
   );
@@ -1386,6 +1462,43 @@ const styles = StyleSheet.create({
   },
   bubbleMine: { alignSelf: 'flex-end', backgroundColor: '#8B5CF6' },
   bubbleTheirs: { alignSelf: 'flex-start', backgroundColor: tokens.colors.surfaceOverlay },
+  bubbleMehram: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(14, 165, 233, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.35)',
+  },
+  mehramSenderLabel: {
+    ...tokens.typography.caption,
+    color: tokens.colors.blue,
+    fontWeight: '700',
+    marginBottom: 4,
+    marginLeft: 4,
+    alignSelf: 'flex-start',
+  },
+  mehramSenderLabelMine: {
+    alignSelf: 'flex-end',
+    marginRight: 4,
+    marginLeft: 0,
+  },
+  mehramPrompt: {
+    marginHorizontal: 4,
+    marginBottom: 10,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(14, 165, 233, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.22)',
+  },
+  mehramPromptTitle: {
+    fontWeight: '700',
+    color: tokens.colors.text,
+    marginBottom: 4,
+  },
+  mehramPromptBody: {
+    ...tokens.typography.caption,
+    color: tokens.colors.textSecondary,
+  },
   bubbleText: {
     ...tokens.typography.bodySmall,
     lineHeight: 22,

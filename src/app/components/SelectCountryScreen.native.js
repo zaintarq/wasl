@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Globe2 } from 'lucide-react-native';
 
 import { COUNTRIES } from '../../utils/countries';
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { RetroInput } from '../../ui/components/RetroInput.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { authService, userService } from '../../services/firebaseService';
@@ -63,7 +63,7 @@ export function SelectCountryScreen() {
     <View style={styles.root}>
       {/* Same soft gradient as Filters */}
       <LinearGradient
-        colors={['#FFF5F7', '#EFF6FF', '#F0FDFA']}
+        colors={brandShellGradientSoft}
         locations={[0, 0.45, 1]}
         style={StyleSheet.absoluteFill}
       />

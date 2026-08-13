@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Shield, LogOut, Users } from 'lucide-react-native';
 
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradientSoft } from '../../ui/tokens';
+import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { MatchPreferencesSettings } from './MatchPreferencesSettings.native';
@@ -68,7 +69,7 @@ export function SettingsScreen({ onNavigate }) {
   const shell = (children) => (
     <View style={styles.root}>
       <LinearGradient
-        colors={['#FFF5F7', '#EFF6FF', '#F0FDFA']}
+        colors={brandShellGradientSoft}
         locations={[0, 0.45, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -76,7 +77,7 @@ export function SettingsScreen({ onNavigate }) {
         <View style={[styles.header, { paddingTop: insets.top }]}>
           <View style={styles.headerRow}>
             <HuzzPressable style={styles.headerSideBtn} onPress={goBack} haptic="light">
-              <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.25} />
+              <ArrowLeft size={22} color={tokens.colors.textOnBrand} strokeWidth={2.25} />
             </HuzzPressable>
             <View style={styles.headerTitleWrap}>
               <Text style={styles.headerTitle}>Settings</Text>
@@ -106,10 +107,10 @@ export function SettingsScreen({ onNavigate }) {
     >
       {!isAdmin && !isStaff && (
         <>
-          <View style={[styles.card, styles.sectionSky, cardShadow]}>
+          <View style={styles.card}>
             <View style={styles.sectionHead}>
               <View style={[styles.sectionIconWrap, styles.iconWrapSky]}>
-                <Users size={20} color="#2563EB" strokeWidth={2.2} />
+                <Users size={20} color={tokens.colors.textOnBrand} strokeWidth={2.2} />
               </View>
               <View style={styles.sectionHeadText}>
                 <Text style={styles.sectionTitle}>Discovery preferences</Text>
@@ -119,10 +120,10 @@ export function SettingsScreen({ onNavigate }) {
             <MatchPreferencesSettings />
           </View>
 
-          <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+          <View style={styles.card}>
             <View style={styles.sectionHead}>
               <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
-                <Shield size={20} color="#047857" strokeWidth={2.2} />
+                <Shield size={20} color={tokens.colors.textOnBrand} strokeWidth={2.2} />
               </View>
               <View style={styles.sectionHeadText}>
                 <Text style={styles.sectionTitle}>Privacy</Text>
@@ -138,10 +139,10 @@ export function SettingsScreen({ onNavigate }) {
         </>
       )}
 
-      <View style={[styles.card, styles.sectionRose, cardShadow]}>
+      <View style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={[styles.sectionIconWrap, styles.iconWrapRose]}>
-            <LogOut size={20} color="#E11D48" strokeWidth={2.2} />
+            <LogOut size={20} color={tokens.colors.textOnBrand} strokeWidth={2.2} />
           </View>
           <View style={styles.sectionHeadText}>
             <Text style={styles.sectionTitle}>Account</Text>
@@ -165,27 +166,16 @@ export function SettingsScreen({ onNavigate }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.colors.filterBgRose,
+    backgroundColor: tokens.colors.bg,
   },
   safe: {
     flex: 1,
     backgroundColor: 'transparent',
   },
   header: {
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.colors.border,
+    ...shellStyles.header,
     paddingHorizontal: tokens.spacing.sm,
     paddingBottom: tokens.spacing.sm,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0f172a',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.06,
-        shadowRadius: 3,
-      },
-      android: { elevation: 2 },
-    }),
   },
   headerRow: {
     flexDirection: 'row',
@@ -210,7 +200,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: tokens.colors.text,
+    color: tokens.colors.textOnBrand,
     letterSpacing: -0.3,
   },
   scroll: {
@@ -229,11 +219,12 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...tokens.typography.body,
-    color: tokens.colors.textSecondary,
+    color: tokens.colors.textMutedOnBrand,
   },
   card: {
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
+    backgroundColor: 'transparent',
   },
   sectionHead: {
     flexDirection: 'row',
@@ -248,9 +239,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconWrapEmerald: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },
-  iconWrapSky: { backgroundColor: 'rgba(37, 99, 235, 0.18)' },
-  iconWrapRose: { backgroundColor: 'rgba(225, 29, 72, 0.18)' },
+  iconWrapEmerald: { backgroundColor: tokens.colors.shellIconBtn },
+  iconWrapSky: { backgroundColor: tokens.colors.shellIconBtn },
+  iconWrapRose: { backgroundColor: tokens.colors.shellIconBtn },
   sectionHeadText: {
     flex: 1,
     justifyContent: 'center',
@@ -258,29 +249,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: tokens.colors.text,
+    color: tokens.colors.textOnBrand,
     letterSpacing: -0.2,
   },
   sectionHint: {
     fontSize: 12,
     fontWeight: '500',
-    color: tokens.colors.textMuted,
+    color: tokens.colors.textMutedOnBrand,
     marginTop: 2,
-  },
-  sectionEmerald: {
-    backgroundColor: tokens.colors.filterBgEmerald,
-    borderWidth: 1,
-    borderColor: tokens.colors.filterBorderEmerald,
-  },
-  sectionSky: {
-    backgroundColor: tokens.colors.filterBgSky,
-    borderWidth: 1,
-    borderColor: tokens.colors.filterBorderSky,
-  },
-  sectionRose: {
-    backgroundColor: tokens.colors.filterBgRose,
-    borderWidth: 1,
-    borderColor: tokens.colors.filterBorderRose,
   },
   btnStack: {
     gap: 10,

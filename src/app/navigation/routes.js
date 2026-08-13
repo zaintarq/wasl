@@ -5,6 +5,7 @@ export const Routes = {
 
   TabHome: 'Home',
   TabMatches: 'Matches',
+  TabSocial: 'Social',
   TabChat: 'Chat',
   TabProfile: 'Profile',
   TabLive: 'LiveRandom',
@@ -25,9 +26,12 @@ export const Routes = {
   Contacts: 'Contacts',
   BlockedUsers: 'BlockedUsers',
   Verification: 'Verification',
+  AgeCheck: 'AgeCheck',
   Staff: 'Staff',
   Filters: 'Filters',
   SelectCountry: 'SelectCountry',
+  Notifications: 'Notifications',
+  GamePlay: 'GamePlay',
 };
 
 

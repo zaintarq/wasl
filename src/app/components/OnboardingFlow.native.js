@@ -18,7 +18,7 @@ import { detectCountryCity } from '../../services/locationService.native.js';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 import { ArrowLeft } from 'lucide-react-native';
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradient, brandUnderlineGradient } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { COUNTRIES } from '../../utils/countries';
@@ -31,9 +31,10 @@ const WRONG_PASSWORD_IMG = require('../../../assets/images/wrong-password.png');
 /** Same stop-touching art as Home header press (transparent BG — not .bak) */
 const STOP_TOUCHING_WRONGPW_IMG = require('../../../assets/images/stop-touching.png');
 
-const WELCOME_BG = ['#F8FAFC', '#EFF6FF', '#DBEAFE'];
-const WELCOME_BG_LOCATIONS = [0, 0.45, 1];
-const WELCOME_BG_FALLBACK = '#EFF6FF';
+const WELCOME_BG = brandShellGradient;
+const WELCOME_BG_LOCATIONS = [0, 1];
+const WELCOME_BG_FALLBACK = tokens.colors.bg;
+const BRAND_UNDERLINE = brandUnderlineGradient;
 
 /** Step 2 only — auth (email / OTP / password). Match prefs → Settings. */
 
@@ -640,7 +641,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                   </Text>
                   <View style={styles.step2UnderlineTrack}>
                     <LinearGradient
-                      colors={['#1D4ED8', '#2563EB', '#3B82F6']}
+                      colors={BRAND_UNDERLINE}
                       start={{ x: 0, y: 0.5 }}
                       end={{ x: 1, y: 0.5 }}
                       style={StyleSheet.absoluteFill}
@@ -733,7 +734,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                 </Text>
                 <View style={styles.step2UnderlineTrack}>
                   <LinearGradient
-                    colors={['#1D4ED8', '#2563EB', '#3B82F6']}
+                    colors={BRAND_UNDERLINE}
                     start={{ x: 0, y: 0.5 }}
                     end={{ x: 1, y: 0.5 }}
                     style={StyleSheet.absoluteFill}
@@ -1061,7 +1062,7 @@ const styles = StyleSheet.create({
   step2Huzz: {
     fontSize: 44,
     letterSpacing: 0.5,
-    color: '#1c1917',
+    color: tokens.colors.textOnBrand,
   },
   step2UnderlineTrack: {
     marginTop: 6,
@@ -1073,11 +1074,11 @@ const styles = StyleSheet.create({
   },
   step2ScreenTitle: {
     textAlign: 'center',
-    color: '#111827',
+    color: tokens.colors.textOnBrand,
   },
   step2ScreenSub: {
     textAlign: 'center',
-    color: '#475569',
+    color: tokens.colors.textMutedOnBrand,
     marginBottom: 18,
   },
   step2OtpInput: {
@@ -1092,7 +1093,7 @@ const styles = StyleSheet.create({
   },
   step2ResendText: {
     fontSize: 16,
-    color: '#2563EB',
+    color: tokens.colors.textOnBrand,
     textDecorationLine: 'underline',
   },
   step2ForgotWrap: {
@@ -1102,32 +1103,22 @@ const styles = StyleSheet.create({
   },
   step2ForgotText: {
     fontSize: 15,
-    color: '#2563EB',
+    color: tokens.colors.textOnBrand,
     textDecorationLine: 'underline',
   },
   step2Card: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'transparent',
     borderRadius: 22,
     padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(37, 99, 235, 0.18)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0f172a',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-      },
-      android: { elevation: 4 },
-    }),
+    borderWidth: 0,
   },
   step2Label: {
     marginBottom: 6,
-    color: '#0f172a',
+    color: tokens.colors.textOnBrand,
   },
   step2Hint: {
     fontSize: 13,
-    color: '#64748b',
+    color: tokens.colors.textMutedOnBrand,
     marginTop: 6,
     marginBottom: 4,
   },
@@ -1195,7 +1186,7 @@ const styles = StyleSheet.create({
     height: 12,
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1.5,
-    borderColor: 'rgba(37, 99, 235, 0.28)',
+    borderColor: 'rgba(255,255,255,0.45)',
     borderRadius: 999,
     marginHorizontal: 16,
     marginTop: 4,
@@ -1204,7 +1195,7 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#2563EB',
+    backgroundColor: '#FFFFFF',
     borderRadius: 999,
   },
   scrollView: {
@@ -1409,9 +1400,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   islamicNote: {
-    backgroundColor: 'rgba(239, 246, 255, 0.9)',
+    backgroundColor: 'rgba(255, 241, 246, 0.95)',
     borderWidth: 1.5,
-    borderColor: 'rgba(37, 99, 235, 0.22)',
+    borderColor: 'rgba(237, 66, 146, 0.28)',
     borderRadius: 14,
     padding: 16,
     marginTop: 8,
@@ -1420,7 +1411,7 @@ const styles = StyleSheet.create({
   islamicNoteTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#1D4ED8',
+    color: tokens.colors.brandPinkDeep,
     marginBottom: 8,
   },
   islamicNoteText: {

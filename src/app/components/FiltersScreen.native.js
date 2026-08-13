@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, ChevronRight, Globe2 } from 'lucide-react-native';
 import * as Location from 'expo-location';
 
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { authService, userService } from '../../services/firebaseService';
@@ -121,7 +121,7 @@ export function FiltersScreen({ onNavigate }) {
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={['#FFF5F7', '#EFF6FF', '#F0FDFA']}
+        colors={brandShellGradientSoft}
         locations={[0, 0.45, 1]}
         style={StyleSheet.absoluteFill}
       />

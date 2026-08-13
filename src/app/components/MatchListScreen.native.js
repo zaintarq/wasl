@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, FlatList, Alert } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { MessageCircle } from 'lucide-react-native';
-import { authService, matchService, userService } from '../../services/firebaseService';
+import { authService, matchService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
+import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { MainBottomNav, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
@@ -26,8 +28,16 @@ export function MatchListScreen({ onNavigate }) {
   const [matches, setMatches] = useState([]);
   const [usersById, setUsersById] = useState({});
   const [bottomNavH, setBottomNavH] = useState(0);
+  const [myProfile, setMyProfile] = useState(null);
+  const [roleCheck, setRoleCheck] = useState(null);
 
   const meUid = authService.getCurrentUser()?.uid || null;
+
+  useEffect(() => {
+    if (!meUid) return;
+    userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
+    checkUserRoleFromAdminCollection(meUid).then(setRoleCheck).catch(() => {});
+  }, [meUid]);
 
   useEffect(() => {
     const authUser = authService.getCurrentUser();
@@ -82,6 +92,7 @@ export function MatchListScreen({ onNavigate }) {
   const openChat = async (match, otherUid, status) => {
     const uid = authService.getCurrentUser()?.uid;
     if (!uid || !otherUid) return;
+    if (blockIfAgeNotVerified(myProfile, onNavigate, roleCheck)) return;
     if (status === 'pending') {
       await matchService.createActiveMatch(uid, otherUid, { initiatedBy: uid });
     }
@@ -126,7 +137,7 @@ export function MatchListScreen({ onNavigate }) {
         <LiveContentWidth style={styles.emptyWrap}>
           <View style={styles.empty}>
             <View style={styles.emptyIcon}>
-              <MessageCircle size={36} color={tokens.colors.textMuted} strokeWidth={1.5} />
+              <MessageCircle size={36} color={tokens.colors.textOnBrand} strokeWidth={1.5} />
             </View>
             <LiveText style={styles.emptyTitle}>No chats yet</LiveText>
             <LiveText style={styles.emptyText}>
@@ -140,8 +151,8 @@ export function MatchListScreen({ onNavigate }) {
         <LiveRetroButton
           variant="primary"
           onPress={() => onNavigate('home')}
-          style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
-          textStyle={welcomeButtonStyles.welcomeBtnLabel}
+              style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+              textStyle={welcomeButtonStyles.welcomeBtnLabel}
         >
           Find people on Home
         </LiveRetroButton>
@@ -224,7 +235,7 @@ export function MatchListScreen({ onNavigate }) {
           }}
         />
 
-        <MainBottomNav active="matches" onNavigate={onNavigate} onLayout={setBottomNavH} />
+        <MainBottomNav active="chats" onNavigate={onNavigate} onLayout={setBottomNavH} />
       </LiveTypographyProvider>
     </SafeAreaView>
   );
@@ -238,35 +249,17 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    ...shellStyles.header,
     paddingHorizontal: LIVE_SCREEN_GUTTER,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surface,
   },
-  headerSide: { width: 70 },
-  title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
+  headerSide: shellStyles.headerSide,
+  title: shellStyles.headerTitle,
   section: { marginBottom: 4 },
-  sectionTitle: {
-    ...tokens.typography.caption,
-    color: tokens.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
+  sectionTitle: shellStyles.sectionTitle,
   skeletonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    marginBottom: 10,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
+    ...shellStyles.listRow,
+    paddingHorizontal: 14,
   },
   skeletonAvatar: {
     width: 52,
@@ -274,35 +267,10 @@ const styles = StyleSheet.create({
     borderRadius: 26,
   },
   emptyWrap: { marginBottom: tokens.spacing.lg },
-  empty: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 16,
-    backgroundColor: tokens.colors.surface,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: tokens.colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    ...tokens.typography.titleSmall,
-    color: tokens.colors.text,
-    marginBottom: 6,
-  },
-  emptyText: {
-    ...tokens.typography.bodySmall,
-    color: tokens.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+  empty: shellStyles.emptyBlock,
+  emptyIcon: shellStyles.emptyIcon,
+  emptyTitle: shellStyles.emptyTitle,
+  emptyText: shellStyles.emptyText,
   ctaStack: { marginBottom: tokens.spacing.md },
   cta: { width: '100%' },
   unmatchAction: {

@@ -17,5 +17,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: tokens.maxContentWidth,
     alignSelf: 'center',
+    paddingHorizontal: LIVE_SCREEN_GUTTER,
   },
 });

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Mehram Supervision — Huzz</title>
+  <link rel="icon" href="assets/icon-512.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f0f9ff;
+      --surface: #fff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --blue: #0ea5e9;
+      --blue-deep: #0284c7;
+      --shield: #1da1f2;
+      --max: 480px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      font-family: Inter, system-ui, sans-serif;
+      background: linear-gradient(180deg, #e0f2fe 0%, #f8fafc 100%);
+      color: var(--text);
+    }
+    .shell {
+      max-width: var(--max);
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+    .top {
+      padding: max(16px, env(safe-area-inset-top)) 16px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.08);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--blue-deep);
+      background: rgba(14, 165, 233, 0.12);
+      padding: 6px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; }
+    .sub { font-size: 0.88rem; color: var(--muted); line-height: 1.45; }
+    .participants {
+      margin-top: 10px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .messages {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .msg {
+      max-width: 88%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .msg-theirs { align-self: flex-start; background: #fff; border: 1px solid var(--border); }
+    .msg-girl { align-self: flex-end; background: #8b5cf6; color: #fff; }
+    .msg-guy { align-self: flex-start; background: #f1f5f9; }
+    .msg-mehram {
+      align-self: flex-start;
+      background: rgba(14, 165, 233, 0.12);
+      border: 1px solid rgba(14, 165, 233, 0.35);
+    }
+    .msg-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--blue-deep);
+      margin-bottom: 4px;
+    }
+    .msg-meta { font-size: 0.68rem; opacity: 0.65; margin-top: 4px; }
+    .composer-wrap {
+      padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    .view-only {
+      text-align: center;
+      padding: 14px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.5;
+      background: #f8fafc;
+      border-radius: 12px;
+    }
+    .composer {
+      display: flex;
+      gap: 8px;
+    }
+    .composer input {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-size: 0.95rem;
+    }
+    .composer button, .actions button {
+      border: none;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.88rem;
+    }
+    .send-btn { background: var(--blue); color: #fff; }
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .actions .outline {
+      background: #fff;
+      border: 1.5px solid var(--border);
+      color: var(--text);
+    }
+    .actions .danger {
+      background: rgba(239, 68, 68, 0.1);
+      color: #dc2626;
+    }
+    .center {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 360px;
+    }
+    .card h2 { margin-bottom: 8px; }
+    .card p { color: var(--muted); line-height: 1.55; font-size: 0.92rem; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div id="loadingView" class="center">
+      <div class="card">
+        <h2>Opening supervision…</h2>
+        <p>Verifying your secure invitation link.</p>
+      </div>
+    </div>
+
+    <div id="errorView" class="center hidden">
+      <div class="card">
+        <h2>Mehram access has ended</h2>
+        <p id="errorText">The person who invited you has removed your access or the invitation has expired.</p>
+      </div>
+    </div>
+
+    <div id="appView" class="hidden" style="display:flex;flex-direction:column;flex:1;">
+      <header class="top">
+        <div class="badge">🛡️ Mehram Supervision</div>
+        <h1>Supervising conversation</h1>
+        <p class="sub" id="superviseLine">Loading…</p>
+        <p class="participants" id="participantsLine"></p>
+      </header>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="composer-wrap">
+        <div id="viewOnlyBox" class="view-only hidden">
+          👁 You are viewing this conversation as a Mehram.<br />
+          Replying is disabled by <span id="girlNameInline">her</span>.
+        </div>
+        <div id="composerBox" class="hidden">
+          <div class="composer">
+            <input id="msgInput" type="text" maxlength="2000" placeholder="Message as Mehram…" />
+            <button class="send-btn" id="sendBtn" type="button">Send</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="outline" type="button" id="reportBtn">Block / Report</button>
+          <button class="outline" type="button" id="leaveBtn">Leave session</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+    import { getAuth, signInWithCustomToken, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+    import { getFirestore, collection, query, orderBy, onSnapshot, doc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
+
+    const firebaseConfig = {
+      apiKey: 'AIzaSyB_k9w2F0I591-8mUyuHr_5B-TVQea0Tfo',
+      authDomain: 'huzz-10264.firebaseapp.com',
+      projectId: 'huzz-10264',
+      storageBucket: 'huzz-10264.firebasestorage.app',
+      messagingSenderId: '19254029866',
+      appId: '1:19254029866:web:fe891e5819c8c94c589d53',
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const functions = getFunctions(app, 'us-central1');
+
+    const loadingView = document.getElementById('loadingView');
+    const errorView = document.getElementById('errorView');
+    const appView = document.getElementById('appView');
+    const errorText = document.getElementById('errorText');
+    const messagesEl = document.getElementById('messages');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const viewOnlyBox = document.getElementById('viewOnlyBox');
+    const composerBox = document.getElementById('composerBox');
+    const superviseLine = document.getElementById('superviseLine');
+    const participantsLine = document.getElementById('participantsLine');
+    const girlNameInline = document.getElementById('girlNameInline');
+
+    let session = null;
+    let permission = 'view';
+    let unsubMessages = null;
+    let unsubAccess = null;
+
+    function showError(msg) {
+      loadingView.classList.add('hidden');
+      appView.classList.add('hidden');
+      errorView.classList.remove('hidden');
+      errorText.textContent = msg || errorText.textContent;
+    }
+
+    function showApp() {
+      loadingView.classList.add('hidden');
+      errorView.classList.add('hidden');
+      appView.classList.remove('hidden');
+      appView.style.display = 'flex';
+    }
+
+    function fmtTime(ts) {
+      if (!ts) return '';
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderMessages(list, girlUid, guyUid) {
+      messagesEl.innerHTML = '';
+      list.forEach((m) => {
+        const wrap = document.createElement('div');
+        const isMehram = m.senderType === 'mehram';
+        const isGirl = !isMehram && m.fromUid === girlUid;
+        const isGuy = !isMehram && m.fromUid === guyUid;
+        let cls = 'msg msg-theirs';
+        if (isMehram) cls = 'msg msg-mehram';
+        else if (isGirl) cls = 'msg msg-girl';
+        else if (isGuy) cls = 'msg msg-guy';
+
+        if (isMehram) {
+          const label = document.createElement('div');
+          label.className = 'msg-label';
+          label.textContent = `👤 ${session.girlDisplayName}'s Mehram`;
+          wrap.appendChild(label);
+        }
+
+        const bubble = document.createElement('div');
+        bubble.className = cls;
+        const body = m.type === 'voice' ? '🎙️ Voice note' : (m.deletedAt ? 'Message deleted' : String(m.text || ''));
+        bubble.innerHTML = `${body}<div class="msg-meta">${fmtTime(m.createdAt)}</div>`;
+        wrap.appendChild(bubble);
+        messagesEl.appendChild(wrap);
+      });
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function applyPermission() {
+      if (permission === 'reply') {
+        viewOnlyBox.classList.add('hidden');
+        composerBox.classList.remove('hidden');
+      } else {
+        composerBox.classList.add('hidden');
+        viewOnlyBox.classList.remove('hidden');
+      }
+    }
+
+    function getTokenFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get('t');
+      if (q) return q;
+      const hash = String(window.location.hash || '').replace(/^#/, '');
+      if (hash.startsWith('t=')) return decodeURIComponent(hash.slice(2));
+      return '';
+    }
+
+    async function bootstrap() {
+      const token = getTokenFromUrl();
+      if (!token) {
+        showError('This invitation link is missing or invalid.');
+        return;
+      }
+
+      try {
+        const exchange = httpsCallable(functions, 'exchangeMehramToken');
+        const { data } = await exchange({ token });
+        session = data;
+        permission = data.permission === 'reply' ? 'reply' : 'view';
+
+        await signInWithCustomToken(auth, data.customToken);
+
+        superviseLine.textContent = `${data.girlDisplayName}'s conversation`;
+        participantsLine.textContent = `${data.girlDisplayName} ↔ ${data.guyDisplayName}`;
+        girlNameInline.textContent = data.girlDisplayName;
+        applyPermission();
+        showApp();
+
+        const girlUid = data.girlUserId || '';
+        const guyUid = data.guyUserId || '';
+
+        const qRef = query(
+          collection(db, 'matches', data.matchId, 'messages'),
+          orderBy('createdAt', 'asc')
+        );
+        unsubMessages = onSnapshot(qRef, (snap) => {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          renderMessages(list, girlUid, guyUid);
+        }, () => {
+          showError('Mehram access has ended.');
+        });
+
+        const accessRef = doc(db, 'mehramAccess', data.accessId);
+        unsubAccess = onSnapshot(accessRef, (snap) => {
+          if (!snap.exists()) {
+            showError('Mehram access has ended.');
+            return;
+          }
+          const access = snap.data();
+          if (access.status !== 'active') {
+            showError('Mehram access has ended. The person who invited you has removed your access or the invitation has expired.');
+            return;
+          }
+          permission = access.permission === 'reply' ? 'reply' : 'view';
+          applyPermission();
+        });
+
+        setInterval(() => {
+          httpsCallable(functions, 'mehramHeartbeat')({}).catch(() => {});
+        }, 60000);
+      } catch (e) {
+        showError(e?.message || 'Mehram access has ended.');
+      }
+    }
+
+    sendBtn.addEventListener('click', async () => {
+      const text = String(msgInput.value || '').trim();
+      if (!text || !session || permission !== 'reply') return;
+      sendBtn.disabled = true;
+      try {
+        const { addDoc, serverTimestamp, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js');
+        await addDoc(collection(db, 'matches', session.matchId, 'messages'), {
+          fromUid: session.girlUserId,
+          senderType: 'mehram',
+          mehramAccessId: session.accessId,
+          type: 'text',
+          text,
+          replyTo: null,
+          reactions: {},
+          editedAt: null,
+          deletedAt: null,
+          readAt: null,
+          createdAt: serverTimestamp(),
+          moderation: { flagged: false },
+        });
+        await updateDoc(doc(db, 'matches', session.matchId), {
+          lastMessageAt: serverTimestamp(),
+          lastMessageText: text,
+        });
+        msgInput.value = '';
+      } catch (e) {
+        alert(e?.message || 'Could not send message.');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    });
+
+    document.getElementById('reportBtn').addEventListener('click', async () => {
+      if (!confirm('Block and report this user on her behalf?')) return;
+      try {
+        await httpsCallable(functions, 'mehramBlockGuy')({});
+        showError('User blocked. Supervision session ended.');
+      } catch (e) {
+        alert(e?.message || 'Could not block.');
+      }
+    });
+
+    document.getElementById('leaveBtn').addEventListener('click', async () => {
+      try {
+        await httpsCallable(functions, 'mehramLeaveSession')({});
+      } catch {}
+      showError('You left the supervision session.');
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (unsubMessages) unsubMessages();
+      if (unsubAccess) unsubAccess();
+    });
+
+    bootstrap();
+  </script>
+</body>
+</html>

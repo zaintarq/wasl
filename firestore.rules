@@ -52,6 +52,20 @@ service cloud.firestore {
         );
     }
 
+    function isPendingMatchParty() {
+      return isSignedIn()
+        && !isDisabled()
+        && resource.data.status == 'pending'
+        && (
+          resource.data.requestedTo == request.auth.uid
+          || resource.data.requestedBy == request.auth.uid
+        );
+    }
+
+    function canListMatch() {
+      return isMatchParticipant() || isPendingMatchParty();
+    }
+
     // Helper: can user send messages in this match? (match doc must exist and be active)
     function canSendMessageInMatch(matchId) {
       let path = /databases/$(database)/documents/matches/$(matchId);
@@ -214,6 +228,41 @@ service cloud.firestore {
 
         allow get, list, update, delete: if isOwner(uid);
       }
+
+      // Story "seen" markers — viewer tracks which authors they finished watching.
+      match /storySeen/{authorUid} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Ephemeral user stories (24h). Online users post via app; all signed-in users can read active stories.
+    match /stories/{storyId} {
+      allow read: if isSignedIn() && !isDisabled();
+
+      allow create: if isSignedIn()
+        && !isDisabled()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.mediaUrl is string
+        && request.resource.data.mediaUrl.size() > 8
+        && request.resource.data.mediaType == 'image'
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time;
+
+      allow delete: if isSignedIn()
+        && !isDisabled()
+        && resource.data.userId == request.auth.uid;
+
+      allow update: if false;
+    }
+
+    // Multiplayer game rooms (Phase 2 glue — created by getGameLaunchSession).
+    match /gameRooms/{roomId} {
+      allow read: if isSignedIn()
+        && !isDisabled()
+        && request.auth.uid in resource.data.uids;
+
+      allow create, update: if false;
+      allow delete: if false;
     }
 
     // Matches
@@ -240,11 +289,11 @@ service cloud.firestore {
           )
         );
 
-      // List queries must match participant constraint (array-contains on uids in client)
+      // List: participant in uids[] (array-contains queries)
       allow list: if isSignedIn() && !isDisabled() && isMatchParticipant();
       // Allow get when doc doesn't exist (so client can check before create) or when user is participant/admin
       allow get: if !exists(/databases/$(database)/documents/matches/$(matchId))
-        || isMatchParticipant()
+        || isMatchParticipantOrRequestParty()
         || isAdmin();
       // Participants can update match docs (status, lastMessageAt, typing, etc.)
       allow update: if isMatchParticipantOrRequestParty() || isAdmin();

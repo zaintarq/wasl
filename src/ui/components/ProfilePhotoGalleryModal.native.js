@@ -12,6 +12,7 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tokens } from '../tokens';
+import { PhotoProgressBars } from './discovery/design2/PhotoProgressBars.native';
 
 /**
  * Full-screen horizontal gallery for profile photos (swipe between images, pinch-friendly area).
@@ -86,9 +87,9 @@ export function ProfilePhotoGalleryModal({ visible, uris, initialIndex = 0, onCl
     >
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={[styles.header, { height: headerH }]}>
-          <Text style={styles.counter}>
-            {page + 1} / {list.length}
-          </Text>
+          <View style={styles.headerProgress}>
+            <PhotoProgressBars total={list.length} activeIndex={page} />
+          </View>
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={12}>
             <Text style={styles.closeText}>Done</Text>
           </Pressable>
@@ -162,12 +163,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
+    gap: 8,
   },
-  counter: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
+  headerProgress: {
+    flex: 1,
+    paddingTop: 4,
   },
   closeBtn: {
     paddingVertical: 8,

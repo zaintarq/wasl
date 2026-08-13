@@ -40,15 +40,6 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { sendExpoPushAsync } from './pushService';
 import { scanMessageText } from './moderationService';
 import { sha256 } from '../utils/hash.native';
-// Import new services
-import { activityService } from './activityService';
-import { vpnDetectionService } from './vpnDetectionService';
-import { userApprovalService } from './userApprovalService';
-import { suspiciousAccountService } from './suspiciousAccountService';
-import { matchAnalyticsService } from './matchAnalyticsService';
-import { contentModerationService } from './contentModerationService';
-import { auditLogService } from './auditLogService';
-import { exportService } from './exportService';
 import { translateChatMessage } from './translateChatMessage';
 
 /**
@@ -154,6 +145,9 @@ export const authService = {
         matchCountry: userData.matchCountry || userData.country || userData.countryOfResidence || '',
         emailVerified: userData.emailVerified !== undefined ? !!userData.emailVerified : !!user.emailVerified,
         profileComplete: userData.profileComplete !== undefined ? !!userData.profileComplete : false, // New users start with false
+        ageChecked18Plus: userData.ageChecked18Plus === true,
+        ageCheckMethod: userData.ageCheckMethod || null,
+        ageCheckProvider: userData.ageCheckProvider || null,
         // role is NOT stored in users collection - it's only in the admin collection
         // role: userData.role || 'user', // REMOVED - use admin collection
         approvalStatus: userData.approvalStatus || 'approved', // Auto-approved by default
@@ -407,6 +401,14 @@ export const authService = {
     return auth.currentUser;
   },
 
+  /** Wait until Firestore auth token is ready (avoids permission-denied race on cold start). */
+  async ensureAuthReady() {
+    const user = auth.currentUser;
+    if (!user) return null;
+    await user.getIdToken();
+    return user;
+  },
+
   // Listen to auth state changes
   onAuthStateChange(callback) {
     return onAuthStateChanged(auth, callback);
@@ -556,7 +558,7 @@ export const userService = {
   },
 
   // Update user location (country/city only; no coordinates).
-  async updateMyLocation(userId, { country = '', city = '', locationPermission = 'undetermined' } = {}) {
+  async updateMyLocation(userId, { country = '', city = '', locationPermission = 'undetermined', locationSetupComplete } = {}) {
     try {
       const c = String(country || '').trim();
       const cityName = String(city || '').trim();
@@ -564,6 +566,7 @@ export const userService = {
         locationPermission: String(locationPermission || 'undetermined'),
         locationUpdatedAt: serverTimestamp(),
       };
+      if (locationSetupComplete === true) payload.locationSetupComplete = true;
       if (c) {
         payload.country = c;
         payload.countryOfResidence = c; // legacy compatibility
@@ -803,6 +806,24 @@ export const matchService = {
 
   async listMyMatches(uid) {
     try {
+      await authService.ensureAuthReady();
+      try {
+        const functions = getFunctions(app, 'us-central1');
+        const { data } = await httpsCallable(functions, 'webListMatches')({});
+        const matches = (data?.matches || []).map((m) => ({
+          id: m.id,
+          uids: m.uids,
+          status: m.status,
+          requestedBy: m.requestedBy,
+          requestedTo: m.requestedTo,
+          lastMessageText: m.lastMessageText,
+          lastMessageAt: m.lastMessageAt,
+          createdAt: m.createdAt,
+        }));
+        return { data: matches, error: null };
+      } catch (callableErr) {
+        console.warn('[matchService] webListMatches fallback:', callableErr?.message || callableErr);
+      }
       const qRef = query(collection(db, COL.matches), where('uids', 'array-contains', String(uid)));
       const snap = await getDocs(qRef);
       const matches = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -820,42 +841,58 @@ export const matchService = {
 
   /** Real-time listener for match list – updates when match status or messages change */
   listenMyMatches(uid, callback) {
-    const qRef = query(collection(db, COL.matches), where('uids', 'array-contains', String(uid)));
-    return onSnapshot(
-      qRef,
-      (snap) => {
-        const matches = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        matches.sort((a, b) => {
-          const at = a?.lastMessageAt?.toMillis?.() || a?.createdAt?.toMillis?.() || 0;
-          const bt = b?.lastMessageAt?.toMillis?.() || b?.createdAt?.toMillis?.() || 0;
-          return bt - at;
-        });
-        callback({ data: matches, error: null });
-      },
-      (error) => callback({ data: [], error: error?.message || String(error) })
-    );
+    let unsub = () => {};
+    let cancelled = false;
+    authService
+      .ensureAuthReady()
+      .then(() => {
+        if (cancelled) return;
+        const qRef = query(collection(db, COL.matches), where('uids', 'array-contains', String(uid)));
+        unsub = onSnapshot(
+          qRef,
+          (snap) => {
+            const matches = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            matches.sort((a, b) => {
+              const at = a?.lastMessageAt?.toMillis?.() || a?.createdAt?.toMillis?.() || 0;
+              const bt = b?.lastMessageAt?.toMillis?.() || b?.createdAt?.toMillis?.() || 0;
+              return bt - at;
+            });
+            callback({ data: matches, error: null });
+          },
+          (error) => callback({ data: [], error: error?.message || String(error) })
+        );
+      })
+      .catch((error) => callback({ data: [], error: error?.message || String(error) }));
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   },
 
-  // Real-time listener for pending match requests where user is the receiver
+  // Pending match requests for the signed-in user (receiver). Uses server callable — avoids Firestore list rule issues.
   listenPendingMatchRequests(uid, callback) {
-    try {
-      const qRef = query(
-        collection(db, COL.matches),
-        where('requestedTo', '==', String(uid)),
-        where('status', '==', 'pending')
-      );
-      return onSnapshot(
-        qRef,
-        (snap) => {
-          const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          callback({ data: requests, error: null });
-        },
-        (error) => callback({ data: [], error: error.message })
-      );
-    } catch (error) {
-      callback({ data: [], error: error.message });
-      return () => {}; // Return no-op unsubscribe
-    }
+    let stopped = false;
+    let timer = null;
+
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        await authService.ensureAuthReady();
+        const functions = getFunctions(app, 'us-central1');
+        const { data } = await httpsCallable(functions, 'nativeListPendingMatchRequests')({});
+        if (!stopped) callback({ data: data?.requests || [], error: null });
+      } catch (error) {
+        if (!stopped) callback({ data: [], error: error?.message || String(error) });
+      }
+    };
+
+    poll();
+    timer = setInterval(poll, 12000);
+
+    return () => {
+      stopped = true;
+      if (timer) clearInterval(timer);
+    };
   },
 
   // Reject a pending match request

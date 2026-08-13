@@ -68,12 +68,15 @@ exports.webListMatches = functions.region('us-central1').https.onCall(async (_da
         id: d.id,
         uids: Array.isArray(m.uids) ? m.uids : [],
         status: String(m.status || 'active'),
+        requestedBy: String(m.requestedBy || ''),
+        requestedTo: String(m.requestedTo || ''),
         lastMessageText: String(m.lastMessageText || ''),
         lastMessageAt: m.lastMessageAt?.toMillis?.() || m.createdAt?.toMillis?.() || 0,
         createdAt: m.createdAt?.toMillis?.() || 0,
+        createdAtRaw: m.createdAt || null,
+        lastMessageAtRaw: m.lastMessageAt || null,
       };
     })
-    .filter((m) => m.status === 'active' || !m.status)
     .sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
 
   const otherUids = [...new Set(matches.map((m) => m.uids.find((u) => u !== uid)).filter(Boolean))];
@@ -86,6 +89,19 @@ exports.webListMatches = functions.region('us-central1').https.onCall(async (_da
   );
 
   return { matches, users };
+});
+
+/** Pending match requests where the signed-in user must approve. */
+exports.nativeListPendingMatchRequests = functions.region('us-central1').https.onCall(async (_data, context) => {
+  const uid = await assertSignedIn(context);
+  const snap = await db
+    .collection('matches')
+    .where('requestedTo', '==', uid)
+    .where('status', '==', 'pending')
+    .get();
+  return {
+    requests: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+  };
 });
 
 exports.webListClubs = functions.region('us-central1').https.onCall(async (_data, context) => {

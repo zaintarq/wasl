@@ -2063,6 +2063,126 @@ exports.clearAppUpdateAlert = functions.region('us-central1').https.onCall(async
   return { cleared: true };
 });
 
+const GAME_IDS = new Set(['ludo', 'chess', 'solitaire', 'hearts', 'puzzle', 'snake']);
+
+const MULTIPLAYER_GAME_IDS = new Set(['chess', 'ludo', 'cards', 'hearts']);
+const SOLO_GAME_IDS = new Set(['solitaire', 'puzzle', 'snake']);
+
+function getGamesClientConfig() {
+  const clientUrl = String(process.env.GAMES_CLIENT_URL || process.env.EXPO_PUBLIC_GAMES_CLIENT_URL || '').trim();
+  const wsUrl = String(process.env.COLYSEUS_WS_URL || process.env.EXPO_PUBLIC_COLYSEUS_WS_URL || '').trim();
+  return { clientUrl: clientUrl.replace(/\/+$/, ''), wsUrl };
+}
+
+function signGameSessionToken(payload, secret) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+exports.getGameLaunchSession = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+
+  const uid = context.auth.uid;
+  const gameId = String(data?.gameId || '').trim().toLowerCase();
+  if (!gameId || !GAME_IDS.has(gameId)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Unknown or missing gameId.');
+  }
+
+  const opponentUid = data?.opponentUid ? String(data.opponentUid).trim() : null;
+  let roomId = data?.roomId ? String(data.roomId).trim() : null;
+  let opponentName = null;
+
+  const meSnap = await db.collection(COL.users).doc(uid).get();
+  const me = meSnap.exists ? meSnap.data() || {} : {};
+  const playerName = String(me.name || me.displayName || 'Player').trim() || 'Player';
+
+  if (opponentUid) {
+    const oppSnap = await db.collection(COL.users).doc(opponentUid).get();
+    if (oppSnap.exists) {
+      const opp = oppSnap.data() || {};
+      opponentName = String(opp.name || opp.displayName || '').trim() || null;
+    }
+  }
+
+  if (!roomId) {
+    roomId = crypto.randomBytes(8).toString('hex');
+    await db
+      .collection('gameRooms')
+      .doc(roomId)
+      .set(
+        {
+          gameId,
+          uids: opponentUid ? [uid, opponentUid] : [uid],
+          hostUid: uid,
+          opponentUid: opponentUid || null,
+          status: 'open',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+  }
+
+  const sessionSecret = String(process.env.GAME_SESSION_SECRET || '').trim();
+  const { clientUrl, wsUrl } = getGamesClientConfig();
+  const isSolo = SOLO_GAME_IDS.has(gameId);
+
+  if (!sessionSecret) {
+    return {
+      demoMode: true,
+      roomId,
+      gameId,
+      opponentUid,
+      opponentName,
+      reason: 'missing_session_secret',
+    };
+  }
+
+  if (!clientUrl) {
+    return {
+      demoMode: true,
+      roomId,
+      gameId,
+      opponentUid,
+      opponentName,
+      reason: 'missing_games_client_url',
+    };
+  }
+
+  const exp = Math.floor(Date.now() / 1000) + 15 * 60;
+  const token = signGameSessionToken(
+    { uid, gameId, roomId, opponentUid, exp, name: playerName },
+    sessionSecret
+  );
+
+  const params = new URLSearchParams({
+    game: gameId,
+    roomId,
+    token,
+    uid,
+    name: playerName,
+  });
+  if (wsUrl) params.set('wsUrl', wsUrl);
+  if (opponentName) params.set('opponentName', opponentName);
+  if (isSolo) params.set('solo', '1');
+
+  return {
+    demoMode: false,
+    launchUrl: `${clientUrl}/?${params.toString()}`,
+    colyseusWsUrl: wsUrl || null,
+    roomId,
+    gameId,
+    opponentUid,
+    opponentName,
+    playerName,
+    multiplayer: MULTIPLAYER_GAME_IDS.has(gameId),
+    expiresAt: exp,
+  };
+});
+
 Object.assign(exports, require('./mehram'));
 Object.assign(exports, require('./zoivera'));
 Object.assign(exports, require('./webClient'));

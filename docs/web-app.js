@@ -41,6 +41,13 @@ function getPrefs(user) {
   return Array.isArray(raw) ? raw.map(String) : [];
 }
 
+function isAgeVerified(profile) {
+  return profile?.ageChecked18Plus === true;
+}
+
+const AGE_VERIFY_HOST =
+  'https://us-central1-huzz-10264.cloudfunctions.net/ageVerifyPage';
+
 function filterCandidate(me, candidate, swiped, blocked) {
   const uid = String(candidate?.id || candidate?.uid || '');
   const myUid = String(me?.id || me?.uid || '');
@@ -319,6 +326,64 @@ export function createWebApp(ctx) {
     }
   }
 
+  // ─── Age verification ───────────────────────────────────────────────────
+
+  function ageVerifyBannerHtml() {
+    return `
+      <div class="card age-banner">
+        <strong>Verify you're 18+</strong>
+        <p class="sub">Quick face scan unlocks likes, matches, chat, live, and clubs.</p>
+        <button type="button" class="btn btn-primary" id="goAgeVerify">Verify now</button>
+      </div>`;
+  }
+
+  function renderAgeVerify(user, gen) {
+    clearListeners();
+    chatMatchId = null;
+    clubRoomId = null;
+    const url = `${AGE_VERIFY_HOST}?uid=${encodeURIComponent(user.uid)}&t=${Date.now()}`;
+    if (!paint(`
+      <div class="card age-verify-card">
+        <h2>18+ face scan</h2>
+        <p class="sub">Allow camera access when prompted. Scan runs on your device — Huzz only gets a signed pass/fail.</p>
+        <iframe id="ageFrame" class="age-frame" src="${url}" allow="camera *; microphone" title="Age verification"></iframe>
+        <button type="button" class="btn btn-outline" id="ageBack">Back to Discover</button>
+        <div id="ageErr" class="err hidden"></div>
+      </div>`, gen)) return;
+
+    const onMsg = async (ev) => {
+      try {
+        const raw = typeof ev.data === 'string' ? ev.data : '';
+        if (!raw.startsWith('{')) return;
+        const msg = JSON.parse(raw);
+        if (msg.type === 'success' && msg.attestationJwt) {
+          await httpsCallable(functions, 'finalizeZoiVeraAgeCheck')({
+            attestationJwt: msg.attestationJwt,
+          });
+          meProfile = await loadMe(user.uid);
+          showAppScreen('discover', user);
+        } else if (msg.type === 'failed' && msg.reason) {
+          const el = document.getElementById('ageErr');
+          if (el) {
+            el.textContent = String(msg.reason);
+            el.classList.remove('hidden');
+          }
+        } else if (msg.type === 'error' && msg.message) {
+          const el = document.getElementById('ageErr');
+          if (el) {
+            el.textContent = String(msg.message);
+            el.classList.remove('hidden');
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('message', onMsg);
+    unsubscribers.push(() => window.removeEventListener('message', onMsg));
+    document.getElementById('ageBack').onclick = () => showAppScreen('discover', user);
+  }
+
   // ─── Discover ─────────────────────────────────────────────────────────
 
   async function loadDiscoverCandidates(uid) {
@@ -365,11 +430,13 @@ export function createWebApp(ctx) {
     const c = discoverCandidates[discoverIndex];
     if (!c) {
       paint(`
+        ${!isAgeVerified(meProfile) ? ageVerifyBannerHtml() : ''}
         <div class="card">
           <h2>Discover</h2>
           <div class="empty">No one new right now. Check back later or adjust your profile in the app.</div>
           <button type="button" class="btn btn-outline" id="discRefresh">Refresh</button>
         </div>`, gen);
+      document.getElementById('goAgeVerify')?.addEventListener('click', () => renderAgeVerify(auth.currentUser, gen));
       document.getElementById('discRefresh')?.addEventListener('click', () => showAppScreen('discover', auth.currentUser));
       return;
     }
@@ -379,6 +446,7 @@ export function createWebApp(ctx) {
     const bio = esc(c.bio || '');
     const city = esc(c.city || c.location?.city || '');
     if (!paint(`
+      ${!isAgeVerified(meProfile) ? ageVerifyBannerHtml() : ''}
       <div class="discover-wrap">
         <div class="discover-card">
           ${img
@@ -398,12 +466,21 @@ export function createWebApp(ctx) {
       </div>
       <div id="discToast" class="ok hidden"></div>`, gen)) return;
 
+    document.getElementById('goAgeVerify')?.addEventListener('click', () => renderAgeVerify(auth.currentUser, gen));
     document.getElementById('discPass').onclick = async () => {
+      if (!isAgeVerified(meProfile)) {
+        renderAgeVerify(auth.currentUser, gen);
+        return;
+      }
       await passUser(auth.currentUser.uid, c.id);
       discoverIndex += 1;
       renderDiscoverCard(gen);
     };
     document.getElementById('discLike').onclick = async () => {
+      if (!isAgeVerified(meProfile)) {
+        renderAgeVerify(auth.currentUser, gen);
+        return;
+      }
       const res = await likeUser(auth.currentUser.uid, c.id);
       const toast = document.getElementById('discToast');
       if (res.matched && toast) {
@@ -863,6 +940,7 @@ export function createWebApp(ctx) {
     }
 
     if (screen === 'discover') await renderDiscover(user, gen);
+    else if (screen === 'ageVerify') renderAgeVerify(user, gen);
     else if (screen === 'chats') {
       if (chatMatchId) await renderChatThread(user, chatMatchId, gen);
       else await renderChats(user, gen);

@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Shuffle } from 'lucide-react-native';
-import { authService, liveRandomService } from '../../services/firebaseService';
+import { authService, liveRandomService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
 import { tokens } from '../../ui/tokens';
+import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
 import { LiveLobbyHero } from '../../ui/components/live/LiveLobbyHero.native';
@@ -19,6 +21,8 @@ import {
   LiveTextInput,
   LiveRetroButton,
 } from '../../ui/components/live/LiveTypography.native';
+import { MainBottomNav, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
+import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 
 const SESSION_MS = liveRandomService.SESSION_MS;
 
@@ -31,9 +35,18 @@ export function LiveRandomScreen({ onNavigate }) {
   const [chatText, setChatText] = useState('');
   const [messages, setMessages] = useState([]);
   const [secondsLeft, setSecondsLeft] = useState(60);
+  const [myProfile, setMyProfile] = useState(null);
+  const [roleCheck, setRoleCheck] = useState(null);
+  const [bottomNavH, setBottomNavH] = useState(0);
   const timeoutRef = useRef(null);
   const sessionRef = useRef(null);
   sessionRef.current = session;
+
+  useEffect(() => {
+    if (!meUid) return;
+    userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
+    checkUserRoleFromAdminCollection(meUid).then(setRoleCheck).catch(() => {});
+  }, [meUid]);
 
   const partnerUid = useMemo(() => {
     if (!session?.uids || !meUid) return null;
@@ -53,6 +66,7 @@ export function LiveRandomScreen({ onNavigate }) {
       onNavigate('onboarding', { mode: 'login' });
       return;
     }
+    if (blockIfAgeNotVerified(myProfile, onNavigate, roleCheck)) return;
     setError(null);
     setPhase('searching');
     const res = await liveRandomService.enterPool(meUid);
@@ -71,7 +85,7 @@ export function LiveRandomScreen({ onNavigate }) {
       }
       return;
     }
-  }, [meUid, onNavigate]);
+  }, [meUid, myProfile, onNavigate, roleCheck]);
 
   useEffect(() => {
     if (!meUid || phase !== 'searching') return undefined;
@@ -168,6 +182,7 @@ export function LiveRandomScreen({ onNavigate }) {
   };
 
   const listPadBottom = Math.max(12, insets.bottom);
+  const navClearance = mainBottomNavClearance(bottomNavH, 12);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -196,7 +211,7 @@ export function LiveRandomScreen({ onNavigate }) {
           {phase === 'idle' ? (
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={[styles.scrollContent, { paddingBottom: 28 + insets.bottom }]}
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: navClearance }]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
@@ -204,7 +219,12 @@ export function LiveRandomScreen({ onNavigate }) {
               <LiveFeatureGrid />
               <LiveSafetyNote />
               <LiveContentWidth>
-                <LiveRetroButton variant="primary" onPress={startOrSearch} style={styles.cta}>
+                <LiveRetroButton
+                  variant="primary"
+                  onPress={startOrSearch}
+                  style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+                  textStyle={welcomeButtonStyles.welcomeBtnLabel}
+                >
                   Start matching
                 </LiveRetroButton>
               </LiveContentWidth>
@@ -279,6 +299,10 @@ export function LiveRandomScreen({ onNavigate }) {
             </View>
           ) : null}
         </KeyboardAvoidingView>
+
+        {phase !== 'session' ? (
+          <MainBottomNav active="live" onNavigate={onNavigate} onLayout={setBottomNavH} />
+        ) : null}
       </LiveTypographyProvider>
     </SafeAreaView>
   );
@@ -287,25 +311,13 @@ export function LiveRandomScreen({ onNavigate }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: tokens.colors.bg },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    ...shellStyles.header,
     paddingHorizontal: LIVE_SCREEN_GUTTER,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surface,
   },
-  headerBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.colors.surfaceElevated,
-    minWidth: 70,
-    alignItems: 'center',
-  },
-  headerBtnText: { ...tokens.typography.label, color: tokens.colors.text },
-  title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
+  headerBtn: shellStyles.headerBtnCompact,
+  headerBtnText: shellStyles.headerBtnText,
+  title: shellStyles.headerTitle,
   bannerWrap: { marginTop: 10 },
   banner: {
     backgroundColor: tokens.colors.filterBgRose,

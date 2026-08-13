@@ -199,6 +199,16 @@
     }
     .hidden { display: none !important; }
     .step-hint { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
+    .age-banner { margin-bottom: 12px; border-color: #7dd3fc; background: #f0f9ff; }
+    .age-frame {
+      width: 100%;
+      height: min(72vh, 640px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      margin: 12px 0;
+      background: #0f172a;
+    }
+    .age-verify-card { max-width: 520px; margin: 0 auto; }
 
     /* Discover */
     .discover-wrap { margin-bottom: 8px; }
@@ -400,7 +410,7 @@
       doc, setDoc, addDoc, updateDoc, onSnapshot, serverTimestamp, runTransaction,
     } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
     import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
-    import { createWebApp } from './web-app.js?v=8';
+    import { createWebApp } from './web-app.js?v=9';
 
     const firebaseConfig = {
       apiKey: 'AIzaSyB_k9w2F0I591-8mUyuHr_5B-TVQea0Tfo',
