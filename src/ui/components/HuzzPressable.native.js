@@ -16,6 +16,7 @@ export function HuzzPressable({
   onLongPress,
   onPressIn,
   onPressOut,
+  onLayout,
   disabled,
   style,
   hitSlop = DEFAULT_HIT_SLOP,
@@ -25,6 +26,7 @@ export function HuzzPressable({
   accessibilityRole,
   accessibilityLabel,
   testID,
+  delayLongPress,
 }) {
   const ripple = useMemo(() => {
     if (Platform.OS !== 'android') return undefined;
@@ -63,13 +65,16 @@ export function HuzzPressable({
       pressRetentionOffset={pressRetentionOffset}
       onPress={onPress}
       onLongPress={onLongPress}
+      delayLongPress={delayLongPress}
       onPressIn={handlePressIn}
       onPressOut={onPressOut}
+      onLayout={onLayout}
       disabled={disabled}
       style={({ pressed }) => [
         styles.base,
         pressed && !disabled ? styles.pressed : null,
         typeof style === 'function' ? style({ pressed }) : style,
+        pressed && !disabled ? { transform: [{ scale: 0.96 }] } : null,
       ]}
     >
       {children}
@@ -82,7 +87,7 @@ const styles = StyleSheet.create({
     // Avoid delaying press feedback; keep it crisp.
   },
   pressed: {
-    opacity: 0.88,
+    opacity: 0.94,
   },
 });
 

@@ -11,9 +11,15 @@ import {
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { tokens } from '../../ui/tokens';
 
+function hasSavedLocation(profile) {
+  const d = profile || {};
+  if (d.locationPermission === 'granted') return true;
+  return Boolean(String(d.country || d.city || d.countryOfResidence || '').trim());
+}
+
 /**
- * Blocks logged-in normal users until foreground location permission is granted.
- * Admins/staff/wali skip this gate.
+ * Ask for location once on first use. After city/country is saved on the profile,
+ * do not block the app again if permission is later revoked.
  */
 export function LocationRequiredGate() {
   const [checking, setChecking] = useState(true);
@@ -30,6 +36,7 @@ export function LocationRequiredGate() {
       country: res.country,
       city: res.city,
       locationPermission: 'granted',
+      locationSetupComplete: true,
     });
   }, []);
 
@@ -58,6 +65,11 @@ export function LocationRequiredGate() {
           setBlocked(false);
           return;
         }
+        if (hasSavedLocation(profile?.data) || profile?.data?.locationSetupComplete === true) {
+          skipRef.current = true;
+          setBlocked(false);
+          return;
+        }
       } catch {
         /* continue with gate */
       }
@@ -77,7 +89,7 @@ export function LocationRequiredGate() {
       setHint(
         perm.canAskAgain === false
           ? 'Location was denied. Open Settings → Huzz → Location → While Using the App, then return here.'
-          : 'Huzz needs your approximate location (city/region) for matching and safety. Allow location to continue.'
+          : 'One-time setup: allow location so we can show your city/region for matching and safety.'
       );
     } finally {
       setChecking(false);
@@ -106,8 +118,8 @@ export function LocationRequiredGate() {
         setBlocked(true);
         setHint(
           req.canAskAgain === false
-            ? 'Location is required. Enable it in Settings to use Huzz.'
-            : 'Location permission is required to use Huzz.'
+            ? 'Enable location in Settings to finish setup.'
+            : 'Location is needed once to set your area on your profile.'
         );
         return;
       }
@@ -131,7 +143,7 @@ export function LocationRequiredGate() {
     <View style={styles.overlay} pointerEvents="auto">
       <SafeAreaView style={styles.cardWrap}>
         <View style={styles.card}>
-          <Text style={styles.title}>Location required</Text>
+          <Text style={styles.title}>Set your area</Text>
           <Text style={styles.body}>{hint}</Text>
           {busy ? <ActivityIndicator color={tokens.colors.accent} style={{ marginVertical: 12 }} /> : null}
           <RetroButton

@@ -1,30 +1,33 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Platform, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Maximize2 } from 'lucide-react-native';
 import { tokens } from '../../tokens';
 import { FadeInImage } from '../FadeInImage.native';
 import { HuzzPressable } from '../HuzzPressable.native';
 import { ProfileVoicePlayer } from '../ProfileVoicePlayer.native';
+import { GlassPanel } from '../GlassPanel.native';
 import { LiveText } from '../live/LiveTypography.native';
 import { getPresenceDisplay } from '../../../utils/presence';
 
-const CARD_OVERLAP = 24;
-const PHOTO_FLEX = 44;
+const CARD_OVERLAP = 20;
+const PHOTO_FLEX = 58;
 
-function InfoBlock({ label, value }) {
-  const text = String(value || '').trim() || '—';
+function DetailRow({ label, value }) {
+  const text = String(value || '').trim();
+  if (!text) return null;
   return (
-    <View style={styles.infoBlock}>
-      <LiveText style={styles.infoLabel}>{label}</LiveText>
-      <LiveText style={styles.infoValue} numberOfLines={4}>
+    <View style={styles.detailRow}>
+      <LiveText style={styles.detailLabel}>{label}</LiveText>
+      <LiveText style={styles.detailValue} numberOfLines={6}>
         {text}
       </LiveText>
     </View>
   );
 }
 
-/** Split layout — photo top, structured info card below. */
+/** Photo-forward card — name on photo scrim, details in frosted glass panel. */
 export function DiscoveryProfileStack({ user, onPhotoPress, panGesture, isTop }) {
   const images = useMemo(
     () =>
@@ -69,6 +72,13 @@ export function DiscoveryProfileStack({ user, onPhotoPress, panGesture, isTop })
 
   const presence = useMemo(() => getPresenceDisplay(user?.lastSeen), [user?.lastSeen]);
 
+  const locationLine = [
+    user?.location || user?.countryOfResidence || 'Nearby',
+    user?.distance ? `${user.distance} km` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   const photoBlock = (
     <View style={styles.photoSection}>
       <FadeInImage
@@ -77,6 +87,37 @@ export function DiscoveryProfileStack({ user, onPhotoPress, panGesture, isTop })
         resizeMode="cover"
         contentPosition="top"
       />
+
+      <LinearGradient
+        colors={tokens.colors.photoScrim}
+        locations={[0, 0.45, 1]}
+        style={styles.photoScrim}
+        pointerEvents="none"
+      />
+
+      <View style={styles.heroText} pointerEvents="none">
+        <LiveText style={styles.profileName} numberOfLines={1}>
+          {user?.name || 'User'}
+          {user?.age ? `, ${user.age}` : ''}
+          {user?.isVerified ? ' ✓' : ''}
+        </LiveText>
+        <LiveText style={styles.profileLocation} numberOfLines={1}>
+          {locationLine}
+        </LiveText>
+        {presence ? (
+          <View style={styles.presenceRow}>
+            {presence.kind === 'online' ? <View style={styles.presenceDot} /> : null}
+            <LiveText
+              style={[
+                styles.presenceText,
+                presence.kind === 'online' && styles.presenceTextOnline,
+              ]}
+            >
+              {presence.kind === 'online' ? 'Online now' : presence.label}
+            </LiveText>
+          </View>
+        ) : null}
+      </View>
 
       {hasMultiple ? (
         <>
@@ -142,8 +183,8 @@ export function DiscoveryProfileStack({ user, onPhotoPress, panGesture, isTop })
         photoBlock
       )}
 
-      <View style={styles.infoCardWrap}>
-        <View style={styles.infoCard}>
+      <View style={styles.detailsWrap}>
+        <GlassPanel style={styles.glass} contentStyle={styles.glassInner}>
           <ScrollView
             style={styles.infoScroll}
             contentContainerStyle={styles.infoScrollContent}
@@ -151,40 +192,14 @@ export function DiscoveryProfileStack({ user, onPhotoPress, panGesture, isTop })
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <LiveText style={styles.profileName} numberOfLines={1}>
-              {user?.name || 'User'}
-              {user?.age ? `, ${user.age}` : ''}
-              {user?.isVerified ? ' ✓' : ''}
-            </LiveText>
-            <LiveText style={styles.profileLocation} numberOfLines={1}>
-              {user?.location || user?.countryOfResidence || 'Nearby'}
-              {user?.distance ? ` · ${user.distance} km` : ''}
-            </LiveText>
-
-            {presence ? (
-              <View style={styles.presenceRow}>
-                {presence.kind === 'online' ? <View style={styles.presenceDot} /> : null}
-                <LiveText
-                  style={[
-                    styles.presenceText,
-                    presence.kind === 'online' && styles.presenceTextOnline,
-                  ]}
-                >
-                  {presence.kind === 'online' ? 'Online now' : presence.label}
-                </LiveText>
-              </View>
-            ) : null}
-
-            <View style={styles.infoGrid}>
-              <InfoBlock label="Religion" value={user?.religion} />
-              <InfoBlock label="Add me" value={user?.addMe} />
-              <InfoBlock label="About" value={user?.bio} />
-              <InfoBlock label="Interests" value={interestsText || undefined} />
-            </View>
+            <DetailRow label="Religion" value={user?.religion} />
+            <DetailRow label="Add me" value={user?.addMe} />
+            <DetailRow label="About" value={user?.bio} />
+            <DetailRow label="Interests" value={interestsText} />
 
             {!!String(user?.aboutVoiceUrl || '').trim() && (
               <View style={styles.voiceBlock}>
-                <LiveText style={styles.infoLabel}>Voice</LiveText>
+                <LiveText style={styles.detailLabel}>Voice</LiveText>
                 <ProfileVoicePlayer
                   audioUrl={String(user.aboutVoiceUrl).trim()}
                   durationMs={user?.aboutVoiceDurationMs}
@@ -192,7 +207,7 @@ export function DiscoveryProfileStack({ user, onPhotoPress, panGesture, isTop })
               </View>
             )}
           </ScrollView>
-        </View>
+        </GlassPanel>
       </View>
     </View>
   );
@@ -208,13 +223,33 @@ const styles = StyleSheet.create({
   },
   photoSection: {
     flex: PHOTO_FLEX,
-    minHeight: 180,
+    minHeight: 200,
     width: '100%',
     overflow: 'hidden',
     backgroundColor: '#0f172a',
+    borderBottomLeftRadius: tokens.radius.lg,
+    borderBottomRightRadius: tokens.radius.lg,
   },
   photo: {
     ...StyleSheet.absoluteFillObject,
+  },
+  photoScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '52%',
+    zIndex: 1,
+  },
+  heroText: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
+    paddingHorizontal: 18,
+    paddingBottom: CARD_OVERLAP + 14,
+    paddingTop: 24,
   },
   tapZoneLeft: {
     position: 'absolute',
@@ -272,56 +307,28 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     paddingVertical: 6,
     paddingHorizontal: 12,
+    zIndex: 3,
   },
   pendingText: {
     ...tokens.typography.caption,
     fontWeight: '700',
     color: '#fff',
   },
-  infoCardWrap: {
-    flex: 100 - PHOTO_FLEX,
-    minHeight: 0,
-    marginTop: -CARD_OVERLAP,
-    zIndex: 3,
-    paddingHorizontal: 12,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: tokens.colors.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: tokens.colors.border,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0f172a',
-        shadowOffset: { width: 0, height: -6 },
-        shadowOpacity: 0.08,
-        shadowRadius: 16,
-      },
-      android: { elevation: 6 },
-    }),
-  },
-  infoScroll: {
-    flex: 1,
-    minHeight: 0,
-  },
-  infoScrollContent: {
-    paddingTop: 20,
-    paddingHorizontal: 18,
-    paddingBottom: 16,
-  },
   profileName: {
     ...tokens.typography.titleLarge,
-    color: tokens.colors.text,
+    color: '#FFFFFF',
     lineHeight: 32,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   profileLocation: {
     ...tokens.typography.bodySmall,
     marginTop: 4,
-    color: tokens.colors.textMuted,
+    color: 'rgba(255,255,255,0.92)',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   presenceRow: {
     flexDirection: 'row',
@@ -337,49 +344,59 @@ const styles = StyleSheet.create({
   },
   presenceText: {
     ...tokens.typography.caption,
-    color: tokens.colors.textMuted,
+    color: 'rgba(255,255,255,0.85)',
   },
   presenceTextOnline: {
-    color: tokens.colors.green,
+    color: '#A7F3D0',
     fontWeight: '600',
   },
-  infoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 16,
+  detailsWrap: {
+    flex: 100 - PHOTO_FLEX,
+    minHeight: 0,
+    marginTop: -CARD_OVERLAP,
+    zIndex: 3,
+    paddingHorizontal: 10,
+    paddingBottom: 4,
   },
-  infoBlock: {
-    width: '47.5%',
-    minHeight: 72,
+  glass: {
+    flex: 1,
+  },
+  glassInner: {
+    flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surfaceElevated,
+    paddingHorizontal: 14,
   },
-  infoLabel: {
+  infoScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  infoScrollContent: {
+    paddingBottom: 8,
+    gap: 2,
+  },
+  detailRow: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  detailLabel: {
     ...tokens.typography.caption,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
-    color: tokens.colors.textMuted,
+    color: 'rgba(255,255,255,0.55)',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
+    letterSpacing: 0.6,
+    marginBottom: 4,
   },
-  infoValue: {
-    ...tokens.typography.label,
-    fontSize: 15,
+  detailValue: {
+    ...tokens.typography.bodySmall,
+    color: '#FFFFFF',
     lineHeight: 20,
-    color: tokens.colors.text,
   },
   voiceBlock: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surfaceElevated,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.12)',
   },
 });

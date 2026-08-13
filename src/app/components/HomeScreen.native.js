@@ -19,9 +19,26 @@ import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
 import { hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
 import { getEffectiveGenderPreferences } from '../../utils/profilePreferences';
+import { hasPassedAgeCheck, blockIfAgeNotVerified, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
+import { isUserOnline } from '../../utils/presence';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  listenActiveStories,
+  listenStorySeen,
+  createStory,
+  groupStoriesByUser,
+  buildStoryRowItems,
+  markAuthorStoriesSeen,
+} from '../../services/storyService';
 import { SwipeDeck } from './SwipeDeck.native';
 import { DiscoveryProfileGrid } from './DiscoveryProfileGrid.native';
-import { DiscoveryProfileStack } from '../../ui/components/discovery/DiscoveryProfileStack.native';
+import { HuzzHeader } from '../../ui/components/discovery/design2/HuzzHeader.native';
+import { DiscoveryTabs } from '../../ui/components/discovery/design2/DiscoveryTabs.native';
+import { StoriesRow } from '../../ui/components/discovery/design2/StoriesRow.native';
+import { StoryViewerModal } from '../../ui/components/discovery/design2/StoryViewerModal.native';
+import { DiscoveryProfileCard } from '../../ui/components/discovery/design2/DiscoveryProfileCard.native';
+import { ActionButtons } from '../../ui/components/discovery/design2/ActionButtons.native';
+import { VerificationBottomSheet } from '../../ui/components/discovery/design2/VerificationBottomSheet.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { ProfilePhotoGalleryModal } from '../../ui/components/ProfilePhotoGalleryModal.native';
 import { MainBottomNav, MAIN_BOTTOM_NAV_FALLBACK_H, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
@@ -31,8 +48,6 @@ import { HomeLobbyHero } from '../../ui/components/home/HomeLobbyHero.native';
 import { HomeFeatureGrid } from '../../ui/components/home/HomeFeatureGrid.native';
 import { HomeSafetyNote } from '../../ui/components/home/HomeSafetyNote.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { Settings, SlidersHorizontal, UserRound, X, MessageCircle, Heart, LayoutGrid, Square } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 
 // Suppress Reanimated strict mode warning
@@ -53,6 +68,74 @@ const CARD_MAX_W = 440;
 const HEADER_FALLBACK_H = 64; // wordmark + underline + padding
 /** Breathing room between swipe actions and tab bar. */
 const FLOAT_NAV_GAP = 12;
+
+function isStaffOrAdminProfile(u) {
+  const role = String(u?.role || '').toLowerCase();
+  return role === 'admin' || role === 'staff';
+}
+
+function filterDiscoveryCandidates({
+  allUsers,
+  authUid,
+  blockedSet,
+  contactHashes,
+  alreadySwipedUids,
+  matchCountry,
+  meProfile,
+}) {
+  const targetCountry = String(matchCountry || '').trim();
+  const myGender = String(meProfile?.gender || '').trim().toLowerCase();
+  const myReligion = String(meProfile?.religion || '').trim();
+  const myPreferences = getEffectiveGenderPreferences(meProfile || {});
+  const isMuslim = myReligion === 'Muslim' || myReligion === 'Islam';
+
+  return (allUsers || []).filter((u) => {
+    const uid = String(u?.id || u?.uid || '');
+    if (!uid || uid === authUid) return false;
+    if (u?.isDisabled || isStaffOrAdminProfile(u)) return false;
+    if (blockedSet?.has?.(uid)) return false;
+    if (contactHashes?.has?.(String(u?.emailHash || ''))) return false;
+    if (contactHashes?.has?.(String(u?.phoneHash || ''))) return false;
+    if (alreadySwipedUids.has(uid)) return false;
+
+    const candidateGender = String(u?.gender || '').trim().toLowerCase();
+    if (!candidateGender) return false;
+
+    const candidatePreferences = getEffectiveGenderPreferences(u);
+    const candidateReligion = String(u?.religion || '').trim();
+    const candidateIsMuslim = candidateReligion === 'Muslim' || candidateReligion === 'Islam';
+
+    if (isMuslim) {
+      if (myGender === 'male' && candidateGender !== 'female') return false;
+      if (myGender === 'female' && candidateGender !== 'male') return false;
+      if (candidatePreferences.length > 0) {
+        const candidateWantsMe =
+          (candidatePreferences.includes('boys') && myGender === 'male')
+          || (candidatePreferences.includes('girls') && myGender === 'female');
+        if (!candidateWantsMe) return false;
+      }
+    } else if (myPreferences.length > 0) {
+      const wantsBoys = myPreferences.includes('boys');
+      const wantsGirls = myPreferences.includes('girls');
+      const candidateIsMale = candidateGender === 'male';
+      const candidateIsFemale = candidateGender === 'female';
+      if (!((wantsBoys && candidateIsMale) || (wantsGirls && candidateIsFemale))) return false;
+      if (candidatePreferences.length > 0) {
+        const candidateWantsMe =
+          (candidatePreferences.includes('boys') && myGender === 'male')
+          || (candidatePreferences.includes('girls') && myGender === 'female');
+        if (!candidateWantsMe) return false;
+      }
+    } else {
+      if (myGender === 'male' && candidateGender !== 'female') return false;
+      if (myGender === 'female' && candidateGender !== 'male') return false;
+    }
+
+    const candidateCountry = String(u?.country || u?.countryOfResidence || '').trim();
+    if (targetCountry && candidateCountry && candidateCountry !== targetCountry) return false;
+    return true;
+  });
+}
 
 export function HomeScreen({ onNavigate }) {
   const navigation = useNavigation();
@@ -80,6 +163,22 @@ export function HomeScreen({ onNavigate }) {
   const navClearance = mainBottomNavClearance(bottomNavH, 12);
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [indexHistory, setIndexHistory] = useState([]);
+  const swipeDeckRef = useRef(null);
+  const [discoveryTab, setDiscoveryTab] = useState('forYou');
+  const [verifySheetOpen, setVerifySheetOpen] = useState(false);
+  const [verifySheetStep, setVerifySheetStep] = useState(0);
+  const [rawStories, setRawStories] = useState([]);
+  const [storySeenMap, setStorySeenMap] = useState({});
+  const [storyUsersById, setStoryUsersById] = useState({});
+  const [postingStory, setPostingStory] = useState(false);
+  const [storyViewer, setStoryViewer] = useState({
+    open: false,
+    userId: null,
+    userName: '',
+    stories: [],
+    startIndex: 0,
+  });
   const [viewMode, setViewMode] = useState('card'); // 'card' | 'grid'
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
@@ -89,6 +188,45 @@ export function HomeScreen({ onNavigate }) {
   // Pending match requests (real-time)
   const [pendingRequests, setPendingRequests] = useState([]);
   const [pendingRequestUsers, setPendingRequestUsers] = useState({}); // Map of userId -> user profile
+  const [roleCheck, setRoleCheck] = useState(null);
+
+  const ageBlocked = useMemo(() => {
+    if (shouldSkipAgeCheck(me, roleCheck)) return false;
+    return !hasPassedAgeCheck(me);
+  }, [me, roleCheck]);
+
+  const viewerAgeVerified = useMemo(
+    () => !ageBlocked && hasPassedAgeCheck(me),
+    [ageBlocked, me]
+  );
+
+  const deckCanSwipe = useMemo(() => {
+    if (ageBlocked) return false;
+    if (loading) return true;
+    return hasAtLeastOneProfilePhoto(me);
+  }, [ageBlocked, loading, me]);
+
+  const openVerificationSheet = useCallback(() => {
+    setVerifySheetStep(0);
+    setVerifySheetOpen(true);
+  }, []);
+
+  const handleRewind = useCallback(() => {
+    setIndexHistory((history) => {
+      if (!history.length) return history;
+      const prev = history[history.length - 1];
+      setCurrentIndex(prev);
+      return history.slice(0, -1);
+    });
+  }, []);
+
+  useEffect(() => {
+    const authUser = authService.getCurrentUser();
+    if (!authUser?.uid) return;
+    checkUserRoleFromAdminCollection(authUser.uid)
+      .then((role) => setRoleCheck(role))
+      .catch(() => {});
+  }, []);
 
   // Shared gesture values so the action buttons can animate live while dragging.
   const gestureX = useSharedValue(0);
@@ -177,6 +315,30 @@ export function HomeScreen({ onNavigate }) {
     return [...pending, ...regular];
   }, [pendingRequests, pendingRequestUsers, candidates]);
 
+  const advanceCard = useCallback(() => {
+    setCurrentIndex((prev) => {
+      setIndexHistory((h) => [...h.slice(-8), prev]);
+      const len = allCandidates.length;
+      if (len <= 0) return 0;
+      return prev < len - 1 ? prev + 1 : 0;
+    });
+  }, [allCandidates.length]);
+
+  const onDeckBlocked = useCallback(() => {
+    if (ageBlocked) {
+      openVerificationSheet();
+      return;
+    }
+    Alert.alert(
+      'Add a photo to your profile',
+      'You need at least one photo on your profile to like, message, or pass.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Go to profile', onPress: () => onNavigate('myProfile') },
+      ]
+    );
+  }, [ageBlocked, onNavigate, openVerificationSheet]);
+
   // Defensive check for currentUser - validate array bounds
   const currentUser = useMemo(() => {
     if (!Array.isArray(allCandidates) || allCandidates.length === 0) {
@@ -203,6 +365,138 @@ export function HomeScreen({ onNavigate }) {
   const onHeaderHuzzPress = useCallback(() => {
     setDeckRefreshKey((k) => k + 1);
   }, []);
+
+  const meUid = me?.id || me?.uid || authService.getCurrentUser()?.uid || null;
+
+  useEffect(() => {
+    if (!meUid) return undefined;
+    const unsubStories = listenActiveStories(({ data }) => {
+      setRawStories(Array.isArray(data) ? data : []);
+    });
+    const unsubSeen = listenStorySeen(meUid, ({ data }) => {
+      setStorySeenMap(data || {});
+    });
+    return () => {
+      unsubStories && unsubStories();
+      unsubSeen && unsubSeen();
+    };
+  }, [meUid]);
+
+  const storyGroups = useMemo(() => groupStoriesByUser(rawStories), [rawStories]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = [...new Set(storyGroups.map((g) => g.userId).filter(Boolean))];
+    const missing = ids.filter((id) => String(id) !== String(meUid));
+    if (!missing.length) return undefined;
+
+    Promise.all(
+      missing.map(async (uid) => {
+        const res = await userService.getUserById(uid);
+        return [uid, res?.data || null];
+      })
+    ).then((pairs) => {
+      if (cancelled) return;
+      setStoryUsersById((prev) => {
+        const next = { ...prev };
+        pairs.forEach(([uid, user]) => {
+          if (user && !next[uid]) next[uid] = user;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storyGroups, meUid]);
+
+  const storyRow = useMemo(() => {
+    const usersById = { ...storyUsersById };
+    if (me && meUid) usersById[meUid] = me;
+    return buildStoryRowItems({
+      storyGroups,
+      usersById,
+      viewerUid: meUid,
+      seenMap: storySeenMap,
+      me,
+    });
+  }, [storyGroups, storyUsersById, me, meUid, storySeenMap]);
+
+  const myStoryGroup = useMemo(
+    () => storyGroups.find((g) => String(g.userId) === String(meUid)),
+    [storyGroups, meUid]
+  );
+
+  const handleAddStory = useCallback(async () => {
+    const uid = authService.getCurrentUser()?.uid;
+    if (!uid) return;
+
+    if (!isUserOnline(me?.lastSeen)) {
+      Alert.alert(
+        'Go online to post',
+        'Stories are for people who are online right now. Open the app and try again in a moment.'
+      );
+      return;
+    }
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Photos', 'Allow photo access to post a story.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaType?.Images ? [ImagePicker.MediaType.Images] : 'images',
+      allowsEditing: true,
+      aspect: [9, 16],
+      quality: 0.85,
+    });
+
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+
+    setPostingStory(true);
+    try {
+      const { error } = await createStory(uid, result.assets[0].uri);
+      if (error) {
+        Alert.alert('Story failed', error);
+      }
+    } finally {
+      setPostingStory(false);
+    }
+  }, [me?.lastSeen]);
+
+  const openStoryViewer = useCallback((userId, userName, stories, startIndex = 0) => {
+    if (!stories?.length) return;
+    setStoryViewer({
+      open: true,
+      userId,
+      userName,
+      stories,
+      startIndex,
+    });
+  }, []);
+
+  const handleStoryPress = useCallback(
+    (story) => {
+      openStoryViewer(story.userId, story.name, story.stories, 0);
+    },
+    [openStoryViewer]
+  );
+
+  const handleViewMyStory = useCallback(() => {
+    if (!myStoryGroup?.stories?.length) return;
+    openStoryViewer(meUid, 'Your story', myStoryGroup.stories, 0);
+  }, [meUid, myStoryGroup, openStoryViewer]);
+
+  const handleStoryFinished = useCallback(
+    async (latestStoryId) => {
+      const uid = authService.getCurrentUser()?.uid;
+      if (!uid || !storyViewer.userId || !latestStoryId) return;
+      await markAuthorStoriesSeen(uid, storyViewer.userId, latestStoryId);
+    },
+    [storyViewer.userId]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -242,25 +536,28 @@ export function HomeScreen({ onNavigate }) {
           return;
         }
         
-        const meSnap = await userService.getUserById(authUser.uid);
+        const [
+          meSnap,
+          { data: blockedSet },
+          { data: contactHashes },
+          { data: likesSent },
+          { data: myMatches },
+          { data: allUsers },
+        ] = await Promise.all([
+          userService.getUserById(authUser.uid),
+          blockService.listBlockedUids(authUser.uid),
+          contactBlockService.listHashes(authUser.uid),
+          likeService.listLikesSent(authUser.uid),
+          matchService.listMyMatches(authUser.uid),
+          userService.getUsers({ limit: 80 }),
+        ]);
         const meProfile = meSnap?.data || null;
 
         if (!cancelled) setMe(meProfile);
-        // Don't auto-set matchCountry from profile - keep it global by default
-        // Users can manually set country filter in the filters menu if they want
-        // if (!cancelled && !matchCountry) {
-        //   setMatchCountry(String(meProfile?.matchCountry || meProfile?.country || meProfile?.countryOfResidence || '').trim());
-        // }
-        const { data: blockedSet } = await blockService.listBlockedUids(authUser.uid);
-        const { data: contactHashes } = await contactBlockService.listHashes(authUser.uid);
-        
-        // Get users we've already swiped on (likes or passes) - don't show them again (use doc id as fallback)
-        const { data: likesSent } = await likeService.listLikesSent(authUser.uid);
+
         const alreadySwipedUids = new Set(
           (likesSent || []).map((like) => String(like?.toUid || like?.id || '')).filter(Boolean)
         );
-        // Also exclude everyone we're already matched with (pending or active) so they don't appear in the deck
-        const { data: myMatches } = await matchService.listMyMatches(authUser.uid);
         (myMatches || []).forEach((m) => {
           const uids = m?.uids || [];
           const other = uids.find((u) => String(u) !== String(authUser.uid));
@@ -270,258 +567,16 @@ export function HomeScreen({ onNavigate }) {
             if (req) alreadySwipedUids.add(String(req));
           }
         });
-        console.log(`[HomeScreen] Excluding ${alreadySwipedUids.size} users (swiped + matched) - will filter them out`);
-        
-        const { data: allUsers } = await userService.getUsers({ limit: 80 });
 
-        // Debug: Count users by gender (excluding admins)
-        const allUserIds = (allUsers || []).map(u => String(u?.id || u?.uid || '')).filter(Boolean);
-        const adminChecks = await Promise.all(
-          allUserIds.map(uid => checkUserRoleFromAdminCollection(uid))
-        );
-        const adminUids = new Set(
-          allUserIds.filter((uid, idx) => adminChecks[idx]?.isAdmin || adminChecks[idx]?.isStaff)
-        );
-        
-        const regularUsers = (allUsers || []).filter(u => {
-          const uid = String(u?.id || u?.uid || '');
-          return !adminUids.has(uid);
+        const filtered = filterDiscoveryCandidates({
+          allUsers,
+          authUid: authUser.uid,
+          blockedSet,
+          contactHashes,
+          alreadySwipedUids,
+          matchCountry,
+          meProfile,
         });
-        
-        const boysCount = regularUsers.filter(u => {
-          const gender = String(u?.gender || '').trim().toLowerCase();
-          return gender === 'male';
-        }).length;
-        
-        const girlsCount = regularUsers.filter(u => {
-          const gender = String(u?.gender || '').trim().toLowerCase();
-          return gender === 'female';
-        }).length;
-        
-        const otherCount = regularUsers.filter(u => {
-          const gender = String(u?.gender || '').trim().toLowerCase();
-          return gender && gender !== 'male' && gender !== 'female';
-        }).length;
-        
-        const noGenderCount = regularUsers.filter(u => {
-          const gender = String(u?.gender || '').trim().toLowerCase();
-          return !gender;
-        }).length;
-        
-        console.log('[HomeScreen] 📊 User Statistics (excluding admins/staff):');
-        console.log(`   Total users in DB: ${regularUsers.length}`);
-        console.log(`   👨 Boys: ${boysCount}`);
-        console.log(`   👩 Girls: ${girlsCount}`);
-        console.log(`   🏳️ Other: ${otherCount}`);
-        console.log(`   ❓ No gender: ${noGenderCount}`);
-        console.log(`   🚫 Admins/Staff excluded: ${adminUids.size}`);
-
-        // Only filter by country if user explicitly set it in filters (matchCountry), not from profile
-        // This allows users to see people from all countries by default
-        const targetCountry = String(matchCountry || '').trim(); // Only use explicit filter, not profile country
-
-        // Get current user's gender and preferences for filtering
-        const myGender = String(meProfile?.gender || '').trim().toLowerCase();
-        const myReligion = String(meProfile?.religion || '').trim();
-        const myPreferences = getEffectiveGenderPreferences(meProfile || {});
-        // Check if Muslim (handle both 'Muslim' and 'Islam' for compatibility)
-        const isMuslim = myReligion === 'Muslim' || myReligion === 'Islam';
-        
-        const filtered = (allUsers || []).filter((u) => {
-          const uid = String(u?.id || u?.uid || '');
-          if (!uid) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: No UID`);
-            return false;
-          }
-          if (uid === authUser.uid) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: Self`);
-            return false;
-          }
-          if (u?.isDisabled) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: Disabled`);
-            return false;
-          }
-          if (blockedSet?.has?.(uid)) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: Blocked`);
-            return false;
-          }
-          if (contactHashes?.has?.(String(u?.emailHash || ''))) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: In contacts (email)`);
-            return false;
-          }
-          if (contactHashes?.has?.(String(u?.phoneHash || ''))) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: In contacts (phone)`);
-            return false;
-          }
-          
-          // Don't show users we've already swiped on (like or pass)
-          if (alreadySwipedUids.has(uid)) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: Already swiped on`);
-            return false;
-          }
-          
-          // Filter by gender preferences
-          const candidateGender = String(u?.gender || '').trim().toLowerCase();
-          if (!candidateGender) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: No gender`);
-            return false; // Skip users without gender
-          }
-          
-          // Get candidate's preferences for bidirectional matching
-          const candidatePreferences = getEffectiveGenderPreferences(u);
-          const candidateReligion = String(u?.religion || '').trim();
-          const candidateIsMuslim = candidateReligion === 'Muslim' || candidateReligion === 'Islam';
-          
-          if (isMuslim) {
-            // Muslims: only opposite gender (bidirectional check)
-            console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): I am Muslim ${myGender}, checking opposite gender...`);
-            
-            // 1. Check if current user wants to see candidate's gender
-            if (myGender === 'male' && candidateGender !== 'female') {
-              console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ❌ I'm male Muslim, they're not female`);
-              return false;
-            }
-            if (myGender === 'female' && candidateGender !== 'male') {
-              console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ❌ I'm female Muslim, they're not male`);
-              return false;
-            }
-            
-            console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ✅ Opposite gender check passed! Now checking if they want to see me...`);
-            console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): Candidate is ${candidateIsMuslim ? 'Muslim' : 'Non-Muslim'}, prefs: [${candidatePreferences.join(', ')}]`);
-            
-            // 2. Check if candidate wants to see current user's gender
-            // For Muslim candidates, check their preferences if set, otherwise assume opposite gender
-            if (candidateIsMuslim) {
-              // Muslim candidate: if preferences are set, check them; otherwise assume opposite gender
-              if (candidatePreferences.length > 0) {
-                const candidateWantsBoys = candidatePreferences.includes('boys');
-                const candidateWantsGirls = candidatePreferences.includes('girls');
-                const iAmMale = myGender === 'male';
-                const iAmFemale = myGender === 'female';
-                
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Muslim): Candidate wants boys: ${candidateWantsBoys}, wants girls: ${candidateWantsGirls}, I am: ${myGender} (male: ${iAmMale}, female: ${iAmFemale})`);
-                
-                // Candidate must want to see my gender
-                const candidateWantsMe = (candidateWantsBoys && iAmMale) || (candidateWantsGirls && iAmFemale);
-                if (!candidateWantsMe) {
-                  console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Muslim): ❌ Candidate doesn't want to see me`);
-                  return false;
-                }
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Muslim): ✅ Candidate wants to see me!`);
-              } else {
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Muslim): ✅ No preferences set, assuming opposite gender (passes)`);
-              }
-              // If no preferences set, assume opposite gender (passes the check)
-            } else {
-              // Non-Muslim candidate: check their preferences
-              if (candidatePreferences.length > 0) {
-                const candidateWantsBoys = candidatePreferences.includes('boys');
-                const candidateWantsGirls = candidatePreferences.includes('girls');
-                const iAmMale = myGender === 'male';
-                const iAmFemale = myGender === 'female';
-                
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Non-Muslim): Candidate wants boys: ${candidateWantsBoys}, wants girls: ${candidateWantsGirls}, I am: ${myGender} (male: ${iAmMale}, female: ${iAmFemale})`);
-                
-                // Candidate must want to see my gender
-                const candidateWantsMe = (candidateWantsBoys && iAmMale) || (candidateWantsGirls && iAmFemale);
-                if (!candidateWantsMe) {
-                  console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Non-Muslim): ❌ Candidate doesn't want to see me`);
-                  return false;
-                }
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Non-Muslim): ✅ Candidate wants to see me!`);
-              } else {
-                // Non-Muslim candidate with no preferences: assume opposite gender (allow through)
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}, Non-Muslim): ✅ No preferences, allowing through (opposite gender assumption)`);
-              }
-            }
-            // If user is "other", show all genders
-          } else {
-            // Non-Muslims: use their selected preferences (bidirectional check)
-            // Preferences are stored as ['boys'] or ['girls'] or ['boys', 'girls']
-            // Gender is stored as 'Male', 'Female', or 'Other' (capitalized)
-            if (myPreferences.length > 0) {
-              // Map preferences to gender values
-              const wantsBoys = myPreferences.includes('boys');
-              const wantsGirls = myPreferences.includes('girls');
-              const candidateIsMale = candidateGender === 'male';
-              const candidateIsFemale = candidateGender === 'female';
-              
-              // Check if current user wants to see candidate
-              console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): Checking if I want to see them. My prefs: [${myPreferences.join(', ')}], wantsBoys: ${wantsBoys}, wantsGirls: ${wantsGirls}, candidateIsMale: ${candidateIsMale}, candidateIsFemale: ${candidateIsFemale}`);
-              
-              if (!((wantsBoys && candidateIsMale) || (wantsGirls && candidateIsFemale))) {
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ❌ I don't want to see this gender`);
-                return false;
-              }
-              
-              console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ✅ I want to see them! Now checking if they want to see me...`);
-              console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): Candidate preferences: [${candidatePreferences.join(', ')}] (length: ${candidatePreferences.length})`);
-              
-              // Check if candidate wants to see current user (if candidate has preferences)
-              if (candidatePreferences.length > 0) {
-                const candidateWantsBoys = candidatePreferences.includes('boys');
-                const candidateWantsGirls = candidatePreferences.includes('girls');
-                const iAmMale = myGender === 'male';
-                const iAmFemale = myGender === 'female';
-                
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): Candidate wants boys: ${candidateWantsBoys}, wants girls: ${candidateWantsGirls}, I am: ${myGender} (male: ${iAmMale}, female: ${iAmFemale})`);
-                
-                // Candidate must want to see my gender
-                const candidateWantsMe = (candidateWantsBoys && iAmMale) || (candidateWantsGirls && iAmFemale);
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): Candidate wants me? ${candidateWantsMe} (${candidateWantsBoys && iAmMale ? 'wantsBoys && iAmMale' : ''} ${candidateWantsGirls && iAmFemale ? 'wantsGirls && iAmFemale' : ''})`);
-                
-                if (!candidateWantsMe) {
-                  console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ❌ Candidate doesn't want to see me`);
-                  return false;
-                }
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ✅ Candidate wants to see me!`);
-              } else {
-                // Candidate has no preferences - allow through (they'll see opposite gender by default)
-                console.log(`[Filter] ${u?.name || 'Unknown'} (${candidateGender}): ✅ No preferences set, allowing through (bidirectional check)`);
-              }
-            } else {
-              // Fallback: if no preferences set, show opposite gender
-              if (myGender === 'male' && candidateGender !== 'female') return false;
-              if (myGender === 'female' && candidateGender !== 'male') return false;
-            }
-          }
-          
-          const candidateCountry = String(u?.country || u?.countryOfResidence || '').trim();
-          // Only filter by country if BOTH user and candidate have countries set, and they explicitly don't match
-          // This allows users without countries to see everyone, and prevents over-filtering
-          if (targetCountry && candidateCountry && candidateCountry !== targetCountry) {
-            console.log(`[Filter] ${u?.name || 'Unknown'}: Country mismatch (target: ${targetCountry}, candidate: ${candidateCountry})`);
-            return false;
-          }
-          // If targetCountry is set but candidate has no country, allow through (they might be new)
-          // If candidateCountry is set but targetCountry is empty, allow through (user hasn't set preference)
-          console.log(`[Filter] ✅ ${u?.name || 'Unknown'} (${candidateGender}): PASSED ALL FILTERS`);
-          return true;
-        });
-
-        // Debug: Count filtered candidates by gender
-        const filteredBoys = filtered.filter(u => {
-          const gender = String(u?.gender || '').trim().toLowerCase();
-          return gender === 'male';
-        }).length;
-        
-        const filteredGirls = filtered.filter(u => {
-          const gender = String(u?.gender || '').trim().toLowerCase();
-          return gender === 'female';
-        }).length;
-        
-        const filteredOther = filtered.filter(u => {
-          const gender = String(u?.gender || '').trim().toLowerCase();
-          return gender && gender !== 'male' && gender !== 'female';
-        }).length;
-        
-        console.log('[HomeScreen] ✅ After filtering (matching preferences):');
-        console.log(`   Total candidates: ${filtered.length}`);
-        console.log(`   👨 Boys: ${filteredBoys}`);
-        console.log(`   👩 Girls: ${filteredGirls}`);
-        console.log(`   🏳️ Other: ${filteredOther}`);
-        console.log(`   Current user: ${myGender} (${isMuslim ? 'Muslim' : 'Non-Muslim'})`);
-        console.log(`   Preferences: ${myPreferences.length > 0 ? myPreferences.join(', ') : 'none (opposite gender)'}`);
 
         if (!cancelled) {
           setCandidates(filtered);
@@ -637,6 +692,10 @@ export function HomeScreen({ onNavigate }) {
       return false;
     }
 
+    if (blockIfAgeNotVerified(me, navigation, roleCheck)) {
+      return false;
+    }
+
     if (!loading) {
       let canAct = hasAtLeastOneProfilePhoto(me);
       if (!canAct) {
@@ -689,127 +748,50 @@ export function HomeScreen({ onNavigate }) {
   };
 
   const handleSwipe = async (direction, userOrId) => {
+    const shouldAdvance = direction === 'left' || direction === 'right' || direction === 'down';
+
     // Resolve target: from gesture we get userId (string); from button we get currentUser (object).
     const target = typeof userOrId === 'string'
       ? (userOrId ? (allCandidates.find((c) => String(c?.id ?? c?.uid) === userOrId) ?? null) : null)
       : (userOrId || null);
 
-    // Simple logging
-    try {
-      console.log(`[Swipe] Direction: ${direction}, User: ${target?.id ?? target?.uid ?? 'null'}`);
-    } catch (e) {
-      // Ignore logging errors
-    }
-
-    // CRITICAL: Wrap everything in a safety net - this function MUST NEVER crash
-    // Use setTimeout to ensure state updates happen even if there's an error
-    const safeAdvanceCard = () => {
+    if (__DEV__) {
       try {
-        setTimeout(() => {
-          try {
-            setCurrentIndex((prev) => {
-              try {
-                const next = prev < allCandidates.length - 1 ? prev + 1 : 0;
-                return next;
-              } catch (e) {
-                console.error('[Swipe] Error in setCurrentIndex callback:', e);
-                return prev; // Return previous value if update fails
-              }
-            });
-          } catch (e) {
-            console.error('[Swipe] Error in safeAdvanceCard:', e);
-          }
-        }, 0);
-      } catch (e) {
-        console.error('[Swipe] Error scheduling card advance:', e);
+        console.log(`[Swipe] ${direction}`, target?.id ?? target?.uid ?? 'null');
+      } catch {
+        /* ignore */
       }
-    };
-
-    // Immediate logging before any operations
-    try {
-      console.log('[Swipe] ========== SWIPE START ==========');
-      console.log('[Swipe] Direction:', direction);
-      console.log('[Swipe] Timestamp:', new Date().toISOString());
-    } catch (logError) {
-      // Even logging can fail, continue anyway
     }
-    
-    // Wrap entire function in try-catch for comprehensive error handling
+
+    const authUser = authService.getCurrentUser();
+    if (!authUser) {
+      onNavigate('onboarding', { mode: 'login' });
+      return;
+    }
+
+    if (blockIfAgeNotVerified(me, navigation, roleCheck)) {
+      return;
+    }
+
+    if (!loading && !hasAtLeastOneProfilePhoto(me)) {
+      onDeckBlocked();
+      return;
+    }
+
+    if (!target) {
+      return;
+    }
+
+    const targetId = target?.id ?? target?.uid;
+    if (!targetId) {
+      return;
+    }
+
+    if (shouldAdvance) {
+      advanceCard();
+    }
+
     try {
-      console.log('[Swipe] Target (resolved from userOrId):', {
-        hasTarget: !!target,
-        targetId: target?.id ?? target?.uid ?? 'none',
-        targetName: target?.name ?? 'none'
-      });
-      console.log('[Swipe] Current state:', {
-        currentIndex,
-        allCandidatesLength: allCandidates?.length ?? 0
-      });
-
-      const authUser = authService.getCurrentUser();
-      if (!authUser) {
-        console.warn('[Swipe] No authenticated user, redirecting to login');
-        onNavigate('onboarding', { mode: 'login' });
-        return;
-      }
-      console.log('[Swipe] Authenticated user:', authUser.uid);
-
-      // Your profile must have ≥1 photo to swipe (others optional). Refresh from server if local `me` looks empty (stale after upload).
-      if (!loading) {
-        let canSwipe = hasAtLeastOneProfilePhoto(me);
-        if (!canSwipe) {
-          try {
-            const snap = await userService.getUserById(authUser.uid);
-            const fresh = snap?.data || null;
-            if (fresh) {
-              setMe((prev) => ({ ...(prev || {}), ...fresh }));
-              canSwipe = hasAtLeastOneProfilePhoto(fresh);
-            }
-          } catch (e) {
-            console.warn('[Swipe] Profile refresh for photo gate:', e?.message || e);
-          }
-        }
-        if (!canSwipe) {
-          Alert.alert(
-            'Add a photo to your profile',
-            'You need at least one photo on your profile to like, message, or pass. You can add more anytime in Profile.',
-            [
-              { text: 'Not now', style: 'cancel' },
-              { text: 'Go to profile', onPress: () => onNavigate('myProfile') },
-            ]
-          );
-          return;
-        }
-      }
-
-      if (!target) {
-        console.error('[Swipe] ❌ No target user available:', {
-          currentIndex,
-          allCandidatesLength: allCandidates?.length ?? 0
-        });
-        // Still advance to next card even if no target
-        try {
-          setCurrentIndex((prev) => (prev < allCandidates.length - 1 ? prev + 1 : 0));
-        } catch (e) {
-          console.error('[Swipe] Failed to advance index:', e);
-        }
-        return;
-      }
-
-      console.log('[Swipe] Target validated:', {
-        targetId: target?.id || 'none',
-        targetName: target?.name || 'none',
-        hasId: !!target?.id,
-        hasName: !!target?.name
-      });
-
-      const targetId = target?.id ?? target?.uid;
-      if (!targetId) {
-        console.error('[Swipe] ❌ Target has no id/uid:', target);
-        throw new Error('Target user has no id property');
-      }
-
-      console.log('[Swipe] Checking for pending match request...');
       const pendingRequest = pendingRequests.find(req => String(req.requestedBy) === String(targetId));
       
       if (pendingRequest) {
@@ -851,36 +833,23 @@ export function HomeScreen({ onNavigate }) {
         } catch (e) {
           console.error('[Swipe] Pending like action exception:', e);
         }
-        // Always advance to next card after handling pending request
-        try {
-          setCurrentIndex((prev) => (prev < allCandidates.length - 1 ? prev + 1 : 0));
-        } catch (e) {
-          console.error('[Swipe] Failed to advance index after pending request:', e);
-        }
-        console.log('[Swipe] ========== SWIPE END (pending request) ==========');
-        return; // Don't proceed with normal swipe logic
+        return;
       }
 
       // Normal swipe logic for regular candidates
-      console.log('[Swipe] Processing normal swipe (not pending request)');
-      
-      try {
-        console.log(`[Swipe] Triggering haptics for direction: ${direction}`);
-        if (direction === 'up') {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        } else if (direction === 'right') {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        } else {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void (async () => {
+        try {
+          if (direction === 'up') {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          } else if (direction === 'right') {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          } else {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+        } catch {
+          /* ignore */
         }
-        console.log('[Swipe] ✅ Haptics completed');
-      } catch (hapticError) {
-        console.warn('[Swipe] Haptic error (non-critical):', {
-          error: hapticError?.message || String(hapticError),
-          direction
-        });
-        // Continue even if haptics fail
-      }
+      })();
 
       if (direction === 'up') {
         await handleDirectMessage(target);
@@ -900,17 +869,13 @@ export function HomeScreen({ onNavigate }) {
         console.log('───────────────────────────────────────────────────────────');
         
         if (!targetId) {
-          console.error('❌ ERROR: Target has no ID - cannot save swipe');
-          safeAdvanceCard();
           return;
         }
         
-        // Brief badge-style feedback (same look as card corner LIKE)
         try {
           showSwipeToast('like');
-          console.log('✅ Swipe toast shown');
-        } catch (animError) {
-          console.warn('⚠️ Error showing swipe toast:', animError);
+        } catch {
+          /* ignore */
         }
         
         // CRITICAL: Fire-and-forget the like operation - don't wait for it
@@ -1025,78 +990,44 @@ export function HomeScreen({ onNavigate }) {
         }
       }
     } catch (e) {
-      // This catch should never be reached if all inner catches work, but just in case
-      try {
-        console.error('[Swipe] ❌❌❌ TOP-LEVEL SWIPE ERROR ❌❌❌');
-        console.error('[Swipe] Error type:', typeof e);
-        console.error('[Swipe] Error message:', e?.message || String(e));
-        console.error('[Swipe] Error stack:', e?.stack);
-        console.error('[Swipe] Error name:', e?.name);
-        console.error('[Swipe] Error code:', e?.code);
-        // Safely access variables that might not be defined
-        try {
-          console.error('[Swipe] Context:', {
-            direction: direction || 'unknown',
-            currentIndex: currentIndex || 0,
-            allCandidatesLength: allCandidates?.length || 0
-          });
-        } catch (contextError) {
-          // Ignore context logging errors
-        }
-      } catch (logError) {
-        // Even error logging can fail
+      if (__DEV__) {
+        console.error('[Swipe] error:', e?.message || e);
       }
-      
-      // Try to show alert (non-critical)
       try {
         showCuteAlert('error', 'OOPS!', 'Swipe failed');
-      } catch (alertError) {
-        // Ignore alert errors
-      }
-      
-      // Ensure card advances even in this worst-case scenario
-      try {
-        safeAdvanceCard();
-      } catch (advanceError) {
-        // Last resort - try direct state update
-        try {
-          setTimeout(() => {
-            try {
-              setCurrentIndex((prev) => Math.min(prev + 1, (allCandidates?.length || 1) - 1));
-            } catch (finalError) {
-              // Give up - at least we tried
-            }
-          }, 0);
-        } catch (finalFinalError) {
-          // Completely give up
-        }
-      }
-    } finally {
-      // CRITICAL: Always advance to next card, even if everything failed
-      // Use setTimeout to ensure this happens even if there's an error
-      try {
-        console.log('[Swipe] Entering finally block...');
-        safeAdvanceCard();
-        console.log('[Swipe] ✅ Finally block completed');
-      } catch (finallyError) {
-        console.error('[Swipe] ❌ Finally block error:', {
-          error: finallyError?.message || String(finallyError),
-          stack: finallyError?.stack
-        });
-        // Last resort: try to advance card one more time
-        try {
-          safeAdvanceCard();
-        } catch (lastResortError) {
-          console.error('[Swipe] ❌ Last resort card advance failed:', lastResortError);
-        }
-      }
-      try {
-        console.log('[Swipe] ========== SWIPE END ==========');
-      } catch (logError) {
-        // Even final logging can fail, ignore it
+      } catch {
+        /* ignore */
       }
     }
   };
+
+  const handleLikePress = useCallback(() => {
+    if (ageBlocked) {
+      openVerificationSheet();
+      return;
+    }
+    swipeDeckRef.current?.swipeRight?.();
+  }, [ageBlocked, openVerificationSheet]);
+
+  const handlePassPress = useCallback(() => {
+    swipeDeckRef.current?.swipeLeft?.();
+  }, []);
+
+  const handleBoostPress = useCallback(() => {
+    showCuteAlert('info', 'Boost', 'Super-boost is coming soon');
+  }, [showCuteAlert]);
+
+  const renderDiscoveryCard = useCallback(
+    (u, meta) => (
+      <DiscoveryProfileCard
+        user={u}
+        isTop={meta?.isTop}
+        panGesture={meta?.panGesture}
+        onPhotoPress={openPhotoGallery}
+      />
+    ),
+    [openPhotoGallery]
+  );
 
   const nopeBtnStyle = useAnimatedStyle(() => {
     const p = interpolate(gestureX.value, [0, -160], [0, 1], Extrapolation.CLAMP);
@@ -1121,264 +1052,142 @@ export function HomeScreen({ onNavigate }) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <LiveTypographyProvider>
-      {/* Header */}
-      <View style={styles.header} onLayout={(e) => setHeaderH(e?.nativeEvent?.layout?.height || 0)}>
-        <HuzzPressable style={styles.headerButton} onPress={() => onNavigate('settings')} haptic="light">
-          <Settings size={22} color={tokens.colors.text} strokeWidth={2} />
-        </HuzzPressable>
-        <HuzzPressable
-          style={styles.headerWordmarkWrap}
-          onPress={onHeaderHuzzPress}
-          haptic="light"
-          accessibilityRole="button"
-          accessibilityLabel="Huzz — refresh people"
-        >
-          <View style={styles.headerBrandBlock}>
-            <Text
-              style={[
-                styles.headerHuzzWord,
-                fontsLoaded && styles.headerHuzzWordFont,
-              ]}
-              accessibilityRole="header"
-            >
-              Huzz
-            </Text>
-            <View style={styles.headerUnderlineTrack}>
-              <LinearGradient
-                colors={['#1D4ED8', '#2563EB', '#3B82F6']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={StyleSheet.absoluteFill}
-              />
-            </View>
-          </View>
-        </HuzzPressable>
-        <View style={styles.headerRight}>
-          {!loading && allCandidates.length > 0 && viewMode === 'card' ? (
-            <HuzzPressable style={styles.headerButton} onPress={openFilters} haptic="light">
-              <SlidersHorizontal size={22} color={tokens.colors.text} strokeWidth={2.2} />
-            </HuzzPressable>
-          ) : null}
-          {!loading && allCandidates.length > 0 ? (
-            <HuzzPressable
-              style={styles.headerButton}
-              onPress={toggleViewMode}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel={viewMode === 'card' ? 'Show grid of profiles' : 'Show single profile'}
-            >
-              {viewMode === 'card' ? (
-                <LayoutGrid size={22} color={tokens.colors.text} strokeWidth={2.2} />
-              ) : (
-                <Square size={22} color={tokens.colors.text} strokeWidth={2.2} />
-              )}
-            </HuzzPressable>
-          ) : null}
-          <HuzzPressable style={styles.headerButton} onPress={() => onNavigate('myProfile')} haptic="light">
-            <UserRound size={22} color={tokens.colors.text} strokeWidth={2} />
-          </HuzzPressable>
-        </View>
-      </View>
-
-      <View style={styles.container}>
-      <View style={[styles.cardContainer, { paddingBottom: FLOAT_NAV_GAP }]}>
-        {showDiscoveryLobby ? (
-          <ScrollView
-            style={styles.lobbyScroll}
-            contentContainerStyle={[styles.lobbyScrollContent, { paddingBottom: navClearance }]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <HomeLobbyHero />
-            <HomeFeatureGrid />
-            <HomeSafetyNote />
-            <LiveContentWidth style={styles.lobbyCta}>
-              <LiveRetroButton
-                variant="primary"
-                onPress={openFilters}
-                style={[styles.lobbyCtaBtn, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
-                textStyle={welcomeButtonStyles.welcomeBtnLabel}
-              >
-                Open filters
-              </LiveRetroButton>
-            </LiveContentWidth>
-          </ScrollView>
-        ) : loading ? (
-          <View style={[styles.card, styles.stateCard, { height: cardHeight }]}>
-            <ActivityIndicator size="large" color={tokens.colors.accent} />
-            <LiveText style={[styles.stateText, { marginTop: 12, marginBottom: 0 }]}>Loading people…</LiveText>
-          </View>
-        ) : viewMode === 'grid' && allCandidates.length > 0 ? (
-          <DiscoveryProfileGrid
-            profiles={allCandidates}
-            onSelectProfile={openProfileFromGrid}
-            contentPaddingBottom={FLOAT_NAV_GAP + 8}
+        <View onLayout={(e) => setHeaderH(e?.nativeEvent?.layout?.height || 0)}>
+          <HuzzHeader
+            fontsLoaded={fontsLoaded}
+            onMenuPress={() => onNavigate('settings')}
+            onBellPress={() => onNavigate('notifications')}
+            onLogoPress={onHeaderHuzzPress}
           />
-        ) : !currentUser ? (
-          <View style={[styles.card, styles.stateCard, { height: Math.min(cardHeight, 360) }]}>
-            <LiveText style={styles.stateTitle}>You&apos;re all caught up</LiveText>
-            <LiveText style={styles.stateText}>
-              No more profiles in this batch. Tap Huzz above to refresh, or widen your filters.
-            </LiveText>
-            <LiveRetroButton
-              variant="outline"
-              onPress={openFilters}
-              style={[styles.lobbyCtaBtn, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
-              textStyle={welcomeButtonStyles.welcomeBtnLabel}
-            >
-              Open filters
-            </LiveRetroButton>
-          </View>
-        ) : (
-          <View style={styles.discoveryStage}>
-            <View style={styles.deckFrame}>
-              {cuteAlert && (
-                <RNAnimated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.cuteAlertOverlay,
-                    {
-                      opacity: cuteAlertAnim,
-                      transform: [
-                        {
-                          scale: cuteAlertAnim.interpolate({
-                            inputRange: [0, 0.5, 1],
-                            outputRange: [0.6, 1.05, 1],
-                          }),
-                        },
-                        {
-                          rotate: cuteAlertAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [cuteAlert.type === 'success' ? '-8deg' : cuteAlert.type === 'error' ? '8deg' : '0deg', cuteAlert.type === 'success' ? '-8deg' : cuteAlert.type === 'error' ? '8deg' : '0deg'],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.cuteAlertBox,
-                      cuteAlert.type === 'success' && styles.cuteAlertSuccess,
-                      cuteAlert.type === 'error' && styles.cuteAlertError,
-                      cuteAlert.type === 'match' && styles.cuteAlertMatch,
-                      cuteAlert.type === 'info' && styles.cuteAlertInfo,
-                    ]}
+          <DiscoveryTabs active={discoveryTab} onChange={setDiscoveryTab} />
+          <StoriesRow
+            stories={storyRow.items}
+            myHasStory={storyRow.myActiveStoryCount > 0}
+            myPreviewUrl={storyRow.myPreviewUrl || (Array.isArray(me?.images) ? me.images[0] : '')}
+            onAddStory={handleAddStory}
+            onViewMyStory={handleViewMyStory}
+            onStoryPress={handleStoryPress}
+          />
+          {postingStory ? (
+            <View style={styles.storyUploading}>
+              <ActivityIndicator size="small" color={tokens.colors.brandPink} />
+              <Text style={styles.storyUploadingText}>Posting story…</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.container}>
+          <View style={[styles.cardContainer, { paddingBottom: FLOAT_NAV_GAP }]}>
+            {showDiscoveryLobby ? (
+              <ScrollView
+                style={styles.lobbyScroll}
+                contentContainerStyle={[styles.lobbyScrollContent, { paddingBottom: navClearance }]}
+                showsVerticalScrollIndicator={false}
+              >
+                <HomeLobbyHero />
+                <HomeFeatureGrid />
+                <HomeSafetyNote />
+                <LiveContentWidth style={styles.lobbyCta}>
+                  <LiveRetroButton
+                    variant="primary"
+                    onPress={openFilters}
+                    style={[styles.lobbyCtaBtn, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+                    textStyle={welcomeButtonStyles.welcomeBtnLabel}
                   >
-                    <Text style={styles.cuteAlertText}>{cuteAlert.message}</Text>
-                    {cuteAlert.subMessage && (
-                      <Text style={styles.cuteAlertSubText}>{cuteAlert.subMessage}</Text>
-                    )}
-                  </View>
-                </RNAnimated.View>
-              )}
-              {/* Swipe feedback badge – same design as card corner LIKE/NOPE, brief and non‑persistent */}
-              {swipeToast && (
-                <RNAnimated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.swipeToastOverlay,
-                    {
-                      opacity: swipeToastAnim,
-                      transform: [
-                        {
-                          scale: swipeToastAnim.interpolate({
-                            inputRange: [0, 0.4, 1],
-                            outputRange: [0.85, 1.08, 1],
-                          }),
-                        },
-                        {
-                          rotate: swipeToastAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [swipeToast === 'like' ? '-6deg' : '6deg', swipeToast === 'like' ? '-6deg' : '6deg'],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.swipeToastBadge,
-                      swipeToast === 'like' && styles.swipeToastLike,
-                      swipeToast === 'nope' && styles.swipeToastNope,
-                    ]}
-                  >
-                    <Text style={styles.swipeToastText}>
-                      {swipeToast === 'like' ? 'CONNECT!' : 'NEXT'}
-                    </Text>
-                  </View>
-                </RNAnimated.View>
-              )}
-              <SwipeDeck
-                style={styles.deckFill}
-                motion="slide"
-                gestureX={gestureX}
-                gestureY={gestureY}
-                data={allCandidates}
-                index={currentIndex}
-                onSwipe={handleSwipe}
-                renderCard={(u, meta) => (
-                  <DiscoveryProfileStack
-                    user={u}
-                    isTop={meta?.isTop}
-                    panGesture={meta?.panGesture}
-                    onPhotoPress={openPhotoGallery}
+                    Open filters
+                  </LiveRetroButton>
+                </LiveContentWidth>
+              </ScrollView>
+            ) : loading ? (
+              <View style={[styles.stateCard, { flex: 1 }]}>
+                <ActivityIndicator size="large" color={tokens.colors.accent} />
+                <LiveText style={[styles.stateText, { marginTop: 12 }]}>Loading people…</LiveText>
+              </View>
+            ) : !currentUser ? (
+              <View style={[styles.stateCard, { flex: 1 }]}>
+                <LiveText style={styles.stateTitle}>You&apos;re all caught up</LiveText>
+                <LiveText style={styles.stateText}>
+                  No more profiles in this batch. Tap Huzz above to refresh, or widen your filters.
+                </LiveText>
+                <LiveRetroButton variant="outline" onPress={openFilters} style={welcomeButtonStyles.welcomeBtnShape}>
+                  Open filters
+                </LiveRetroButton>
+              </View>
+            ) : (
+              <View style={styles.discoveryStage}>
+                <View style={styles.deckFrame}>
+                  {cuteAlert && (
+                    <RNAnimated.View pointerEvents="none" style={[styles.cuteAlertOverlay, { opacity: cuteAlertAnim }]}>
+                      <View style={[styles.cuteAlertBox, styles.cuteAlertInfo]}>
+                        <Text style={styles.cuteAlertText}>{cuteAlert.message}</Text>
+                      </View>
+                    </RNAnimated.View>
+                  )}
+                  {swipeToast && (
+                    <RNAnimated.View pointerEvents="none" style={[styles.swipeToastOverlay, { opacity: swipeToastAnim }]}>
+                      <View style={[styles.swipeToastBadge, swipeToast === 'like' ? styles.swipeToastLike : styles.swipeToastNope]}>
+                        <Text style={styles.swipeToastText}>{swipeToast === 'like' ? 'CONNECT!' : 'NEXT'}</Text>
+                      </View>
+                    </RNAnimated.View>
+                  )}
+                  <SwipeDeck
+                    ref={swipeDeckRef}
+                    style={styles.deckFill}
+                    motion="slide"
+                    gestureX={gestureX}
+                    gestureY={gestureY}
+                    data={allCandidates}
+                    index={currentIndex}
+                    canSwipe={deckCanSwipe}
+                    onBlocked={onDeckBlocked}
+                    onSwipe={handleSwipe}
+                    renderCard={renderDiscoveryCard}
                   />
-                )}
-              />
-            </View>
+                </View>
 
-            <View style={styles.discoveryDock}>
-              <Animated.View style={nopeBtnStyle}>
-                <HuzzPressable
-                  style={[styles.actionButton, styles.skipButton]}
-                  onPress={() => handleSwipe('left', currentUser)}
-                  haptic="light"
-                >
-                  <X size={26} color="#64748B" strokeWidth={2.4} />
-                </HuzzPressable>
-              </Animated.View>
-
-              <Animated.View style={msgBtnStyle}>
-                <HuzzPressable
-                  style={[styles.actionButton, styles.messageButton]}
-                  onPress={async () => {
-                    const ok = await handleDirectMessage(currentUser);
-                    if (ok) {
-                      setCurrentIndex((prev) => (prev < allCandidates.length - 1 ? prev + 1 : 0));
-                    }
-                  }}
-                  haptic="medium"
-                >
-                  <MessageCircle size={28} color="#FFFFFF" strokeWidth={2.2} />
-                </HuzzPressable>
-              </Animated.View>
-
-              <Animated.View style={likeBtnStyle}>
-                <HuzzPressable
-                  style={[styles.actionButton, styles.connectButton]}
-                  onPress={() => handleSwipe('right', currentUser)}
-                  haptic="medium"
-                >
-                  <Heart size={26} color="#059669" strokeWidth={2.4} fill="#D1FAE5" />
-                </HuzzPressable>
-              </Animated.View>
-            </View>
+                <ActionButtons
+                  onRewind={handleRewind}
+                  onPass={handlePassPress}
+                  onLike={handleLikePress}
+                  onBoost={handleBoostPress}
+                  rewindDisabled={indexHistory.length === 0}
+                  nopeBtnStyle={nopeBtnStyle}
+                  likeBtnStyle={likeBtnStyle}
+                />
+              </View>
+            )}
           </View>
-        )}
-      </View>
 
-      <MainBottomNav active="home" onNavigate={onNavigate} onLayout={setBottomNavH} />
-      </View>
+          <MainBottomNav active="home" onNavigate={onNavigate} onLayout={setBottomNavH} />
+        </View>
 
-      <ProfilePhotoGalleryModal
-        visible={photoGallery.open}
-        uris={photoGallery.uris}
-        initialIndex={photoGallery.start}
-        onClose={() => setPhotoGallery((s) => ({ ...s, open: false }))}
-      />
+        <StoryViewerModal
+          visible={storyViewer.open}
+          stories={storyViewer.stories}
+          userName={storyViewer.userName}
+          initialIndex={storyViewer.startIndex}
+          onClose={() => setStoryViewer((s) => ({ ...s, open: false }))}
+          onFinished={(latestId) => handleStoryFinished(latestId)}
+        />
 
+        <VerificationBottomSheet
+          visible={verifySheetOpen}
+          step={verifySheetStep}
+          onClose={() => setVerifySheetOpen(false)}
+          onContinue={() => setVerifySheetStep(1)}
+          onStartScan={() => {
+            setVerifySheetOpen(false);
+            navigation.navigate(Routes.AgeCheck);
+          }}
+          onDone={() => setVerifySheetOpen(false)}
+        />
+
+        <ProfilePhotoGalleryModal
+          visible={photoGallery.open}
+          uris={photoGallery.uris}
+          initialIndex={photoGallery.start}
+          onClose={() => setPhotoGallery((s) => ({ ...s, open: false }))}
+        />
       </LiveTypographyProvider>
     </SafeAreaView>
   );
@@ -1401,9 +1210,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.screenHorizontal,
     paddingTop: 8,
     paddingBottom: 10,
-    backgroundColor: tokens.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.colors.border,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0,
     minHeight: 60,
     zIndex: 10,
   },
@@ -1413,7 +1221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.colors.surfaceElevated,
+    backgroundColor: tokens.colors.shellIconBtn,
   },
   headerRight: {
     flexDirection: 'row',
@@ -1440,12 +1248,12 @@ const styles = StyleSheet.create({
   headerHuzzWord: {
     fontSize: 40,
     letterSpacing: 0.5,
-    color: '#1c1917',
+    color: tokens.colors.textOnBrand,
     fontWeight: '700',
     fontStyle: 'italic',
     ...Platform.select({
       ios: {
-        textShadowColor: 'rgba(28, 25, 23, 0.12)',
+        textShadowColor: 'rgba(0, 0, 0, 0.12)',
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 2,
       },
@@ -1468,8 +1276,8 @@ const styles = StyleSheet.create({
   cardContainer: {
     flex: 1,
     minHeight: 0,
-    paddingHorizontal: 0,
-    paddingTop: 0,
+    paddingHorizontal: tokens.spacing.screenHorizontal,
+    paddingTop: 4,
     paddingBottom: 0,
   },
   discoveryStage: {
@@ -1488,6 +1296,18 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   lobbyScroll: { flex: 1, width: '100%' },
+  storyUploading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingBottom: 6,
+  },
+  storyUploadingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: tokens.colors.textMutedOnBrand,
+  },
   lobbyScrollContent: {
     paddingTop: tokens.spacing.sm,
     flexGrow: 1,
@@ -1504,13 +1324,13 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     ...tokens.typography.titleSmall,
-    color: tokens.colors.text,
+    color: tokens.colors.textOnBrand,
     marginBottom: 8,
     textAlign: 'center',
   },
   stateText: {
     ...tokens.typography.bodySmall,
-    color: tokens.colors.textSecondary,
+    color: tokens.colors.textMutedOnBrand,
     textAlign: 'center',
     marginBottom: 16,
     lineHeight: 20,
@@ -1580,16 +1400,10 @@ const styles = StyleSheet.create({
     height: '100%',
     minHeight: 0,
     flexDirection: 'column',
-    backgroundColor: tokens.colors.surface,
+    backgroundColor: 'transparent',
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
+    borderWidth: 0,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 12,
     alignSelf: 'center',
   },
   imageContainer: {
@@ -1663,7 +1477,7 @@ const styles = StyleSheet.create({
   bioContainer: {
     flex: 38,
     minHeight: 0,
-    backgroundColor: tokens.colors.surfaceElevated,
+    backgroundColor: 'transparent',
     padding: 14,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
@@ -1675,7 +1489,7 @@ const styles = StyleSheet.create({
   bioSectionLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: tokens.colors.textSecondary,
+    color: tokens.colors.textMutedOnBrand,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 6,
@@ -1683,14 +1497,14 @@ const styles = StyleSheet.create({
   },
   bio: {
     fontSize: 13,
-    color: tokens.colors.text,
+    color: tokens.colors.textOnBrand,
     fontWeight: '500',
     marginBottom: 8,
     lineHeight: 18,
   },
   addMeText: {
     fontSize: 13,
-    color: tokens.colors.accent,
+    color: tokens.colors.textOnBrand,
     fontWeight: '600',
     marginBottom: 8,
     lineHeight: 18,
@@ -1704,12 +1518,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: tokens.radius.full,
-    backgroundColor: tokens.colors.surfaceOverlay,
+    backgroundColor: tokens.colors.shellIconBtn,
   },
   interestTagText: {
     fontSize: 12,
     fontWeight: '500',
-    color: tokens.colors.textSecondary,
+    color: tokens.colors.textOnBrand,
   },
   actionsOverlay: {
     position: 'absolute',
@@ -1728,19 +1542,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingVertical: 6,
     paddingHorizontal: 16,
-    backgroundColor: tokens.colors.surface,
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0f172a',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-      },
-      android: { elevation: 3 },
-    }),
+    backgroundColor: 'transparent',
   },
   actionButton: {
     width: 56,
@@ -1748,42 +1550,42 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: tokens.colors.surface,
+    backgroundColor: tokens.colors.shellIconBtn,
     borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.35)',
     ...Platform.select({
       ios: {
-        shadowColor: '#0f172a',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.15,
         shadowRadius: 8,
       },
       android: { elevation: 4 },
     }),
   },
   skipButton: {
-    borderColor: tokens.colors.borderDark,
-    backgroundColor: '#F8FAFC',
+    borderColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   messageButton: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: tokens.colors.blue,
-    borderColor: tokens.colors.blueBorder,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     borderWidth: 0,
     ...Platform.select({
       ios: {
-        shadowColor: tokens.colors.blueBorder,
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.35,
+        shadowOpacity: 0.2,
         shadowRadius: 10,
       },
       android: { elevation: 6 },
     }),
   },
   connectButton: {
-    borderColor: tokens.colors.filterBorderEmerald,
-    backgroundColor: tokens.colors.surface,
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(16, 185, 129, 0.92)',
   },
   authButton: {
     paddingVertical: 14,

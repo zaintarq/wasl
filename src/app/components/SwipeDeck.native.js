@@ -1,32 +1,38 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation,
   interpolate,
   runOnJS,
+  runOnUI,
   useDerivedValue,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import { tokens } from '../../ui/tokens';
 
 const { width: SCREEN_W } = Dimensions.get('window');
+const SPRING = tokens.motion.spring.jelly;
+const SPRING_SNAP = tokens.motion.spring.snappy;
 
-export function SwipeDeck({
-  data,
-  index,
-  renderCard,
-  onSwipe,
-  disabled,
-  style,
-  gestureX,
-  gestureY,
-  /** slide = horizontal only, fixed stage. card = legacy rotate + xy. */
-  motion = 'card',
-}) {
+export const SwipeDeck = forwardRef(function SwipeDeck(
+  {
+    data,
+    index,
+    renderCard,
+    onSwipe,
+    onBlocked,
+    disabled,
+    canSwipe = true,
+    style,
+    gestureX,
+    gestureY,
+    motion = 'card',
+  },
+  ref
+) {
   const top = data?.[index] || null;
   const next = data?.[index + 1] || null;
 
@@ -35,47 +41,84 @@ export function SwipeDeck({
   const translateX = gestureX || internalX;
   const translateY = gestureY || internalY;
   const hasSwiped = useSharedValue(false);
-  const [showLiked, setShowLiked] = useState(false);
 
-  // Safe wrapper: pass only direction + userId (string) from worklet to avoid runOnJS object crash.
-  // HomeScreen resolves the full user from allCandidates when it receives a string id.
-  const safeOnSwipe = useCallback((direction, userOrId) => {
-    try {
-      if (onSwipe && (userOrId != null && userOrId !== '')) {
-        onSwipe(direction, userOrId);
+  const safeOnSwipe = useCallback(
+    (direction, userOrId) => {
+      try {
+        if (onSwipe && userOrId != null && userOrId !== '') {
+          onSwipe(direction, userOrId);
+        }
+      } catch (error) {
+        console.error('[SwipeDeck] Error in onSwipe:', error);
       }
-    } catch (error) {
-      console.error('[SwipeDeck] Error in onSwipe:', error);
-    }
-  }, [onSwipe]);
+    },
+    [onSwipe]
+  );
 
-  const threshold = useMemo(() => Math.max(90, SCREEN_W * 0.25), []);
+  const notifyBlocked = useCallback(() => {
+    onBlocked?.();
+  }, [onBlocked]);
+
+  const threshold = useMemo(() => Math.max(84, SCREEN_W * 0.22), []);
   const thresholdY = useMemo(() => 110, []);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     'worklet';
-    translateX.value = withSpring(0, { damping: 20, stiffness: 260, mass: 0.7 });
-    translateY.value = withSpring(0, { damping: 20, stiffness: 260, mass: 0.7 });
-  };
+    translateX.value = withSpring(0, SPRING);
+    translateY.value = withSpring(0, SPRING);
+    hasSwiped.value = false;
+  }, [hasSwiped, translateX, translateY]);
 
-  const flyOut = (dir) => {
-    'worklet';
-    const toX = dir === 'right' ? SCREEN_W * 1.4 : -SCREEN_W * 1.4;
-    translateX.value = withTiming(toX, { duration: 170 }, (finished) => {
+  const commitSwipe = useCallback(
+    (swipeDir, notifyDir, userId) => {
       'worklet';
-      if (finished) {
-        translateX.value = 0;
-        translateY.value = 0;
-        hasSwiped.value = false;
-      }
-    });
-    translateY.value = withTiming(motion === 'slide' ? 0 : translateY.value + 10, { duration: 170 });
-  };
+      const toX = swipeDir === 'right' ? SCREEN_W * 1.35 : -SCREEN_W * 1.35;
+      translateX.value = withSpring(
+        toX,
+        { ...SPRING, velocity: swipeDir === 'right' ? 900 : -900 },
+        (finished) => {
+          'worklet';
+          if (!finished) return;
+          translateX.value = 0;
+          translateY.value = 0;
+          hasSwiped.value = false;
+          if (userId) {
+            runOnJS(safeOnSwipe)(notifyDir, userId);
+          }
+        }
+      );
+      translateY.value = withSpring(motion === 'slide' ? 0 : translateY.value + 8, SPRING_SNAP);
+    },
+    [hasSwiped, motion, safeOnSwipe, translateX, translateY]
+  );
 
-  // Pan only wraps the photo (HomeScreen); bio ScrollView is a sibling so it isn’t blocked.
-  // Require clear horizontal movement before the deck pan activates.
-  const activeOffsetX = useMemo(() => [-40, 40], []);
-  const failOffsetY = useMemo(() => [-14, 14], []);
+  const trySwipe = useCallback(
+    (notifyDir, swipeDir = notifyDir) => {
+      'worklet';
+      if (hasSwiped.value || !top) return;
+      if (!canSwipe) {
+        reset();
+        runOnJS(notifyBlocked)();
+        return;
+      }
+      hasSwiped.value = true;
+      const userId = top?.id ?? top?.uid ?? '';
+      commitSwipe(swipeDir === 'right' ? 'right' : 'left', notifyDir, userId);
+    },
+    [canSwipe, commitSwipe, hasSwiped, notifyBlocked, reset, top]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      swipeLeft: () => runOnUI(trySwipe)('left', 'left'),
+      swipeRight: () => runOnUI(trySwipe)('right', 'right'),
+    }),
+    [trySwipe]
+  );
+
+  const activeOffsetX = useMemo(() => [-24, 24], []);
+  const failOffsetY = useMemo(() => [-18, 18], []);
 
   const pan = useMemo(() => {
     return Gesture.Pan()
@@ -89,77 +132,62 @@ export function SwipeDeck({
       .onEnd((e) => {
         const vx = e.velocityX;
         const vy = e.velocityY;
-        const shouldRight = translateX.value > threshold || vx > 1200;
-        const shouldLeft = translateX.value < -threshold || vx < -1200;
+        const shouldRight = translateX.value > threshold || vx > 900;
+        const shouldLeft = translateX.value < -threshold || vx < -900;
         const verticalDominates =
           Math.abs(translateY.value) > Math.abs(translateX.value) * 1.25;
-        const shouldUp = verticalDominates && (translateY.value < -thresholdY || vy < -1100);
-        const shouldDown = verticalDominates && (translateY.value > thresholdY || vy > 1100);
+        const shouldUp = verticalDominates && (translateY.value < -thresholdY || vy < -900);
+        const shouldDown = verticalDominates && (translateY.value > thresholdY || vy > 900);
 
         if (shouldRight) {
-          if (hasSwiped.value) return;
-          hasSwiped.value = true;
-          runOnJS(setShowLiked)(true);
-          flyOut('right');
-          if (onSwipe && top) {
-            runOnJS(safeOnSwipe)('right', top?.id ?? top?.uid ?? '');
-          }
+          trySwipe('right', 'right');
           return;
         }
         if (shouldLeft) {
-          if (hasSwiped.value) return;
-          hasSwiped.value = true;
-          flyOut('left');
-          if (onSwipe && top) {
-            runOnJS(safeOnSwipe)('left', top?.id ?? top?.uid ?? '');
-          }
+          trySwipe('left', 'left');
           return;
         }
         if (shouldUp) {
-          if (hasSwiped.value) return;
-          hasSwiped.value = true;
-          flyOut('right');
-          if (onSwipe && top) {
-            runOnJS(safeOnSwipe)('up', top?.id ?? top?.uid ?? '');
+          if (hasSwiped.value || !top) return;
+          if (!canSwipe) {
+            reset();
+            runOnJS(notifyBlocked)();
+            return;
           }
+          hasSwiped.value = true;
+          reset();
+          runOnJS(safeOnSwipe)('up', top?.id ?? top?.uid ?? '');
           return;
         }
         if (shouldDown) {
-          if (hasSwiped.value) return;
-          hasSwiped.value = true;
-          flyOut('left');
-          if (onSwipe && top) {
-            runOnJS(safeOnSwipe)('down', top?.id ?? top?.uid ?? '');
-          }
+          trySwipe('down', 'left');
           return;
         }
         reset();
       });
   }, [
     activeOffsetX,
-    failOffsetY,
+    canSwipe,
+    commitSwipe,
     disabled,
-    safeOnSwipe,
+    failOffsetY,
+    hasSwiped,
+    notifyBlocked,
     reset,
+    safeOnSwipe,
     threshold,
     thresholdY,
     top,
-    onSwipe,
     translateX,
     translateY,
-    hasSwiped,
-    motion,
+    trySwipe,
   ]);
 
   const likeOpacity = useDerivedValue(() => {
-    // Show full opacity when swiped right or when dragging past threshold
-    if (translateX.value > threshold * 0.7) return 1;
+    if (translateX.value > threshold * 0.65) return 1;
     return interpolate(translateX.value, [0, threshold], [0, 1], Extrapolation.CLAMP);
   });
-  
-  const showLikedText = useDerivedValue(() => {
-    return translateX.value > threshold * 0.7;
-  });
+
   const nopeOpacity = useDerivedValue(() => {
     return interpolate(translateX.value, [-threshold, 0], [1, 0], Extrapolation.CLAMP);
   });
@@ -180,17 +208,20 @@ export function SwipeDeck({
     };
   });
 
-  const likeStyle = useAnimatedStyle(() => {
-    return { opacity: likeOpacity.value, transform: [{ rotate: '-8deg' }] };
-  });
+  const likeStyle = useAnimatedStyle(() => ({
+    opacity: likeOpacity.value,
+    transform: [{ rotate: '-8deg' }, { scale: interpolate(likeOpacity.value, [0, 1], [0.92, 1], Extrapolation.CLAMP) }],
+  }));
 
-  const nopeStyle = useAnimatedStyle(() => {
-    return { opacity: nopeOpacity.value, transform: [{ rotate: '8deg' }] };
-  });
+  const nopeStyle = useAnimatedStyle(() => ({
+    opacity: nopeOpacity.value,
+    transform: [{ rotate: '8deg' }, { scale: interpolate(nopeOpacity.value, [0, 1], [0.92, 1], Extrapolation.CLAMP) }],
+  }));
 
   const nextStyle = useAnimatedStyle(() => {
-    const s = interpolate(Math.abs(translateX.value), [0, threshold], [0.96, 1], Extrapolation.CLAMP);
-    const ty = interpolate(Math.abs(translateX.value), [0, threshold], [10, 0], Extrapolation.CLAMP);
+    const drag = Math.abs(translateX.value);
+    const s = interpolate(drag, [0, threshold], [0.94, 1], Extrapolation.CLAMP);
+    const ty = interpolate(drag, [0, threshold], [14, 0], Extrapolation.CLAMP);
     return { transform: [{ scale: s }, { translateY: ty }] };
   });
 
@@ -203,14 +234,9 @@ export function SwipeDeck({
       ) : null}
 
       {top ? (
-        <Animated.View
-          style={[styles.cardShell, cardStyle]}
-          onLayout={() => {
-            if (showLiked) setShowLiked(false);
-          }}
-        >
+        <Animated.View style={[styles.cardShell, cardStyle]}>
           <Animated.View pointerEvents="none" style={[styles.overlay, styles.like, likeStyle]}>
-            <Text style={styles.overlayText}>{showLiked ? 'CONNECT!' : 'CONNECT'}</Text>
+            <Text style={styles.overlayText}>CONNECT</Text>
           </Animated.View>
           <Animated.View pointerEvents="none" style={[styles.overlay, styles.nope, nopeStyle]}>
             <Text style={styles.overlayText}>NEXT</Text>
@@ -220,7 +246,7 @@ export function SwipeDeck({
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   deck: {
@@ -261,7 +287,3 @@ const styles = StyleSheet.create({
     color: tokens.colors.borderDark,
   },
 });
-
-
-
-

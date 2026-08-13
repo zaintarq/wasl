@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 import { tokens } from '../../tokens';
+import { shellStyles } from '../../styles/shellStyles.native';
 import { HuzzPressable } from '../HuzzPressable.native';
 import { FadeInImage } from '../FadeInImage.native';
 import { LiveText } from '../live/LiveTypography.native';
@@ -49,7 +50,7 @@ export function ChatMatchCard({ other, match, canChat, onPress }) {
       haptic="light"
       disabled={!canChat}
     >
-      <View style={styles.card}>
+      <View style={shellStyles.listRow}>
         <Avatar profile={other} name={name} />
 
         <View style={styles.body}>
@@ -65,7 +66,7 @@ export function ChatMatchCard({ other, match, canChat, onPress }) {
           {canChat ? (
             <>
               <LiveText style={styles.actionText}>Open</LiveText>
-              <ChevronRight size={18} color={tokens.colors.accent} strokeWidth={2.5} />
+              <ChevronRight size={18} color={tokens.colors.textOnBrand} strokeWidth={2.5} />
             </>
           ) : (
             <LiveText style={styles.pending}>⏳</LiveText>
@@ -77,18 +78,8 @@ export function ChatMatchCard({ other, match, canChat, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 10 },
+  wrap: { marginBottom: 0 },
   wrapDisabled: { opacity: 0.72 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-  },
   avatarImg: {
     width: 52,
     height: 52,
@@ -111,11 +102,11 @@ const styles = StyleSheet.create({
   name: {
     ...tokens.typography.label,
     fontSize: 16,
-    color: tokens.colors.text,
+    color: tokens.colors.textOnBrand,
   },
   meta: {
     ...tokens.typography.caption,
-    color: tokens.colors.textMuted,
+    color: tokens.colors.textMutedOnBrand,
     marginTop: 4,
   },
   action: {
@@ -125,7 +116,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...tokens.typography.label,
-    color: tokens.colors.accent,
+    color: tokens.colors.textOnBrand,
   },
   pending: {
     fontSize: 18,

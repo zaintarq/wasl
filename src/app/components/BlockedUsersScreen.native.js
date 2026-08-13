@@ -15,7 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, UserX } from 'lucide-react-native';
 
 import { authService, blockService } from '../../services/firebaseService';
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 
@@ -89,7 +89,7 @@ export function BlockedUsersScreen({ onNavigate }) {
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={['#FFF5F7', '#EFF6FF', '#F0FDFA']}
+        colors={brandShellGradientSoft}
         locations={[0, 0.45, 1]}
         style={StyleSheet.absoluteFill}
       />

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Huzz Games</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body,
+      #game-root {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0f172a;
+        touch-action: none;
+      }
+      #hud {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 10;
+        pointer-events: none;
+        padding: 10px 14px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #f7f1e8;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      }
+      #hud .title {
+        font-weight: 800;
+        font-size: 15px;
+      }
+      #hud .status {
+        margin-top: 2px;
+        font-size: 12px;
+        opacity: 0.85;
+      }
+      #hud.hidden {
+        display: none;
+      }
+      #overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(160deg, #fbcfe8 0%, #f9a8d4 100%);
+        color: #831843;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        text-align: center;
+        padding: 24px;
+      }
+      #overlay.hidden {
+        display: none;
+      }
+      #overlay .card {
+        background: rgba(255, 255, 255, 0.72);
+        border: 2px solid #2b2420;
+        border-radius: 20px;
+        padding: 28px 22px;
+        max-width: 340px;
+      }
+      #overlay h1 {
+        font-size: 20px;
+        margin-bottom: 8px;
+      }
+      #overlay p {
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      .spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid rgba(131, 24, 67, 0.2);
+        border-top-color: #db2777;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 12px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-DT_AP11t.js"></script>
+  </head>
+  <body>
+    <div id="overlay">
+      <div class="card">
+        <div class="spinner"></div>
+        <h1>Connecting…</h1>
+        <p id="overlay-msg">Joining Colyseus room</p>
+      </div>
+    </div>
+    <div id="hud">
+      <div class="title" id="hud-title">Huzz Game</div>
+      <div class="status" id="hud-status"></div>
+    </div>
+    <div id="game-root"></div>
+  </body>
+</html>

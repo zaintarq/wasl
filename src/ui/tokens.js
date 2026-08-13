@@ -2,35 +2,44 @@ import { Dimensions, Platform } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-/**
- * Light, white-based modern design system.
- * Clean backgrounds, soft shadows, one accent – works on all phone sizes.
- */
+/** Soft pastel pink shell + rose accent. */
 export const tokens = {
   colors: {
-    // Base – white and light grays
-    bg: '#FFFFFF',
-    bgSecondary: '#F8FAFC',
+    bg: '#FBCFE8',
+    bgSecondary: '#F9A8D4',
     surface: '#FFFFFF',
     surfaceElevated: '#FFFFFF',
-    surfaceOverlay: '#F1F5F9',
+    surfaceOverlay: '#FDF2F8',
 
-    // Borders – light and subtle
-    border: '#E2E8F0',
-    borderDark: '#CBD5E1',
+    border: '#F9A8D4',
+    borderDark: '#F472B6',
 
-    // Text – dark on light
     text: '#0F172A',
     textSecondary: '#475569',
     textMuted: '#94A3B8',
 
-    // Brand accent – one vibrant color (coral-rose for a fresh, modern feel)
-    accent: '#E11D48',
-    accentDim: 'rgba(225, 29, 72, 0.12)',
-    accentPressed: '#BE123C',
+    textOnBrand: '#831843',
+    textMutedOnBrand: 'rgba(131, 24, 67, 0.68)',
 
-    // Semantic
-    pink: '#F472B6',
+    shellIconBtn: 'rgba(255, 255, 255, 0.55)',
+    shellRowBorder: 'rgba(131, 24, 67, 0.12)',
+    shellTile: 'rgba(255, 255, 255, 0.42)',
+    shellTileBorder: 'rgba(131, 24, 67, 0.1)',
+
+    glassTint: 'rgba(15, 23, 42, 0.22)',
+    glassFallback: 'rgba(15, 23, 42, 0.65)',
+    glassBorder: 'rgba(255, 255, 255, 0.22)',
+    photoScrim: ['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)'],
+
+    brandPink: '#DB2777',
+    brandPinkDark: '#BE185D',
+    brandPinkDeep: '#9D174D',
+
+    accent: '#DB2777',
+    accentDim: 'rgba(219, 39, 119, 0.14)',
+    accentPressed: '#BE185D',
+
+    pink: '#DB2777',
     green: '#10B981',
     greenBorder: '#059669',
     blue: '#0EA5E9',
@@ -40,7 +49,6 @@ export const tokens = {
     success: '#10B981',
     warning: '#F59E0B',
 
-    // Filters / marketing tints (pastel backgrounds + borders)
     filterBgRose: '#FFF1F2',
     filterBgSky: '#EFF6FF',
     filterBgViolet: '#F5F3FF',
@@ -101,4 +109,22 @@ export const tokens = {
 
   isSmallDevice: SCREEN_WIDTH < 375,
   maxContentWidth: 440,
+
+  /** Shared Reanimated spring / timing presets — keep interactions consistent app-wide. */
+  motion: {
+    spring: {
+      jelly: { damping: 18, stiffness: 165, mass: 0.85 },
+      snappy: { damping: 22, stiffness: 260, mass: 0.72 },
+      soft: { damping: 20, stiffness: 180, mass: 0.9 },
+    },
+    timing: {
+      fast: 120,
+      medium: 200,
+      slow: 320,
+    },
+  },
 };
+
+export const brandShellGradient = ['#FDF2F8', '#FBCFE8'];
+export const brandShellGradientSoft = ['#FDF2F8', '#FBCFE8', '#F9A8D4'];
+export const brandUnderlineGradient = ['#DB2777', '#F472B6'];

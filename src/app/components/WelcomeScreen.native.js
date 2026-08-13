@@ -4,16 +4,16 @@ import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwa
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradient, brandUnderlineGradient } from '../../ui/tokens';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 
-/** Soft light-blue sky — calm, easy on the eyes. */
-const WELCOME_BG = ['#F8FAFC', '#EFF6FF', '#DBEAFE'];
-const WELCOME_BG_LOCATIONS = [0, 0.45, 1];
-const WELCOME_BG_FALLBACK = '#EFF6FF';
+const WELCOME_BG = brandShellGradient;
+const WELCOME_BG_LOCATIONS = [0, 1];
+const WELCOME_BG_FALLBACK = tokens.colors.bg;
+const BRAND_UNDERLINE = brandUnderlineGradient;
 
 export function WelcomeScreen({ onNavigate }) {
   const insets = useSafeAreaInsets();
@@ -95,7 +95,7 @@ export function WelcomeScreen({ onNavigate }) {
             </Text>
             <View style={styles.brandUnderlineTrack}>
               <LinearGradient
-                colors={['#1D4ED8', '#2563EB', '#3B82F6']}
+                colors={BRAND_UNDERLINE}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 style={styles.brandUnderline}
@@ -127,7 +127,10 @@ export function WelcomeScreen({ onNavigate }) {
             variant="primary"
             onPress={() => onNavigate('onboarding', { mode: 'signup' })}
             title="Sign up with email"
-            style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
+            style={[
+              welcomeButtonStyles.welcomeBtnShape,
+              welcomeButtonStyles.welcomeBtnPrimaryShadow,
+            ]}
             textStyle={[
               welcomeButtonStyles.welcomeBtnLabel,
               fontsLoaded ? styles.btnFontKaushan : styles.btnFontFallback,
@@ -137,9 +140,10 @@ export function WelcomeScreen({ onNavigate }) {
             variant="outline"
             onPress={() => onNavigate('onboarding', { mode: 'login' })}
             title="Log in"
-            style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
+            style={[welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBrand]}
             textStyle={[
               welcomeButtonStyles.welcomeBtnLabel,
+              welcomeButtonStyles.welcomeBtnLabelOutlineOnBrand,
               fontsLoaded ? styles.btnFontKaushan : styles.btnFontFallback,
             ]}
           />
@@ -196,11 +200,11 @@ const styles = StyleSheet.create({
   brandMark: {
     fontSize: 64,
     letterSpacing: 0.5,
-    color: '#1c1917',
+    color: tokens.colors.textOnBrand,
     textAlign: 'center',
     ...Platform.select({
       ios: {
-        textShadowColor: 'rgba(28, 25, 23, 0.12)',
+        textShadowColor: 'rgba(0, 0, 0, 0.12)',
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 2,
       },
@@ -227,7 +231,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   subtitle: {
-    color: tokens.colors.textSecondary,
+    color: tokens.colors.textOnBrand,
     textAlign: 'center',
     marginBottom: 6,
     paddingHorizontal: 12,
@@ -250,7 +254,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   tagline: {
-    color: tokens.colors.textMuted,
+    color: tokens.colors.textMutedOnBrand,
     textAlign: 'center',
     paddingHorizontal: 12,
   },
@@ -265,7 +269,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     ...tokens.typography.caption,
-    color: tokens.colors.textMuted,
+    color: tokens.colors.textMutedOnBrand,
     textAlign: 'center',
     marginTop: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.sm,

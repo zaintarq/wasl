@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Users } from 'lucide-react-native';
-import { authService, clubService } from '../../services/firebaseService';
+import { authService, clubService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
 import { tokens } from '../../ui/tokens';
+import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { MainBottomNav, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
 import { LIVE_SCREEN_GUTTER } from '../../ui/components/live/LiveContentWidth.native';
@@ -42,6 +44,16 @@ export function ClubsScreen({ onNavigate }) {
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinClubId, setJoinClubId] = useState('');
+  const [myProfile, setMyProfile] = useState(null);
+  const [roleCheck, setRoleCheck] = useState(null);
+
+  useEffect(() => {
+    if (!meUid) return;
+    userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
+    checkUserRoleFromAdminCollection(meUid).then(setRoleCheck).catch(() => {});
+  }, [meUid]);
+
+  const requireAge = () => blockIfAgeNotVerified(myProfile, onNavigateRef.current, roleCheck);
 
   useEffect(() => {
     if (!meUid) {
@@ -99,15 +111,25 @@ export function ClubsScreen({ onNavigate }) {
   const myClubs = myClubIds.map((id) => clubById(id)).filter(Boolean);
   const discover = publicClubs.filter((c) => !myClubIds.includes(c.id));
 
-  const openClub = (clubId) => onNavigateRef.current('clubRoom', { clubId });
+  const goCreateClub = () => {
+    if (requireAge()) return;
+    onNavigateRef.current('createClub');
+  };
+
+  const openClub = (clubId) => {
+    if (requireAge()) return;
+    onNavigateRef.current('clubRoom', { clubId });
+  };
 
   const handleJoinPublic = async (clubId) => {
+    if (requireAge()) return;
     const { error } = await clubService.joinClub(meUid, clubId);
     if (error) Alert.alert('Could not join', error);
     else openClub(clubId);
   };
 
   const handleJoinWithCode = async () => {
+    if (requireAge()) return;
     const code = joinCode.trim().toUpperCase();
     const cid = joinClubId.trim();
     if (!code) {
@@ -149,7 +171,7 @@ export function ClubsScreen({ onNavigate }) {
             </HuzzPressable>
             <HuzzPressable
               style={styles.headerBtnPrimary}
-              onPress={() => onNavigateRef.current('createClub')}
+              onPress={goCreateClub}
               haptic="medium"
             >
               <Plus size={20} color="#fff" strokeWidth={2.5} />
@@ -200,7 +222,7 @@ export function ClubsScreen({ onNavigate }) {
                 {discover.length === 0 ? (
                   <View style={styles.empty}>
                     <View style={styles.emptyIcon}>
-                      <Users size={36} color={tokens.colors.textMuted} strokeWidth={1.5} />
+                      <Users size={36} color={tokens.colors.textOnBrand} strokeWidth={1.5} />
                     </View>
                     <LiveText style={styles.emptyTitle}>No public clubs yet</LiveText>
                     <LiveText style={styles.emptyText}>
@@ -226,7 +248,7 @@ export function ClubsScreen({ onNavigate }) {
           <LiveContentWidth style={styles.ctaStack}>
             <LiveRetroButton
               variant="primary"
-              onPress={() => onNavigateRef.current('createClub')}
+              onPress={goCreateClub}
               style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.welcomeBtnPrimaryShadow]}
               textStyle={welcomeButtonStyles.welcomeBtnLabel}
             >
@@ -235,8 +257,8 @@ export function ClubsScreen({ onNavigate }) {
             <LiveRetroButton
               variant="outline"
               onPress={() => setJoinOpen(true)}
-              style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBlue]}
-              textStyle={welcomeButtonStyles.welcomeBtnLabel}
+              style={[styles.cta, welcomeButtonStyles.welcomeBtnShape, welcomeButtonStyles.outlineOnBrand]}
+              textStyle={[welcomeButtonStyles.welcomeBtnLabel, welcomeButtonStyles.welcomeBtnLabelOutlineOnBrand]}
             >
               Join with code
             </LiveRetroButton>
@@ -290,16 +312,11 @@ export function ClubsScreen({ onNavigate }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: tokens.colors.bg },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    ...shellStyles.header,
     paddingHorizontal: LIVE_SCREEN_GUTTER,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surface,
   },
-  headerSide: { width: 70 },
+  headerSide: shellStyles.headerSide,
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -308,23 +325,18 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   headerBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
+    ...shellStyles.headerBtnCompact,
   },
-  headerBtnText: { ...tokens.typography.label, color: tokens.colors.text },
+  headerBtnText: shellStyles.headerBtnText,
   headerBtnPrimary: {
     width: 40,
     height: 40,
     borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.colors.blue,
+    backgroundColor: tokens.colors.shellIconBtn,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
+  title: shellStyles.headerTitle,
   bannerWrap: { marginTop: 10 },
   banner: {
     backgroundColor: tokens.colors.filterBgRose,
@@ -342,45 +354,13 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
     gap: 12,
   },
-  loadingText: { ...tokens.typography.bodySmall, color: tokens.colors.textSecondary },
+  loadingText: { ...tokens.typography.bodySmall, color: tokens.colors.textMutedOnBrand },
   section: { marginBottom: tokens.spacing.lg },
-  sectionTitle: {
-    ...tokens.typography.caption,
-    color: tokens.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
-  empty: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 16,
-    backgroundColor: tokens.colors.surface,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    marginBottom: 4,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: tokens.colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    ...tokens.typography.titleSmall,
-    color: tokens.colors.text,
-    marginBottom: 6,
-  },
-  emptyText: {
-    ...tokens.typography.bodySmall,
-    color: tokens.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+  sectionTitle: shellStyles.sectionTitle,
+  empty: shellStyles.emptyBlock,
+  emptyIcon: shellStyles.emptyIcon,
+  emptyTitle: shellStyles.emptyTitle,
+  emptyText: shellStyles.emptyText,
   ctaStack: { gap: 12, marginBottom: tokens.spacing.md },
   cta: { width: '100%' },
   modalBackdrop: {

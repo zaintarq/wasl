@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AppState, Linking } from 'react-native';
+import { AppState, Linking, View, ActivityIndicator } from 'react-native';
 
 import { Routes } from './routes';
 
@@ -19,8 +19,12 @@ import { ClubsScreen } from '../components/ClubsScreen.native.js';
 import { CreateClubScreen } from '../components/CreateClubScreen.native.js';
 import { ClubRoomScreen } from '../components/ClubRoomScreen.native.js';
 import { VerificationScreen } from '../components/VerificationScreen.native.js';
+import { AgeCheckScreen } from '../components/AgeCheckScreen.native.js';
 import { DatePlanningScreen } from '../components/DatePlanningScreen.native.js';
 import { StaffScreen } from '../components/StaffScreen.native.js';
+import { NotificationsScreen } from '../components/NotificationsScreen.native.js';
+import { SocialScreen } from '../components/SocialScreen.native.js';
+import { GamePlayScreen } from '../components/GamePlayScreen.native.js';
 import { HomeStackNavigator } from './HomeStackNavigator.native.js';
 import { authService, userService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { db } from '../../services/firebase';
@@ -28,7 +32,6 @@ import { collection, query, where, getDocs, doc, onSnapshot, getDoc } from 'fire
 import { detectCountryCity } from '../../services/locationService.native.js';
 import { registerForPushNotificationsAsync, getNotificationListeners, setBadgeCountAsync } from '../../services/pushService.native';
 import { getDeviceHash, collectDeviceSnapshot } from '../../services/deviceService';
-import { vpnDetectionService } from '../../services/vpnDetectionService';
 import { PresenceHeartbeat } from '../components/PresenceHeartbeat.native';
 import {
   syncScreenCaptureToNavigationState,
@@ -73,24 +76,12 @@ function LocationSyncGate() {
 
     try {
       const { country, city, permission } = await detectCountryCity({ requestPermission: true });
-      const locationResult = await userService.updateMyLocation(user.uid, {
+      await userService.updateMyLocation(user.uid, {
         country,
         city,
         locationPermission: permission,
       });
-      
-      // Track IP and detect VPN (silently, non-blocking) - only if user is logged in and location was successfully saved
-      // Only run VPN detection if location update succeeded (user is authenticated)
-      if (user?.uid && country && !locationResult.error) {
-        vpnDetectionService.trackIpAndDetectVpn(user.uid, 'location_update').catch((err) => {
-          // Silently fail - VPN detection is not critical
-          // Don't log permission errors
-          if (!err?.message?.includes('permission') && !err?.message?.includes('not authenticated')) {
-            console.warn('[LocationSyncGate] VPN detection error:', err?.message || err);
-          }
-        });
-      }
-      
+
       lastRunRef.current = now;
     } catch (error) {
       // Silently ignore location errors - don't spam console
@@ -275,7 +266,7 @@ function handleNotificationTap(data) {
       const url = String(data?.playStoreUrl || '').trim() || PLAY_STORE_WEB_URL;
       Linking.openURL(url).catch(() => {});
     } else {
-      navigationRef.navigate(Routes.TabMatches);
+      navigationRef.navigate(Routes.Notifications);
     }
   } catch (e) {
     console.error('[Push] Navigation error:', e);
@@ -385,16 +376,30 @@ function useLegacyOnNavigate(navigation) {
           return;
         }
         case 'home':
-          navigation.dispatch(
-            CommonActions.reset({
-              index: 0,
-              routes: [{ name: Routes.TabHome }],
-            })
-          );
+          navigation.navigate(Routes.TabHome);
           return;
         case 'matches':
           navigation.navigate(Routes.TabMatches);
           return;
+        case 'matchFeed':
+          navigation.navigate(Routes.TabSocial);
+          return;
+        case 'social':
+          navigation.navigate(Routes.TabSocial);
+          return;
+        case 'gamePlay': {
+          const params =
+            arg && typeof arg === 'object'
+              ? {
+                  gameId: arg.gameId || 'ludo',
+                  opponentUid: arg.opponentUid || null,
+                  opponentName: arg.opponentName || null,
+                  roomId: arg.roomId || null,
+                }
+              : { gameId: 'ludo' };
+          navigation.navigate(Routes.GamePlay, params);
+          return;
+        }
         case 'chat':
           if (matchId) navigation.navigate(Routes.ChatThread, { matchId });
           else navigation.navigate(Routes.TabMatches);
@@ -422,6 +427,9 @@ function useLegacyOnNavigate(navigation) {
           return;
         case 'verification':
           navigation.navigate(Routes.Verification);
+          return;
+        case 'ageCheck':
+          navigation.navigate(Routes.AgeCheck);
           return;
         case 'myProfile':
           navigation.navigate(Routes.TabProfile);
@@ -456,6 +464,9 @@ function useLegacyOnNavigate(navigation) {
             params: typeof arg === 'object' && arg ? arg : undefined,
           });
           return;
+        case 'notifications':
+          navigation.navigate(Routes.Notifications);
+          return;
         default:
           // Unknown legacy route – keep app stable.
           return;
@@ -468,9 +479,17 @@ function useLegacyOnNavigate(navigation) {
 function screenOptionsBase() {
   return {
     headerShown: false,
-    // Native-feeling transitions + swipe-back gestures.
     gestureEnabled: true,
     animation: 'slide_from_right',
+  };
+}
+
+function mainTabScreenOptions() {
+  return {
+    headerShown: false,
+    gestureEnabled: true,
+    animation: 'fade',
+    animationDuration: 220,
   };
 }
 
@@ -551,8 +570,11 @@ export function RootNavigator() {
   }, []);
 
   if (!isReady) {
-    // Show nothing while checking auth (or show a loading screen)
-    return null;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBCFE8' }}>
+        <ActivityIndicator size="large" color="#DB2777" />
+      </View>
+    );
   }
 
   /** Cold-open straight to preferences — params only from this state, not Screen.initialParams (avoids merge bugs). */
@@ -609,13 +631,27 @@ export function RootNavigator() {
         </RootStack.Screen>
 
         {/* Main app screens (no bottom tabs — retro UI controls navigation) */}
-        <RootStack.Screen name={Routes.TabHome}>
+        <RootStack.Screen name={Routes.TabHome} options={mainTabScreenOptions()}>
           {({ navigation }) => (
             <HomeStackNavigator onNavigateRoot={useLegacyOnNavigate(navigation)} />
           )}
         </RootStack.Screen>
-        <RootStack.Screen name={Routes.TabMatches}>
+        <RootStack.Screen name={Routes.TabMatches} options={mainTabScreenOptions()}>
           {({ navigation }) => <MatchListScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.TabSocial} options={mainTabScreenOptions()}>
+          {({ navigation }) => <SocialScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.GamePlay} options={{ animation: 'slide_from_bottom' }}>
+          {({ navigation, route }) => (
+            <GamePlayScreen
+              onNavigate={useLegacyOnNavigate(navigation)}
+              gameId={route?.params?.gameId || 'ludo'}
+              opponentUid={route?.params?.opponentUid || null}
+              opponentName={route?.params?.opponentName || null}
+              roomId={route?.params?.roomId || null}
+            />
+          )}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.ChatThread}>
           {({ navigation, route }) => (
@@ -630,10 +666,10 @@ export function RootNavigator() {
         <RootStack.Screen name={Routes.TabProfile}>
           {({ navigation }) => <MyProfileScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
-        <RootStack.Screen name={Routes.TabLive}>
+        <RootStack.Screen name={Routes.TabLive} options={mainTabScreenOptions()}>
           {({ navigation }) => <LiveRandomScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
-        <RootStack.Screen name={Routes.TabClubs}>
+        <RootStack.Screen name={Routes.TabClubs} options={mainTabScreenOptions()}>
           {({ navigation }) => <ClubsScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.CreateClub}>
@@ -662,8 +698,14 @@ export function RootNavigator() {
         <RootStack.Screen name={Routes.Verification}>
           {({ navigation }) => <VerificationScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
+        <RootStack.Screen name={Routes.AgeCheck}>
+          {({ navigation }) => <AgeCheckScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
         <RootStack.Screen name={Routes.Staff}>
           {({ navigation }) => <StaffScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.Notifications} options={{ animation: 'slide_from_right' }}>
+          {({ navigation }) => <NotificationsScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
       </RootStack.Navigator>
     </NavigationContainer>

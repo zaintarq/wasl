@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;" />
+  <title>18+ Age Check — Huzz</title>
+  <style>
+    :root {
+      --bg: #eff6ff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --blue-deep: #0284c7;
+      --danger: #dc2626;
+      --ok: #16a34a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: linear-gradient(180deg, #dbeafe 0%, var(--bg) 40%, #f8fafc 100%);
+      color: var(--text);
+    }
+    .shell {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 16px 24px;
+    }
+    .badge {
+      display: inline-flex;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--blue-deep);
+      background: rgba(14, 165, 233, 0.12);
+      padding: 6px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+      align-self: flex-start;
+    }
+    h1 { font-size: 1.35rem; font-weight: 800; margin-bottom: 8px; }
+    .lead { font-size: 0.92rem; color: var(--muted); line-height: 1.5; margin-bottom: 12px; }
+    .privacy {
+      font-size: 0.82rem;
+      color: var(--muted);
+      background: rgba(255,255,255,0.85);
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      line-height: 1.45;
+    }
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3/4;
+      max-height: 48vh;
+      border-radius: 20px;
+      overflow: hidden;
+      background: #0f172a;
+      border: 2px solid rgba(14, 165, 233, 0.35);
+      margin-bottom: 14px;
+    }
+    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    canvas { pointer-events: none; }
+    .overlay-msg {
+      position: absolute;
+      left: 12px; right: 12px; bottom: 12px;
+      background: rgba(15, 23, 42, 0.82);
+      color: #f8fafc;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      text-align: center;
+    }
+    .progress { height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden; margin-bottom: 12px; }
+    .progress > span { display: block; height: 100%; width: 0%; background: #0284c7; transition: width 0.2s; }
+    .status { min-height: 1.4em; font-size: 0.9rem; color: var(--muted); margin-bottom: 12px; text-align: center; }
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--ok); }
+    button {
+      width: 100%; border: none; border-radius: 14px; padding: 14px 16px;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      background: #0284c7; color: #fff;
+    }
+    button:disabled { opacity: 0.55; }
+    .foot { margin-top: auto; padding-top: 12px; font-size: 0.75rem; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <span class="badge">Powered by ZoiVera</span>
+    <h1>Confirm you're 18+</h1>
+    <p class="lead">Face scan runs on this device only. Huzz gets a signed pass/fail — no photos uploaded.</p>
+    <p class="privacy">Verification runs in your browser. Only a signed result is shared with Huzz.</p>
+    <div class="video-wrap">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="overlay-msg" id="prompt">Tap Start when you're in good lighting, facing the camera.</div>
+    </div>
+    <div class="progress"><span id="bar"></span></div>
+    <div class="status" id="status"></div>
+    <button id="startBtn" type="button">Start face scan</button>
+    <p class="foot">ZoiVera · on-device · privacy-first</p>
+  </div>
+
+  <script>
+    (function () {
+      function post(type, extra) {
+        try {
+          var msg = JSON.stringify(Object.assign({ type: type }, extra || {}));
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(msg);
+          }
+        } catch (e) {}
+      }
+      window.__huzzPost = post;
+      post('ready');
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/dist/face-api.js"></script>
+  <script>
+    (function () {
+      var API_BASE = 'https://zoivera.zoitra.com/api';
+      var cfg = window.__HUZZ__ || {};
+      var apiKey = cfg.apiKey || '';
+      var userRef = cfg.uid || '';
+      var audience = cfg.audience || 'https://zaintarq.github.io';
+      var REQUIRED_AGE = 18;
+      var TARGET_FRAMES = 40;
+      var SCAN_MS = 12000;
+
+      var video = document.getElementById('video');
+      var canvas = document.getElementById('overlay');
+      var ctx = canvas.getContext('2d');
+      var promptEl = document.getElementById('prompt');
+      var statusEl = document.getElementById('status');
+      var barEl = document.getElementById('bar');
+      var startBtn = document.getElementById('startBtn');
+
+      function post(type, extra) {
+        if (window.__huzzPost) return window.__huzzPost(type, extra || {});
+      }
+
+      function setStatus(text, kind) {
+        statusEl.textContent = text || '';
+        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function median(nums) {
+        if (!nums.length) return 0;
+        var s = nums.slice().sort(function (a, b) { return a - b; });
+        var m = Math.floor(s.length / 2);
+        return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+      }
+
+      function sha256Hex(str) {
+        return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function (buf) {
+          return Array.from(new Uint8Array(buf)).map(function (b) {
+            return b.toString(16).padStart(2, '0');
+          }).join('');
+        });
+      }
+
+      function zoiFetch(path, body) {
+        return fetch(API_BASE + path, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + apiKey,
+          },
+          body: JSON.stringify(body || {}),
+        }).then(function (res) {
+          return res.text().then(function (text) {
+            var data;
+            try { data = JSON.parse(text); } catch (e) { data = { raw: text }; }
+            if (!res.ok) {
+              throw new Error((data && data.error) || text || ('HTTP ' + res.status));
+            }
+            return data;
+          });
+        });
+      }
+
+      function loadModels() {
+        var base = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model';
+        return faceapi.nets.tinyFaceDetector.loadFromUri(base)
+          .then(function () { return faceapi.nets.faceLandmark68TinyNet.loadFromUri(base); })
+          .then(function () { return faceapi.nets.ageGenderNet.loadFromUri(base); });
+      }
+
+      function startCamera() {
+        return navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        }).then(function (stream) {
+          video.srcObject = stream;
+          return video.play().then(function () {
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            return stream;
+          });
+        });
+      }
+
+      function drawBox(box) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!box) return;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(box.x, box.y, box.width, box.height);
+      }
+
+      function eyeAspectRatio(landmarks, left) {
+        var pts = landmarks.positions;
+        var idx = left ? [36, 37, 38, 39, 40, 41] : [42, 43, 44, 45, 46, 47];
+        var p1 = pts[idx[0]], p2 = pts[idx[1]], p3 = pts[idx[2]], p4 = pts[idx[3]], p5 = pts[idx[4]], p6 = pts[idx[5]];
+        var vert = Math.hypot(p2.x - p6.x, p2.y - p6.y) + Math.hypot(p3.x - p5.x, p3.y - p5.y);
+        var horiz = Math.hypot(p1.x - p4.x, p1.y - p4.y) || 1;
+        return vert / (2 * horiz);
+      }
+
+      function sleep(ms) {
+        return new Promise(function (r) { setTimeout(r, ms); });
+      }
+
+      function runScan(stream) {
+        var ages = [];
+        var blinks = 0;
+        var lastEar = 0.3;
+        var blinkClosed = false;
+        var headLeft = false;
+        var headRight = false;
+        var started = performance.now();
+
+        promptEl.textContent = 'Hold still — scanning…';
+        setStatus('Look at the camera.');
+
+        function step() {
+          if (performance.now() - started >= SCAN_MS && ages.length >= 8) {
+            return finish();
+          }
+          if (performance.now() - started >= SCAN_MS + 2000) {
+            return finish();
+          }
+          return faceapi
+            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+            .withFaceLandmarks(true)
+            .withAgeAndGender()
+            .then(function (det) {
+              if (det) {
+                drawBox(det.detection.box);
+                if (det.detection.score >= 0.5 && det.age > 5 && det.age < 90) ages.push(det.age);
+                var lm = det.landmarks;
+                var ear = (eyeAspectRatio(lm, true) + eyeAspectRatio(lm, false)) / 2;
+                if (ear < 0.19 && lastEar >= 0.22) blinkClosed = true;
+                if (blinkClosed && ear >= 0.24) { blinks++; blinkClosed = false; }
+                lastEar = ear;
+                var nose = lm.getNose()[3];
+                var jaw = lm.getJawOutline();
+                var centerX = (jaw[3].x + jaw[13].x) / 2;
+                var offset = (nose.x - centerX) / (det.detection.box.width || 1);
+                if (offset < -0.1) headLeft = true;
+                if (offset > 0.1) headRight = true;
+              } else {
+                drawBox(null);
+              }
+              barEl.style.width = Math.min(100, Math.round(((performance.now() - started) / SCAN_MS) * 100)) + '%';
+              if (blinks < 2) promptEl.textContent = 'Blink twice while we scan.';
+              else if (!headLeft || !headRight) promptEl.textContent = 'Turn head slightly left, then right.';
+              else promptEl.textContent = 'Great — keep facing the camera…';
+              return sleep(180).then(step);
+            });
+        }
+
+        function finish() {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          video.srcObject = null;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          var med = median(ages);
+          var confidencePct = Math.min(99, Math.round(55 + Math.min(ages.length, TARGET_FRAMES) * 0.8));
+          var livenessOk = blinks >= 2 && headLeft && headRight;
+          var passed = livenessOk && med >= REQUIRED_AGE && ages.length >= 8;
+          return {
+            passed: passed,
+            medianAge: med,
+            confidencePct: confidencePct,
+            livenessOk: livenessOk,
+            evidence: { medianAge: med, frameCount: ages.length, livenessOk: livenessOk, blinks: blinks, headLeft: headLeft, headRight: headRight, threshold: REQUIRED_AGE },
+          };
+        }
+
+        return step();
+      }
+
+      startBtn.addEventListener('click', function () {
+        if (!apiKey) {
+          setStatus('Missing API key — restart the app.', 'error');
+          post('error', { message: 'missing_api_key' });
+          return;
+        }
+        if (!userRef) {
+          setStatus('Missing user id.', 'error');
+          post('error', { message: 'missing_uid' });
+          return;
+        }
+
+        startBtn.disabled = true;
+        setStatus('Loading…');
+
+        zoiFetch('/verify-api-key', {})
+          .then(function (v) {
+            if (!v.valid) throw new Error('ZoiVera API key invalid or inactive.');
+            if (v.allowed_methods && v.allowed_methods.indexOf('facial_age') < 0) {
+              throw new Error('Facial age not enabled on this key.');
+            }
+            return loadModels();
+          })
+          .then(function () {
+            setStatus('Starting camera…');
+            return startCamera();
+          })
+          .then(function (stream) {
+            setStatus('Opening session…');
+            return zoiFetch('/issue-session', { user_ref: userRef, audience: audience, sdk_version: '1.0.0' })
+              .then(function (session) { return { stream: stream, session: session }; });
+          })
+          .then(function (ctx) {
+            setStatus('Scanning…');
+            return runScan(ctx.stream).then(function (local) {
+              return { session: ctx.session, local: local };
+            });
+          })
+          .then(function (payload) {
+            var local = payload.local;
+            if (!local.passed) {
+              var reason = !local.livenessOk
+                ? 'Blink twice and turn your head left and right, then try again.'
+                : 'Estimated age ' + Math.round(local.medianAge) + ' — must be 18+.';
+              setStatus(reason, 'error');
+              promptEl.textContent = 'Tap Start to try again.';
+              startBtn.disabled = false;
+              post('failed', { reason: reason });
+              return;
+            }
+            setStatus('Signing…');
+            return sha256Hex(JSON.stringify(local.evidence)).then(function (hash) {
+              return zoiFetch('/sign-attestation', {
+                session_id: payload.session.session_id,
+                nonce: payload.session.nonce,
+                method: 'facial_age',
+                passed: true,
+                score: local.medianAge,
+                threshold: REQUIRED_AGE,
+                confidence_pct: local.confidencePct,
+                model_version: 'face-api/ageGenderNet@1.7.14',
+                sdk_version: '1.0.0',
+                backend_name: 'webgl',
+                evidence_hash: hash,
+              });
+            }).then(function (att) {
+              var jwt = att.attestation_jwt || att.token;
+              if (!jwt) throw new Error('No attestation returned.');
+              setStatus('Verified!', 'ok');
+              post('success', { attestationJwt: jwt });
+            });
+          })
+          .catch(function (e) {
+            setStatus(e.message || String(e), 'error');
+            promptEl.textContent = 'Tap Start to retry.';
+            startBtn.disabled = false;
+            post('error', { message: e.message || String(e) });
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

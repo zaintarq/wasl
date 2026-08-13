@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Tex
 import { LinearGradient } from 'expo-linear-gradient';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { adminService, appUpdateService, authService, deviceBanService, moderationNoticeService, userService, verificationService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { PLAY_STORE_WEB_URL } from '../../config/appStore';
 import { exportService } from '../../services/exportService';
@@ -666,7 +666,7 @@ export function AdminScreen({ onNavigate }) {
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={['#FFF5F7', '#EFF6FF', '#F0FDFA']}
+        colors={brandShellGradientSoft}
         locations={[0, 0.45, 1]}
         style={StyleSheet.absoluteFill}
       />

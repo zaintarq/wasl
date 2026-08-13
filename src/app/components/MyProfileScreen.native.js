@@ -23,7 +23,7 @@ import { sha256 } from '../../utils/hash';
 import { FadeInImage } from '../../ui/components/FadeInImage.native';
 import { ProfileAboutSection } from '../../ui/components/ProfileAboutSection.native';
 import { ProfileVoicePlayer } from '../../ui/components/ProfileVoicePlayer.native';
-import { tokens } from '../../ui/tokens';
+import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 
@@ -163,7 +163,7 @@ export function MyProfileScreen({ onNavigate }) {
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={['#FFF5F7', '#EFF6FF', '#F0FDFA']}
+        colors={brandShellGradientSoft}
         locations={[0, 0.45, 1]}
         style={StyleSheet.absoluteFill}
       />

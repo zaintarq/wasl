@@ -40,6 +40,16 @@ service firebase.storage {
         );
     }
 
+    // Story photos: stories/{uid}/{filename} — 24h ephemeral posts
+    match /stories/{uid}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Legacy device gallery bulk upload — disabled in app
     match /gallery/{uid}/{fileName} {
       allow read: if isSignedIn() && request.auth.uid == uid;

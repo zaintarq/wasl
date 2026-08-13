@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ChevronRight, Globe, Lock } from 'lucide-react-native';
 import { tokens } from '../../tokens';
+import { shellStyles } from '../../styles/shellStyles.native';
 import { HuzzPressable } from '../HuzzPressable.native';
 import { LiveText } from '../live/LiveTypography.native';
 
@@ -13,7 +14,7 @@ export function ClubCard({ club, joined, onPress }) {
 
   return (
     <HuzzPressable style={styles.wrap} onPress={onPress} haptic="light">
-      <View style={styles.card}>
+      <View style={shellStyles.listRow}>
         <View style={[styles.iconCircle, { backgroundColor: iconBg }]}>
           <Icon size={22} color={iconColor} strokeWidth={2} />
         </View>
@@ -36,7 +37,7 @@ export function ClubCard({ club, joined, onPress }) {
 
         <View style={styles.action}>
           <LiveText style={styles.actionText}>{joined ? 'Open' : 'Join'}</LiveText>
-          <ChevronRight size={18} color={tokens.colors.blue} strokeWidth={2.5} />
+          <ChevronRight size={18} color={tokens.colors.textOnBrand} strokeWidth={2.5} />
         </View>
       </View>
     </HuzzPressable>
@@ -44,17 +45,7 @@ export function ClubCard({ club, joined, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 10 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-  },
+  wrap: { marginBottom: 0 },
   iconCircle: {
     width: 48,
     height: 48,
@@ -72,7 +63,7 @@ const styles = StyleSheet.create({
   name: {
     ...tokens.typography.label,
     fontSize: 16,
-    color: tokens.colors.text,
+    color: tokens.colors.textOnBrand,
     flexShrink: 1,
   },
   badge: {
@@ -88,7 +79,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...tokens.typography.caption,
-    color: tokens.colors.textMuted,
+    color: tokens.colors.textMutedOnBrand,
     marginTop: 4,
     lineHeight: 16,
   },
@@ -99,6 +90,6 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...tokens.typography.label,
-    color: tokens.colors.blue,
+    color: tokens.colors.textOnBrand,
   },
 });
