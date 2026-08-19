@@ -170,7 +170,7 @@ export function createWebApp(ctx) {
     main.innerHTML = `
       <div class="shell-card">
         <h2>Welcome back</h2>
-        <p class="sub">Same pink shell as the app — one account on web &amp; Android.</p>
+        <p class="sub">Same account on web and Android.</p>
         <button type="button" class="btn btn-primary" id="goSignup">Sign up with email</button>
         <button type="button" class="btn btn-outline" id="goLogin">Log in</button>
       </div>`;
@@ -227,7 +227,7 @@ export function createWebApp(ctx) {
       main.innerHTML = `
         <div class="shell-card">
           <h2>Sign up</h2>
-          <p class="step-hint">Step 1 of 4 — verify your email</p>
+          <p class="step-hint">Step 1 of 4: verify your email</p>
           <label for="suEmail">Email</label>
           <input id="suEmail" type="email" autocomplete="email" />
           <button type="button" class="btn btn-primary" id="suSendOtp">Send code</button>
@@ -254,7 +254,7 @@ export function createWebApp(ctx) {
       main.innerHTML = `
         <div class="shell-card">
           <h2>Enter code</h2>
-          <p class="step-hint">Step 2 of 4 — check your inbox</p>
+          <p class="step-hint">Step 2 of 4: check your inbox</p>
           <label for="suOtp">6-digit code</label>
           <input id="suOtp" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
           <button type="button" class="btn btn-primary" id="suVerifyOtp">Verify</button>
@@ -281,7 +281,7 @@ export function createWebApp(ctx) {
       main.innerHTML = `
         <div class="shell-card">
           <h2>Your profile</h2>
-          <p class="step-hint">Step 3 of 4 — pick a username</p>
+          <p class="step-hint">Step 3 of 4: pick a username</p>
           <label for="suName">Name</label>
           <input id="suName" type="text" autocomplete="name" />
           <label for="suUser">Username</label>
@@ -347,7 +347,7 @@ export function createWebApp(ctx) {
     if (!paint(`
       <div class="shell-card age-verify-card">
         <h2>18+ face scan</h2>
-        <p class="sub">Allow camera access when prompted. Scan runs on your device — Huzz only gets a signed pass/fail.</p>
+        <p class="sub">Allow camera access when prompted. The scan runs on your device. Huzz only receives a signed pass/fail from ZoiVera.</p>
         <iframe id="ageFrame" class="age-frame" src="${url}" allow="camera *; microphone" title="Age verification"></iframe>
         <button type="button" class="btn btn-outline" id="ageBack">Back to Discover</button>
         <div id="ageErr" class="err hidden"></div>
@@ -558,7 +558,7 @@ export function createWebApp(ctx) {
     );
     unsubscribers.push(onSnapshot(qRef, (snap) => {
       if (snap.empty) {
-        msgsEl.innerHTML = `<div class="empty">Say salam — start the conversation.</div>`;
+        msgsEl.innerHTML = `<div class="empty">Say salam. Start the conversation.</div>`;
         return;
       }
       msgsEl.innerHTML = snap.docs.map((d) => {
@@ -600,14 +600,14 @@ export function createWebApp(ctx) {
       const { matches = [], users = {} } = res.data || {};
 
       if (!matches.length) {
-        paint(`<div class="shell-card"><h2>Chats</h2><div class="empty">No matches yet — like people in Discover.</div></div>`, gen);
+        paint(`<div class="shell-card"><h2>Chats</h2><div class="empty">No matches yet. Like people in Home.</div></div>`, gen);
         return;
       }
 
       const rows = matches.map((m) => {
         const otherUid = (m.uids || []).find((u) => u !== user.uid) || '';
         const other = users[otherUid] || {};
-        const preview = esc(m.lastMessageText || 'New match — tap to chat');
+        const preview = esc(m.lastMessageText || 'New match. Tap to chat');
         return `<button type="button" class="list-item list-btn" data-mid="${esc(m.id)}">
           <strong>${esc(other.name || 'Match')}</strong>
           <span>${preview}</span>
@@ -639,7 +639,7 @@ export function createWebApp(ctx) {
 
   function renderClubMessages(msgsEl, messages, uid) {
     if (!messages?.length) {
-      msgsEl.innerHTML = `<div class="empty">No messages yet — say hello.</div>`;
+      msgsEl.innerHTML = `<div class="empty">No messages yet. Say hello.</div>`;
       return;
     }
     msgsEl.innerHTML = messages.map((msg) => {
@@ -752,7 +752,7 @@ export function createWebApp(ctx) {
         </div>`;
       }).join('');
 
-      if (!paint(`<div class="shell-card"><h2>Clubs</h2><p class="sub">Public clubs — join and chat here on the web.</p>${rows}</div>`, gen)) return;
+      if (!paint(`<div class="shell-card"><h2>Clubs</h2><p class="sub">Public clubs. Join and chat on the web.</p>${rows}</div>`, gen)) return;
 
       main.querySelectorAll('[data-join]').forEach((btn) => {
         btn.onclick = async () => {
@@ -834,7 +834,7 @@ export function createWebApp(ctx) {
     const partner = partnerName ? { name: partnerName } : (await loadUserMap([partnerUid]))[partnerUid] || {};
     if (!paint(liveShellHtml(`
         <h2>You're live</h2>
-        <p class="sub">Connected with ${esc(partner.name || 'someone')}. Chat here on web — video works best in the Android app.</p>
+        <p class="sub">Connected with ${esc(partner.name || 'someone')}. Text chat works here. Video works best in the Android app.</p>
         <div class="thread-msgs live-msgs" id="liveMsgs"></div>
         <form class="thread-compose" id="liveForm">
           <input id="liveInput" type="text" maxlength="500" placeholder="Say hi…" autocomplete="off" />
@@ -855,7 +855,7 @@ export function createWebApp(ctx) {
           const mine = msg.fromUid === user.uid;
           return `<div class="bubble ${mine ? 'mine' : 'theirs'}">${esc(msg.text || '')}</div>`;
         }).join('')
-        : `<div class="empty">Session started — say hi.</div>`;
+        : `<div class="empty">Session started. Say hi.</div>`;
       msgsEl.scrollTop = msgsEl.scrollHeight;
     }));
 
@@ -971,7 +971,7 @@ export function createWebApp(ctx) {
       if (!paint(`
         <div class="shell-card">
           <h2>Social</h2>
-          <p class="sub">People from your matches — chat or launch a game.</p>
+          <p class="sub">People from your matches. Chat or launch a game.</p>
           ${rows}
           <a class="btn btn-outline" href="${GAMES_CLIENT_URL}" target="_blank" rel="noopener" style="text-decoration:none;margin-top:12px">Open games hub</a>
         </div>`, gen)) return;

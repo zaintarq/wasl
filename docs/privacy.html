@@ -45,28 +45,32 @@
       <h3>Messages and activity</h3>
       <ul>
         <li>Chat messages, voice notes, reactions, matches, likes, blocks, and reports</li>
-        <li>Mehram supervision metadata (invite status, permissions — not a separate Mehram dating profile)</li>
+        <li>Mehram supervision metadata (invite status and permissions; Mehram users do not get a full dating profile)</li>
         <li>Club membership, live session messages, and game session metadata</li>
+        <li>Message moderation metadata when automated scans flag content (categories, matched terms, scores)</li>
       </ul>
       <h3>Live video and audio</h3>
       <ul>
-        <li>Live Random transmits camera/microphone in real time to session partners via our video provider (LiveKit)</li>
+        <li>Live Random transmits camera and microphone in real time to session partners via <strong>LiveKit</strong></li>
         <li>We do not record live video by default unless explicitly stated in-app</li>
       </ul>
-      <h3>Age verification</h3>
+      <h3>Age verification (ZoiVera)</h3>
       <ul>
-        <li>We receive a pass/fail result from our age verification partner — not a stored gallery of raw biometric images for dating features</li>
+        <li>Facial age estimation runs on your device through our partner <strong>ZoiVera</strong></li>
+        <li>We receive and store a cryptographic attestation result (pass/fail, provider, method, timestamp). We do not store a gallery of raw biometric face images for dating features</li>
       </ul>
-      <h3>Device and technical data</h3>
+      <h3>Device and safety data</h3>
       <ul>
-        <li>Device identifiers, OS, app version, IP address, crash logs, and push notification tokens</li>
+        <li>Device identifiers, a device fingerprint hash used for fraud and device-ban enforcement, OS, app version, IP address, crash logs, and push notification tokens</li>
+        <li>Blocked profanity attempts, safety event logs, and aggregated user safety profiles used for moderation</li>
       </ul>
 
       <h2>3. How we use information</h2>
       <ul>
         <li>Provide discovery, matching, messaging, clubs, live, games, and Mehram features</li>
-        <li>Verify age and prevent fraud, spam, and abuse</li>
-        <li>Moderate content and respond to reports</li>
+        <li>Verify age with ZoiVera and prevent underage access</li>
+        <li>Run automated moderation (profanity blocking, keyword scans, NSFW photo detection)</li>
+        <li>Investigate reports, enforce blocks, and apply device bans when necessary</li>
         <li>Send notifications you opt into</li>
         <li>Improve and secure the Service</li>
         <li>Comply with legal obligations</li>
@@ -76,42 +80,45 @@
       <ul>
         <li><strong>Other users:</strong> Profile fields you choose to show; messages you send to matches, club members, or live partners</li>
         <li><strong>Mehram supervisors:</strong> Access only to the invited conversation, per permission granted</li>
-        <li><strong>Service providers:</strong> Firebase (hosting/auth/database), Expo (push), LiveKit (live video), age verification, and analytics where used</li>
-        <li><strong>Moderators:</strong> Authorized staff may access data to investigate reports</li>
+        <li><strong>Service providers:</strong> Google Firebase (hosting, auth, database, storage), Expo (push notifications), LiveKit (live video), ZoiVera (age verification)</li>
+        <li><strong>Moderators:</strong> Authorized staff may access account, message, report, and device data to investigate safety issues</li>
         <li><strong>Legal:</strong> When required by law or to protect safety</li>
       </ul>
       <p>We do <strong>not</strong> sell your personal information.</p>
 
-      <h2>5. Retention &amp; deletion</h2>
+      <h2>5. Safety &amp; moderation</h2>
+      <p>Read our full <a href="community.html">Safety &amp; Moderation</a> policy for how we handle sexting prevention, reporting, blocking, Mehram supervision, and device bans.</p>
+
+      <h2>6. Retention &amp; deletion</h2>
       <p>We retain data while your account is active and as needed for safety, legal compliance, and dispute resolution. Request deletion at <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a>.</p>
 
-      <h2>6. Your choices</h2>
+      <h2>7. Your choices</h2>
       <ul>
         <li>Manage device permissions (camera, mic, location, contacts) in system settings</li>
         <li>Block and report users in-app</li>
         <li>Email us to access, correct, or delete your data where applicable law provides rights</li>
       </ul>
 
-      <h2>7. Security</h2>
+      <h2>8. Security</h2>
       <p>We use encrypted connections (HTTPS/TLS), authenticated cloud infrastructure, and access controls. No system is 100% secure.</p>
 
-      <h2>8. Children</h2>
+      <h2>9. Children</h2>
       <p>Huzz is 18+ only. See our <a href="child-safety.html">Child Safety Standards</a>. Contact <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a> if you believe a minor is using the Service.</p>
 
-      <h2>9. International users</h2>
+      <h2>10. International users</h2>
       <p>Data may be processed in countries where we and our providers operate.</p>
 
-      <h2>10. Changes</h2>
+      <h2>11. Changes</h2>
       <p>We will post updates here with a new date. Continued use means acceptance.</p>
 
-      <h2>11. Contact</h2>
+      <h2>12. Contact</h2>
       <p>Privacy &amp; support: <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a><br />
       Child safety: <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a></p>
 
       <nav class="policy-nav">
         <a href="trust.html">Trust center</a>
         <a href="terms.html">Terms</a>
-        <a href="community.html">Community</a>
+        <a href="community.html">Safety &amp; moderation</a>
         <a href="child-safety.html">Child safety</a>
       </nav>
 
