@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Linking } from 'react-native';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,9 @@ import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native'
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { mehramService } from '../../services/mehramService';
+
+const TERMS_URL = 'https://zaintarq.github.io/huzz/terms.html';
+const PRIVACY_URL = 'https://zaintarq.github.io/huzz/privacy.html';
 
 const WELCOME_BG = brandShellGradient;
 const WELCOME_BG_LOCATIONS = [0, 1];
@@ -155,7 +158,22 @@ export function WelcomeScreen({ onNavigate }) {
         </View>
 
         <Text style={styles.footerText}>
-          By continuing, you agree to our Terms & Privacy Policy
+          By continuing, you agree to our{' '}
+          <Text
+            style={styles.footerLink}
+            accessibilityRole="link"
+            onPress={() => Linking.openURL(TERMS_URL)}
+          >
+            Terms
+          </Text>
+          {' & '}
+          <Text
+            style={styles.footerLink}
+            accessibilityRole="link"
+            onPress={() => Linking.openURL(PRIVACY_URL)}
+          >
+            Privacy Policy
+          </Text>
         </Text>
       </HuzzKeyboardAwareScrollView>
     </View>
@@ -279,5 +297,11 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.sm,
     opacity: 0.95,
+  },
+  footerLink: {
+    ...tokens.typography.caption,
+    color: tokens.colors.textOnBrand,
+    textDecorationLine: 'underline',
+    fontWeight: '700',
   },
 });

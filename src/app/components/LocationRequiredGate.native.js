@@ -90,7 +90,7 @@ export function LocationRequiredGate() {
       setHint(
         perm.canAskAgain === false
           ? 'Location was denied. Open Settings → Huzz → Location → While Using the App, then return here.'
-          : 'One-time setup: allow location so we can show your city/region for matching and safety.'
+          : 'One-time setup: allow location so we can show your city/region for matching. You can continue without it, but nearby discovery works best with location.'
       );
     } finally {
       setChecking(false);
@@ -138,6 +138,22 @@ export function LocationRequiredGate() {
     }
   };
 
+  const onSkipPress = async () => {
+    const user = authService.getCurrentUser();
+    if (!user?.uid) return;
+    setBusy(true);
+    try {
+      await userService.updateMyLocation(user.uid, {
+        locationPermission: 'skipped',
+        locationSetupComplete: true,
+      });
+      setBlocked(false);
+      setHint('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (checking || !blocked || skipRef.current) return null;
 
   return (
@@ -152,6 +168,13 @@ export function LocationRequiredGate() {
             title={canAskAgain ? 'Allow location' : 'Open Settings'}
             onPress={onAllowPress}
             disabled={busy}
+          />
+          <RetroButton
+            variant="gray"
+            title="Continue without location"
+            onPress={onSkipPress}
+            disabled={busy}
+            style={{ marginTop: 10 }}
           />
           {!canAskAgain ? (
             <RetroButton

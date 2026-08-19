@@ -20,6 +20,7 @@ import { Routes } from '../navigation/routes';
 import { hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
 import { getEffectiveGenderPreferences } from '../../utils/profilePreferences';
 import { hasPassedAgeCheck, blockIfAgeNotVerified, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
+import { sortDiscoveryByTab } from '../../utils/discoverySort';
 import { isUserOnline } from '../../utils/presence';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -182,7 +183,11 @@ export function HomeScreen({ onNavigate }) {
   const [viewMode, setViewMode] = useState('card'); // 'card' | 'grid'
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
-  const [candidates, setCandidates] = useState([]);
+  const [baseCandidates, setBaseCandidates] = useState([]);
+  const candidates = useMemo(
+    () => sortDiscoveryByTab(baseCandidates, discoveryTab, me),
+    [baseCandidates, discoveryTab, me]
+  );
   const [matchCountry, setMatchCountry] = useState('');
   
   // Pending match requests (real-time)
@@ -473,6 +478,10 @@ export function HomeScreen({ onNavigate }) {
   );
 
   useEffect(() => {
+    setCurrentIndex(0);
+  }, [discoveryTab]);
+
+  useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -485,7 +494,7 @@ export function HomeScreen({ onNavigate }) {
               matchCountry: 'United States',
             });
             // Mock data removed - using real profiles only
-            setCandidates([]);
+            setBaseCandidates([]);
             setCurrentIndex(0);
             setMatchCountry('United States');
           }
@@ -553,13 +562,13 @@ export function HomeScreen({ onNavigate }) {
         });
 
         if (!cancelled) {
-          setCandidates(filtered);
+          setBaseCandidates(filtered);
           setCurrentIndex(0);
         }
       } catch (e) {
         console.error('Discovery load error:', e);
         if (!cancelled) {
-          setCandidates([]);
+          setBaseCandidates([]);
           setCurrentIndex(0);
         }
       } finally {
@@ -604,9 +613,28 @@ export function HomeScreen({ onNavigate }) {
     });
   };
 
-  const toggleViewMode = () => {
-    setViewMode((prev) => (prev === 'card' ? 'grid' : 'card'));
-  };
+  const handleFeatureAction = useCallback(
+    (key) => {
+      if (key === 'filters') {
+        openFilters();
+        return;
+      }
+      if (key === 'nearby') {
+        setDiscoveryTab('nearby');
+        setDeckRefreshKey((k) => k + 1);
+        return;
+      }
+      if (key === 'grid') {
+        setViewMode('grid');
+        setDeckRefreshKey((k) => k + 1);
+        return;
+      }
+      if (key === 'swipe') {
+        setViewMode('card');
+      }
+    },
+    [matchCountry, navigation]
+  );
 
   const openProfileFromGrid = (index) => {
     if (index < 0) return;
@@ -847,6 +875,15 @@ export function HomeScreen({ onNavigate }) {
     swipeDeckRef.current?.swipeLeft?.();
   }, []);
 
+  const handleMessagePress = useCallback(async () => {
+    if (ageBlocked) {
+      openVerificationSheet();
+      return;
+    }
+    if (!currentUser) return;
+    await handleDirectMessage(currentUser);
+  }, [ageBlocked, currentUser, openVerificationSheet]);
+
   const handleBoostPress = useCallback(() => {
     showCuteAlert('info', 'Boost', 'Super-boost is coming soon');
   }, [showCuteAlert]);
@@ -894,6 +931,42 @@ export function HomeScreen({ onNavigate }) {
             onLogoPress={onHeaderHuzzPress}
           />
           <DiscoveryTabs active={discoveryTab} onChange={setDiscoveryTab} />
+          {ageBlocked && !loading ? (
+            <HuzzPressable
+              onPress={openVerificationSheet}
+              haptic="light"
+              style={styles.ageBanner}
+              accessibilityRole="button"
+              accessibilityLabel="Verify you are 18 or older to unlock likes, chat, and live"
+            >
+              <Text style={styles.ageBannerText}>Verify you&apos;re 18+ to like, chat, and go live</Text>
+              <Text style={styles.ageBannerCta}>Verify now →</Text>
+            </HuzzPressable>
+          ) : null}
+          {candidates.length > 0 && !loading ? (
+            <View style={styles.viewModeRow}>
+              <HuzzPressable
+                onPress={() => setViewMode('card')}
+                haptic="light"
+                style={[styles.viewModeBtn, viewMode === 'card' && styles.viewModeBtnActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: viewMode === 'card' }}
+                accessibilityLabel="Swipe deck view"
+              >
+                <Text style={[styles.viewModeLabel, viewMode === 'card' && styles.viewModeLabelActive]}>Swipe</Text>
+              </HuzzPressable>
+              <HuzzPressable
+                onPress={() => setViewMode('grid')}
+                haptic="light"
+                style={[styles.viewModeBtn, viewMode === 'grid' && styles.viewModeBtnActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: viewMode === 'grid' }}
+                accessibilityLabel="Grid browse view"
+              >
+                <Text style={[styles.viewModeLabel, viewMode === 'grid' && styles.viewModeLabelActive]}>Grid</Text>
+              </HuzzPressable>
+            </View>
+          ) : null}
           <StoriesRow
             stories={storyRow.items}
             myHasStory={storyRow.myActiveStoryCount > 0}
@@ -919,7 +992,7 @@ export function HomeScreen({ onNavigate }) {
                 showsVerticalScrollIndicator={false}
               >
                 <HomeLobbyHero />
-                <HomeFeatureGrid />
+                <HomeFeatureGrid onAction={handleFeatureAction} />
                 <HomeSafetyNote />
                 <LiveContentWidth style={styles.lobbyCta}>
                   <LiveRetroButton
@@ -949,6 +1022,14 @@ export function HomeScreen({ onNavigate }) {
               </View>
             ) : (
               <View style={styles.discoveryStage}>
+                {viewMode === 'grid' ? (
+                  <DiscoveryProfileGrid
+                    profiles={candidates}
+                    onSelectProfile={openProfileFromGrid}
+                    contentPaddingBottom={navClearance}
+                  />
+                ) : (
+                  <>
                 <View style={styles.deckFrame}>
                   {cuteAlert && (
                     <RNAnimated.View pointerEvents="none" style={[styles.cuteAlertOverlay, { opacity: cuteAlertAnim }]}>
@@ -983,11 +1064,15 @@ export function HomeScreen({ onNavigate }) {
                   onRewind={handleRewind}
                   onPass={handlePassPress}
                   onLike={handleLikePress}
+                  onMessage={handleMessagePress}
                   onBoost={handleBoostPress}
                   rewindDisabled={indexHistory.length === 0}
                   nopeBtnStyle={nopeBtnStyle}
                   likeBtnStyle={likeBtnStyle}
+                  msgBtnStyle={msgBtnStyle}
                 />
+                  </>
+                )}
               </View>
             )}
           </View>
@@ -1141,6 +1226,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: tokens.colors.textMutedOnBrand,
+  },
+  ageBanner: {
+    marginHorizontal: tokens.spacing.screenHorizontal,
+    marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: tokens.radius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderWidth: 1,
+    borderColor: tokens.colors.brandPink,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  ageBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#831843',
+  },
+  ageBannerCta: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: tokens.colors.blue,
+  },
+  viewModeRow: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    gap: 8,
+    marginBottom: 6,
+    paddingHorizontal: tokens.spacing.screenHorizontal,
+  },
+  viewModeBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1.5,
+    borderColor: 'rgba(131, 24, 67, 0.35)',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  viewModeBtnActive: {
+    backgroundColor: tokens.colors.brandPink,
+    borderColor: tokens.colors.brandPink,
+  },
+  viewModeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    color: tokens.colors.textMutedOnBrand,
+  },
+  viewModeLabelActive: {
+    color: '#FFFFFF',
   },
   lobbyScrollContent: {
     paddingTop: tokens.spacing.sm,

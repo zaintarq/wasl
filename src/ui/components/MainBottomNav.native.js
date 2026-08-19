@@ -25,8 +25,8 @@ const TABS = [
   { key: 'home', label: 'Home', Icon: Home, route: 'home', inactiveRotation: 2 },
   { key: 'chats', label: 'Chats', Icon: MessageCircle, route: 'matches', inactiveRotation: -2 },
   { key: 'social', label: 'Social', Icon: Users, route: 'social', inactiveRotation: 3 },
-  { key: 'clubs', label: 'Live audio', Icon: Mic, route: 'clubs', inactiveRotation: -3 },
-  { key: 'live', label: 'Live video', Icon: Video, route: 'liveRandom', inactiveRotation: 2 },
+  { key: 'clubs', label: 'Clubs', Icon: Mic, route: 'clubs', inactiveRotation: -3 },
+  { key: 'live', label: 'Live', Icon: Video, route: 'liveRandom', inactiveRotation: 2 },
 ];
 
 function NavTile({ tab, isActive, onPress }) {

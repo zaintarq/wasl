@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, Text } from 'react-native';
 import Animated, {
   interpolate,
   interpolateColor,
@@ -8,7 +8,7 @@ import Animated, {
   withSequence,
   withSpring,
 } from 'react-native-reanimated';
-import { RotateCcw, X, BookHeart, Zap } from 'lucide-react-native';
+import { RotateCcw, X, BookHeart, Zap, MessageCircle } from 'lucide-react-native';
 import { tokens } from '../../../tokens';
 
 const INK = '#2B2420';
@@ -101,13 +101,16 @@ export function ActionButtons({
   onRewind,
   onPass,
   onLike,
+  onMessage,
   onBoost,
   rewindDisabled,
   nopeBtnStyle,
   likeBtnStyle,
+  msgBtnStyle,
 }) {
   return (
-    <View style={styles.row}>
+    <View style={styles.wrap}>
+      <View style={styles.row}>
       <TileButton
         size={46}
         rotation={-6}
@@ -139,9 +142,20 @@ export function ActionButtons({
         iconSize={28}
         iconStroke={2.2}
         onPress={onLike}
-        accessibilityLabel="Save profile"
+        accessibilityLabel="Like profile"
         bounceOnSuccess
         outerStyle={likeBtnStyle}
+      />
+
+      <TileButton
+        size={46}
+        rotation={-2}
+        variant="outline"
+        icon={MessageCircle}
+        iconSize={19}
+        onPress={onMessage}
+        accessibilityLabel="Send direct message"
+        outerStyle={msgBtnStyle}
       />
 
       <TileButton
@@ -153,11 +167,16 @@ export function ActionButtons({
         onPress={onBoost}
         accessibilityLabel="Boost"
       />
+      </View>
+      <Text style={styles.hint}>Swipe up or tap message to DM</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    alignItems: 'center',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -182,5 +201,14 @@ const styles = StyleSheet.create({
   },
   tileDisabled: {
     opacity: 0.45,
+  },
+  hint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#831843',
+    opacity: 0.72,
+    marginTop: 2,
+    marginBottom: 4,
+    textAlign: 'center',
   },
 });

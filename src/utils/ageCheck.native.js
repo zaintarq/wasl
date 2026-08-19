@@ -35,6 +35,6 @@ export function promptAgeCheckRequired(nav) {
 export function blockIfAgeNotVerified(profile, nav, roleCheck) {
   if (shouldSkipAgeCheck(profile, roleCheck)) return false;
   if (hasPassedAgeCheck(profile)) return false;
-  promptAgeCheckRequired(nav);
+  openAgeCheck(nav);
   return true;
 }

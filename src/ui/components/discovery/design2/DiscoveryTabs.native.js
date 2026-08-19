@@ -87,6 +87,9 @@ export function DiscoveryTabs({ active = 'forYou', onChange }) {
               onLayout={(e) => onTabLayout(tab.key, e)}
               haptic="light"
               style={styles.pill}
+              accessibilityRole="tab"
+              accessibilityLabel={tab.label}
+              accessibilityState={{ selected: isActive }}
             >
               <Text style={[styles.label, isActive ? styles.labelActive : styles.labelInactive]}>
                 {tab.label.toUpperCase()}

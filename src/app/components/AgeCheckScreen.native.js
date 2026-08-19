@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Alert,
   ScrollView,
   Linking,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -15,6 +16,7 @@ import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import { authService, userService } from '../../services/firebaseService';
 import { ageAssuranceService } from '../../services/ageAssuranceService';
 import { getZoiVeraApiKey, getAgeVerifyHostedUrl } from '../../config/ageVerify';
+import { hasPassedAgeCheck } from '../../utils/ageCheck.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { tokens } from '../../ui/tokens';
@@ -25,6 +27,7 @@ export function AgeCheckScreen({ onNavigate }) {
   const [scanError, setScanError] = useState('');
   const [webSource, setWebSource] = useState(null);
   const [webSourceLoading, setWebSourceLoading] = useState(false);
+  const browserPendingRef = useRef(false);
   const uid = authService.getCurrentUser()?.uid || '';
   const apiKey = getZoiVeraApiKey();
   const browserScanUrl = uid ? getAgeVerifyHostedUrl(uid) : '';
@@ -100,16 +103,42 @@ export function AgeCheckScreen({ onNavigate }) {
     setPhase('scan');
   }, []);
 
+  const checkBrowserVerification = useCallback(async () => {
+    if (!uid || !browserPendingRef.current) return;
+    try {
+      const snap = await userService.getUserById(uid);
+      if (hasPassedAgeCheck(snap?.data)) {
+        browserPendingRef.current = false;
+        Alert.alert("You're verified", 'You can now like, match, chat, go live, and join clubs.', [
+          { text: 'Continue', onPress: () => onNavigate?.('home') },
+        ]);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [onNavigate, uid]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        checkBrowserVerification();
+      }
+    });
+    return () => sub.remove();
+  }, [checkBrowserVerification]);
+
   const openInBrowser = useCallback(async () => {
     if (!browserScanUrl) return;
     try {
+      browserPendingRef.current = true;
       await Linking.openURL(browserScanUrl);
       Alert.alert(
         'Finish in browser',
-        'Complete the face scan in Safari/Chrome, then return here and pull to refresh Home. If it still shows unverified, tap Verify again.',
+        'Complete the face scan in Safari or Chrome, then return to Huzz. We will check automatically when you come back.',
         [{ text: 'OK' }]
       );
     } catch {
+      browserPendingRef.current = false;
       setScanError('Could not open browser for face scan.');
     }
   }, [browserScanUrl]);

@@ -5,6 +5,7 @@ import { tokens } from '../../tokens';
 import { shellStyles } from '../../styles/shellStyles.native';
 import { LiveContentWidth } from '../live/LiveContentWidth.native';
 import { LiveText } from '../live/LiveTypography.native';
+import { HuzzPressable } from '../HuzzPressable.native';
 
 const ITEMS = [
   { key: 'swipe', Icon: Heart, title: 'Swipe deck', caption: 'Like or skip profiles' },
@@ -13,19 +14,26 @@ const ITEMS = [
   { key: 'nearby', Icon: MapPin, title: 'Nearby', caption: 'People in your area' },
 ];
 
-export function HomeFeatureGrid() {
+export function HomeFeatureGrid({ onAction }) {
   return (
     <LiveContentWidth style={styles.marginBottom}>
       <LiveText style={shellStyles.sectionTitle}>What you get</LiveText>
       <View style={shellStyles.featureGrid}>
         {ITEMS.map(({ key, Icon, title, caption }) => (
-          <View key={key} style={shellStyles.featureCell}>
+          <HuzzPressable
+            key={key}
+            onPress={() => onAction?.(key)}
+            haptic="light"
+            style={shellStyles.featureCell}
+            accessibilityRole="button"
+            accessibilityLabel={`${title}. ${caption}`}
+          >
             <View style={styles.iconCircle}>
               <Icon size={22} color={tokens.colors.textOnBrand} strokeWidth={2} />
             </View>
             <LiveText style={shellStyles.featureCellTitle}>{title}</LiveText>
             <LiveText style={shellStyles.featureCellCaption}>{caption}</LiveText>
-          </View>
+          </HuzzPressable>
         ))}
       </View>
     </LiveContentWidth>
