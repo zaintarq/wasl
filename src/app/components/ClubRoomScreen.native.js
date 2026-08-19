@@ -117,9 +117,22 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
   const send = async () => {
     const t = text.trim();
     if (!t) return;
-    setText('');
-    const { error } = await clubService.sendMessage(cid, meUid, t);
-    if (error) Alert.alert('Message failed', error);
+    try {
+      const toxic = await clubService.checkMessageToxicity(cid, t);
+      if (toxic) {
+        Alert.alert(
+          'Message not allowed',
+          'This message was flagged as inappropriate. Please change it before sending. Repeated attempts may be reported to admins.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      setText('');
+      const { error } = await clubService.sendMessage(cid, meUid, t);
+      if (error) Alert.alert('Message failed', error);
+    } catch (e) {
+      Alert.alert('Message failed', e?.message || 'Could not send.');
+    }
   };
 
   const requestMic = async () => {

@@ -16,7 +16,8 @@ function isSensitiveNavigationState(state) {
   return (
     name === Routes.TabHome ||
     name === Routes.TabMatches ||
-    name === Routes.ChatThread
+    name === Routes.ChatThread ||
+    name === Routes.TabLive
   );
 }
 

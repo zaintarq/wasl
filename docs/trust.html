@@ -2,60 +2,110 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Huzz Trust Center</title>
-  <meta name="description" content="How Huzz protects users: age verification, moderation, Mehram, blocking, and device bans." />
+  <meta name="description" content="Safety, privacy, and policies for Huzz." />
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
   <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/policy.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
   <header class="site-header">
     <a class="logo" href="index.html">Huzz</a>
-    <a href="app.html">Open app</a>
+    <a class="back-link" href="index.html">Home</a>
   </header>
-  <main>
-    <article class="card">
-      <h1>Trust center</h1>
-      <p class="meta">Last updated: August 2026 · <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a></p>
 
-      <div class="callout">
-        <strong>Contact us by email only:</strong><br />
-        General &amp; moderation: <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a><br />
-        Child safety: <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a>
+  <main class="policy-page">
+    <section class="policy-hero">
+      <p class="eyebrow">Trust center</p>
+      <h1>Your safety</h1>
+      <p class="lead">How we verify age, moderate chat, and give you control. Tap a topic below.</p>
+      <p class="policy-meta">Updated August 2026</p>
+    </section>
+
+    <div class="contact-row-wrap">
+      <a class="contact-chip" href="mailto:zain.tariq@mail.com">
+        <span>Support &amp; moderation</span>
+        <strong>zain.tariq@mail.com</strong>
+      </a>
+      <a class="contact-chip" href="mailto:saudbilal1999@gmail.com">
+        <span>Child safety</span>
+        <strong>saudbilal1999@gmail.com</strong>
+      </a>
+    </div>
+
+    <div class="hub-grid">
+      <a class="hub-card full" href="community.html">
+        <span class="hub-label">Start here</span>
+        <strong>Safety &amp; moderation</strong>
+        <span>Age checks, anti-sexting layers, block, report, Mehram, device bans</span>
+      </a>
+      <a class="hub-card" href="privacy.html">
+        <span class="hub-label">Data</span>
+        <strong>Privacy</strong>
+        <span>What we collect and why</span>
+      </a>
+      <a class="hub-card" href="terms.html">
+        <span class="hub-label">Rules</span>
+        <strong>Terms</strong>
+        <span>Using Huzz responsibly</span>
+      </a>
+      <a class="hub-card" href="child-safety.html">
+        <span class="hub-label">CSAE</span>
+        <strong>Child safety</strong>
+        <span>Zero tolerance policy</span>
+      </a>
+    </div>
+
+    <p class="eyebrow" style="margin-bottom:10px">At a glance</p>
+    <div class="pill-grid">
+      <div class="pill-card">
+        <div class="pill-title">18+ check</div>
+        <div class="pill-desc">Face scan on your phone before likes, chat, or live</div>
+        <div class="pill-tech">ZoiVera</div>
       </div>
+      <div class="pill-card">
+        <div class="pill-title">Vulgar chat blocked</div>
+        <div class="pill-desc">Profanity stopped before send</div>
+        <div class="pill-tech">bad-words filter</div>
+      </div>
+      <div class="pill-card">
+        <div class="pill-title">Sexual keywords</div>
+        <div class="pill-desc">Flagged + auto-report to staff</div>
+        <div class="pill-tech">Keyword scan</div>
+      </div>
+      <div class="pill-card">
+        <div class="pill-title">NSFW photos</div>
+        <div class="pill-desc">Removed from profile automatically</div>
+        <div class="pill-tech">NSFWJS</div>
+      </div>
+      <div class="pill-card">
+        <div class="pill-title">Block &amp; report</div>
+        <div class="pill-desc">One tap in profile or chat</div>
+        <div class="pill-tech">In-app</div>
+      </div>
+      <div class="pill-card">
+        <div class="pill-title">Live video scan</div>
+        <div class="pill-desc">Remote feed checked on-device; blur + auto-skip</div>
+        <div class="pill-tech">NSFWJS</div>
+      </div>
+      <div class="pill-card">
+        <div class="pill-title">Mehram</div>
+        <div class="pill-desc">Trusted supervisor in a chat</div>
+        <div class="pill-tech">Invite link</div>
+      </div>
+    </div>
 
-      <h2>Safety at a glance</h2>
-      <table>
-        <thead><tr><th>Protection</th><th>What we use / how it works</th></tr></thead>
-        <tbody>
-          <tr><td>18+ age check</td><td><strong>ZoiVera</strong> on-device facial age scan; JWT verified on our servers; pass/fail only stored</td></tr>
-          <tr><td>Sexting / vulgar chat</td><td><strong>bad-words</strong> blocks send; keyword scan flags sexual/harassment terms; auto-report to admin</td></tr>
-          <tr><td>Explicit photos</td><td><strong>NSFWJS</strong> scans profile uploads; removes NSFW images automatically</td></tr>
-          <tr><td>Risk tracking</td><td>Per-user <strong>safety profiles</strong> from reports, blocks, flags, spam signals</td></tr>
-          <tr><td>Human review</td><td><strong>Admin dashboard</strong> for reports, vulgar attempts, moderation notices</td></tr>
-          <tr><td>Block</td><td>Instant block + match thread closed</td></tr>
-          <tr><td>Report</td><td>In-app reports + Mehram reports → <code>reports</code> queue</td></tr>
-          <tr><td>Device ban</td><td>Device fingerprint hash banned → auto sign-out on that phone</td></tr>
-          <tr><td>Mehram</td><td>Trusted supervisor can view/reply in chat; block or report on sister's behalf</td></tr>
-        </tbody>
-      </table>
+    <nav class="policy-nav">
+      <a href="community.html">Safety</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="child-safety.html">Child safety</a>
+      <a href="app.html">Open app</a>
+    </nav>
 
-      <p>Full technical detail: read our <a href="community.html"><strong>Safety &amp; Moderation</strong></a> policy.</p>
-
-      <h2>Official policies</h2>
-      <nav class="policy-nav" aria-label="Policies">
-        <a href="community.html">Safety &amp; moderation</a>
-        <a href="terms.html">Terms of Service</a>
-        <a href="privacy.html">Privacy Policy</a>
-        <a href="child-safety.html">Child safety standards</a>
-        <a href="business.html">Business &amp; refunds</a>
-      </nav>
-
-      <footer>© 2026 Huzz · <a href="index.html">Home</a></footer>
-    </article>
+    <p class="page-footer">© 2026 Huzz</p>
   </main>
 </body>
 </html>

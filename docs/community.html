@@ -2,170 +2,178 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Huzz Safety &amp; Moderation</title>
-  <meta name="description" content="How Huzz prevents sexting, verifies age, moderates content, and protects users." />
+  <meta name="description" content="How Huzz prevents sexting, verifies age, and protects users." />
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
   <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/policy.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
   <header class="site-header">
     <a class="logo" href="index.html">Huzz</a>
-    <a href="trust.html">Trust center</a>
+    <a class="back-link" href="trust.html">Trust center</a>
   </header>
-  <main>
-    <article class="card">
-      <h1>Safety &amp; Moderation</h1>
-      <p class="meta">Last updated: August 2026 · Support: <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a> · Child safety: <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a></p>
 
-      <p>This document explains exactly how Huzz tries to prevent sexual harassment, sexting, scams, and abuse. It describes the real systems in our app today, not marketing language.</p>
+  <main class="policy-page">
+    <section class="policy-hero">
+      <p class="eyebrow">Safety &amp; moderation</p>
+      <h1>How we protect you</h1>
+      <p class="lead">Real systems in the app today. Expand any section for detail.</p>
+    </section>
 
-      <div class="callout"><strong>18+ only.</strong> Huzz is not for minors. Age verification, reporting, blocking, and moderation exist to keep adults safe on the platform.</div>
+    <div class="banner">
+      <span class="banner-icon">18+</span>
+      <div>Huzz is adults only. Age verification, blocking, reporting, and moderation keep the platform safer. No system is perfect.</div>
+    </div>
 
-      <h2>1. Age verification (ZoiVera)</h2>
-      <p>Before a user can like profiles, match, send messages, join clubs, or use Live Random, they must pass an <strong>18+ age check</strong>.</p>
-      <h3>Provider</h3>
-      <p>We use <strong><a href="https://zoivera.zoitra.com" rel="noopener noreferrer" target="_blank">ZoiVera</a></strong> for facial age estimation.</p>
-      <h3>How it works</h3>
-      <ol>
-        <li>The scan runs <strong>on the user's device</strong> (camera access required for the check).</li>
-        <li>ZoiVera returns a signed attestation token (JWT) if the estimated age meets our 18+ threshold.</li>
-        <li>Our Firebase Cloud Function <code>finalizeZoiVeraAgeCheck</code> verifies that token against ZoiVera's public keys (JWKS). We confirm the token belongs to the signed-in user and that verification passed.</li>
-        <li>We store only a <strong>pass/fail result</strong> on the user profile (<code>ageChecked18Plus</code>, provider, method, timestamp). We do not store a gallery of face photos for dating features.</li>
-      </ol>
-      <p>If verification fails or the user is under 18, core features stay locked.</p>
+    <div class="layer-stack" aria-label="Protection layers">
+      <div class="layer-item">
+        <span class="layer-badge">A</span>
+        <div><strong>Block before send</strong><span>Profanity filter stops vulgar messages from going out</span></div>
+      </div>
+      <div class="layer-item">
+        <span class="layer-badge">B</span>
+        <div><strong>Keyword scan</strong><span>Sexual &amp; harassment terms flagged + reported</span></div>
+      </div>
+      <div class="layer-item">
+        <span class="layer-badge">C</span>
+        <div><strong>Photo scan</strong><span>NSFW profile images removed automatically</span></div>
+      </div>
+      <div class="layer-item">
+        <span class="layer-badge">D</span>
+        <div><strong>Risk profiles</strong><span>Repeat offenders flagged for admin review</span></div>
+      </div>
+      <div class="layer-item">
+        <span class="layer-badge">E</span>
+        <div><strong>Human review</strong><span>Staff dashboard for reports &amp; bans</span></div>
+      </div>
+    </div>
 
-      <h2>2. Protecting against sexting &amp; sexual messages</h2>
-      <p>Huzz uses <strong>multiple layers</strong>. No system is perfect, but we combine automatic blocking, keyword detection, admin review, and user reports.</p>
+    <nav class="policy-jump" aria-label="Jump to section">
+      <a href="#age">Age</a>
+      <a href="#sexting">Anti-sexting</a>
+      <a href="#block">Block</a>
+      <a href="#report">Report</a>
+      <a href="#device">Device ban</a>
+      <a href="#mehram">Mehram</a>
+      <a href="#limits">Limits</a>
+    </nav>
 
-      <h3>Layer A: Block before send (profanity filter)</h3>
-      <ul>
-        <li>When a user tries to send a chat message, the app calls our Cloud Function <code>checkMessageToxicity</code>.</li>
-        <li>This uses the <strong>bad-words</strong> profanity library to detect vulgar or offensive text.</li>
-        <li>If blocked, the message is <strong>not sent</strong>.</li>
-        <li>The attempt is logged in Firestore collection <code>vulgarAttempts</code> with the user ID, match ID, and timestamp.</li>
-        <li>A <code>safetyEvents</code> record is created and the user's <code>userSafetyProfiles</code> risk score is updated.</li>
-      </ul>
+    <details class="policy-fold" id="age" open>
+      <summary><span><span class="fold-num">01</span>Age verification</span></summary>
+      <div class="fold-body">
+        <p>Core features stay locked until you pass an 18+ check.</p>
+        <h4>Provider</h4>
+        <p><a href="https://zoivera.zoitra.com" target="_blank" rel="noopener">ZoiVera</a> facial age estimation on your device.</p>
+        <h4>Flow</h4>
+        <ol>
+          <li>Scan runs on your phone (camera required).</li>
+          <li>ZoiVera returns a signed token if you pass.</li>
+          <li>Our server verifies the token and stores pass/fail only. No face photo gallery.</li>
+        </ol>
+      </div>
+    </details>
 
-      <h3>Layer B: Sexual &amp; harassment keyword scan (on send)</h3>
-      <ul>
-        <li>Messages that pass the profanity gate are also scanned client-side by <code>scanMessageText</code>.</li>
-        <li>We maintain keyword lists for categories including <strong>sexual</strong> (e.g. explicit sexual terms, requests for nudes) and <strong>harassment</strong> (e.g. slurs and abusive language).</li>
-        <li>Flagged messages may still be stored but are marked in message metadata (<code>moderation.flagged</code>, categories, matched terms).</li>
-        <li>An <strong>automatic report</strong> is created in the admin <code>reports</code> queue for staff review.</li>
-        <li>Additional <code>safetyEvents</code> are recorded for the sender's safety profile.</li>
-      </ul>
+    <details class="policy-fold" id="sexting">
+      <summary><span><span class="fold-num">02</span>Anti-sexting &amp; vulgar chat</span></summary>
+      <div class="fold-body">
+        <h4>Before send</h4>
+        <p>Cloud function <code>checkMessageToxicity</code> uses <strong>bad-words</strong>. Blocked messages never reach the other person. Logged in <code>vulgarAttempts</code>.</p>
+        <h4>On send</h4>
+        <p><code>scanMessageText</code> checks sexual and harassment keyword lists. Flagged messages get moderation metadata and an auto-report to admins.</p>
+        <h4>Profile photos</h4>
+        <p><strong>NSFWJS</strong> scans uploads on-device and on the server. Explicit images are blocked or deleted.</p>
+        <h4>Live Random video</h4>
+        <p><strong>NSFWJS</strong> samples the remote video feed on your phone every few seconds. Inappropriate content is blurred, then the session skips and auto-reports.</p>
+        <h4>Club group chat</h4>
+        <p>Same filters as private chat: profanity blocked before send, sexual/harassment keywords flagged and auto-reported. Club admins can kick members and control mic access.</p>
+        <h4>Risk scoring</h4>
+        <p>We track flags, blocks, and reports over 7–30 days. High-risk accounts are marked watch / review / restricted for staff.</p>
+      </div>
+    </details>
 
-      <h3>Layer C: Profile photo moderation (NSFWJS)</h3>
-      <ul>
-        <li>When a profile photo is uploaded to Firebase Storage under <code>images/{userId}/</code>, a Cloud Function runs <strong>NSFWJS</strong> (TensorFlow image classifier).</li>
-        <li>Images scored as Porn, Hentai, or Sexy above our threshold are <strong>deleted from storage</strong> and removed from the user's profile.</li>
-      </ul>
+    <details class="policy-fold" id="block">
+      <summary><span><span class="fold-num">03</span>Block</span></summary>
+      <div class="fold-body">
+        <p>Block from profile or chat anytime.</p>
+        <ul>
+          <li>Messaging stops immediately.</li>
+          <li>Manage blocked people in Settings.</li>
+          <li>Unblock restores the match thread if you choose.</li>
+        </ul>
+      </div>
+    </details>
 
-      <h3>Layer D: User safety profiles &amp; risk scoring</h3>
-      <p>Our backend builds a rolling safety profile per user from events in the last 7 and 30 days, including:</p>
-      <ul>
-        <li>Sexual language flags</li>
-        <li>Harassment / profanity blocks</li>
-        <li>Manual reports from other users</li>
-        <li>Spam and copy-paste opener signals</li>
-        <li>Scam-risk patterns</li>
-      </ul>
-      <p>Users crossing thresholds (for example repeated sexual language or multiple unique reporters) are marked for <strong>watch, review, or restricted</strong> status. Admins see recommended actions in the staff dashboard.</p>
+    <details class="policy-fold" id="report">
+      <summary><span><span class="fold-num">04</span>Report</span></summary>
+      <div class="fold-body">
+        <p>Report users, messages, or behavior in-app. Mehram supervisors can report too.</p>
+        <ul>
+          <li>Manual reports go to our admin queue.</li>
+          <li>Keyword flags create automatic reports.</li>
+          <li>Child safety: email <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a> urgently.</li>
+        </ul>
+      </div>
+    </details>
 
-      <h3>Layer E: Human moderation</h3>
-      <ul>
-        <li>Authorized Huzz staff use an <strong>Admin dashboard</strong> to review open reports, safety profiles, and blocked profanity attempts.</li>
-        <li>Staff can send formal moderation notices, restrict accounts, disable users, and ban devices (see below).</li>
-        <li>Moderation evidence can be exported for investigation.</li>
-      </ul>
+    <details class="policy-fold" id="device">
+      <summary><span><span class="fold-num">05</span>Device ban</span></summary>
+      <div class="fold-body">
+        <p>For repeat offenders who make new accounts, admins can ban the physical device.</p>
+        <ul>
+          <li>Device fingerprint checked on app open.</li>
+          <li>Banned device = automatic sign-out.</li>
+        </ul>
+      </div>
+    </details>
 
-      <h2>3. Block feature</h2>
-      <p>Any user can block another user from their profile or chat.</p>
-      <ul>
-        <li>Block is stored at <code>users/{yourUid}/blocks/{blockedUid}</code>.</li>
-        <li>The match conversation is marked <code>blocked</code> so messaging stops immediately.</li>
-        <li>Blocked users can be viewed and unblocked in Settings → Blocked users.</li>
-        <li>Blocked users should not appear in discovery for the blocker (filtering depends on active session data).</li>
-      </ul>
+    <details class="policy-fold" id="mehram">
+      <summary><span><span class="fold-num">06</span>Mehram supervision</span></summary>
+      <div class="fold-body">
+        <p>Optional for sisters in a chat. Invite a trusted supervisor (view only or reply).</p>
+        <ul>
+          <li>Secure invite link, expires in 7 days, revocable anytime.</li>
+          <li>Mehram uses the Huzz app only for that chat. No dating profile.</li>
+          <li>Mehram messages are clearly labeled.</li>
+          <li>Mehram can report, block on her behalf, or leave.</li>
+          <li>Both chat partners see a Mehram banner when active.</li>
+        </ul>
+      </div>
+    </details>
 
-      <h2>4. Report feature</h2>
-      <p>Users can report profiles, messages, or behavior from inside the app.</p>
-      <ul>
-        <li>Reports are stored in Firestore collection <code>reports</code> with reporter, target, reason, categories, match ID, and status (<code>open</code> by default).</li>
-        <li><strong>Manual reports</strong> from users create a <code>safetyEvents</code> entry for the reported user.</li>
-        <li><strong>Automatic reports</strong> are created when keyword moderation flags a message.</li>
-        <li>Mehram supervisors can also report a user on behalf of the sister they supervise (see Mehram section).</li>
-        <li>Child safety reports are prioritized. Email <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a> for urgent CSAE concerns.</li>
-      </ul>
+    <details class="policy-fold" id="limits">
+      <summary><span><span class="fold-num">07</span>What we don't promise</span></summary>
+      <div class="fold-body">
+        <ul>
+          <li>We don't read every message live.</li>
+          <li>Filters can miss content or false-flag.</li>
+          <li>No criminal background checks on users.</li>
+          <li>In danger? Call emergency services first, then email us.</li>
+        </ul>
+      </div>
+    </details>
 
-      <h2>5. Device ban</h2>
-      <p>For serious or repeat violations, admins can ban a <strong>physical device</strong>, not just an account.</p>
-      <ul>
-        <li>On login and app open, Huzz collects a <strong>device hash</strong> (derived device fingerprint) and checks <code>bannedDevices/{deviceHash}</code> in Firestore.</li>
-        <li>If the device is banned, the user is signed out automatically and cannot use the app on that device until the ban is removed by staff.</li>
-        <li>Device bans are used for repeat offenders who create new accounts after a profile ban.</li>
-      </ul>
+    <div class="contact-row-wrap" style="margin-top:20px">
+      <a class="contact-chip" href="mailto:zain.tariq@mail.com">
+        <span>Support</span>
+        <strong>zain.tariq@mail.com</strong>
+      </a>
+      <a class="contact-chip" href="mailto:saudbilal1999@gmail.com">
+        <span>Child safety</span>
+        <strong>saudbilal1999@gmail.com</strong>
+      </a>
+    </div>
 
-      <h2>6. Mehram supervision (accountability)</h2>
-      <p>Mehram is an optional feature for <strong>female participants</strong> in a private chat who want a trusted supervisor (brother, father, friend) to watch the conversation.</p>
-      <h3>How invite works</h3>
-      <ul>
-        <li>Only the female participant can create a Mehram invite, and only after the chat meets a minimum activity gate (about 10 minutes or 2+ messages).</li>
-        <li>She chooses <strong>view only</strong> or <strong>view + reply</strong>.</li>
-        <li>A secure link is generated (<code>huzz://mehram?t=...</code>). The token is hashed on our servers; the raw secret is never stored in plain text.</li>
-        <li>Links expire after <strong>7 days</strong>. The girl can revoke access or regenerate the link at any time.</li>
-      </ul>
-      <h3>What the Mehram sees</h3>
-      <ul>
-        <li>The Mehram opens the link in the Huzz app. They do <strong>not</strong> create a dating profile.</li>
-        <li>They receive a temporary Firebase login limited to that one chat.</li>
-        <li>They see live messages. Mehram replies are labeled clearly so both chat participants know it is the supervisor speaking, not the sister.</li>
-      </ul>
-      <h3>Mehram safety actions</h3>
-      <ul>
-        <li><strong>Report:</strong> sends a report to moderators; supervision can stay active.</li>
-        <li><strong>Block:</strong> blocks the guy on the sister's account and ends Mehram access.</li>
-        <li><strong>Leave:</strong> ends the Mehram session; the link may work again if access is still active.</li>
-      </ul>
-      <p>Both the guy and the girl see a <strong>Mehram banner</strong> in chat when supervision is active.</p>
+    <nav class="policy-nav">
+      <a href="trust.html">Trust center</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="child-safety.html">Child safety</a>
+    </nav>
 
-      <h2>7. Other safety features</h2>
-      <ul>
-        <li><strong>18+ gate on features:</strong> likes, matches, chat, clubs, and live require verified age.</li>
-        <li><strong>Location:</strong> approximate city/country for matching; users control device location permission.</li>
-        <li><strong>Contacts access:</strong> optional safety-related feature as described in-app and in our Privacy Policy.</li>
-        <li><strong>Live Random:</strong> only verified users; either party can leave a session; session messages can be reported.</li>
-        <li><strong>Clubs:</strong> group rules apply; reports and blocks work the same as elsewhere.</li>
-        <li><strong>Account disable:</strong> admins can disable accounts that violate policy.</li>
-        <li><strong>Force update alerts:</strong> admins can require a minimum app version for security fixes.</li>
-      </ul>
-
-      <h2>8. What we do not do</h2>
-      <ul>
-        <li>We do not read every message with human eyes in real time.</li>
-        <li>We do not guarantee that all inappropriate content will be caught before it is seen.</li>
-        <li>We do not run criminal background checks on users unless we explicitly state otherwise in the future.</li>
-        <li>Keyword lists and NSFW classifiers can have false positives and false negatives.</li>
-      </ul>
-
-      <h2>9. If you need help</h2>
-      <p><strong>General support, moderation appeals, privacy:</strong> <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a></p>
-      <p><strong>Child safety (CSAE):</strong> <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a></p>
-      <p>If someone is in immediate danger, contact local emergency services first.</p>
-
-      <nav class="policy-nav">
-        <a href="trust.html">Trust center</a>
-        <a href="privacy.html">Privacy</a>
-        <a href="terms.html">Terms</a>
-        <a href="child-safety.html">Child safety</a>
-      </nav>
-
-      <footer>© 2026 Huzz</footer>
-    </article>
+    <p class="page-footer">© 2026 Huzz</p>
   </main>
 </body>
 </html>

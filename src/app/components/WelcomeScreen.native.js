@@ -9,6 +9,7 @@ import { RetroButton } from '../../ui/components/RetroButton.native';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { mehramService } from '../../services/mehramService';
 
 const WELCOME_BG = brandShellGradient;
 const WELCOME_BG_LOCATIONS = [0, 1];
@@ -25,6 +26,10 @@ export function WelcomeScreen({ onNavigate }) {
       unsub = authService.onAuthStateChange((user) => {
         try {
           if (user?.uid) {
+            if (mehramService.isMehramUid(user.uid)) {
+              onNavigate('mehramAccess');
+              return;
+            }
             checkUserRoleFromAdminCollection(user.uid)
               .then((roleCheck) => {
                 if (roleCheck.isAdmin) {

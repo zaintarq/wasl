@@ -16,7 +16,7 @@ export function LiveSafetyNote() {
         <View style={styles.textWrap}>
           <LiveText style={shellStyles.noteTitle}>Stay respectful</LiveText>
           <LiveText style={shellStyles.noteBody}>
-            Live is anonymous and timed. Skip or leave anytime. Report bad behavior from Settings if someone crosses the line.
+            Live is anonymous and timed. Video is scanned on your device with NSFWJS — inappropriate content is blurred and the session skips automatically. You can also skip or leave anytime.
           </LiveText>
         </View>
       </View>

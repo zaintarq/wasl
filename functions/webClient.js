@@ -3,6 +3,7 @@
  */
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const { isMessageToxic, scanMessageText } = require('./messageModeration');
 
 const db = admin.firestore();
 
@@ -291,13 +292,64 @@ exports.webSendClubMessage = functions.region('us-central1').https.onCall(async 
     });
   }
 
-  await db.collection('clubs').doc(clubId).collection('messages').add({
+  if (isMessageToxic(text)) {
+    try {
+      await db.collection('vulgarAttempts').add({
+        userId: uid,
+        originalMessage: text,
+        clubId,
+        status: 'blocked',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      console.error('[webSendClubMessage] vulgar log failed:', e.message);
+    }
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'This message was flagged as inappropriate. Please change it before sending.'
+    );
+  }
+
+  const mod = scanMessageText(text);
+  const msgRef = await db.collection('clubs').doc(clubId).collection('messages').add({
     fromUid: uid,
     text,
+    clubId,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    moderation: mod.flagged
+      ? {
+          flagged: true,
+          categories: mod.categories,
+          matchedTerms: mod.matchedTerms,
+          score: mod.score,
+        }
+      : { flagged: false },
   });
 
-  return { ok: true };
+  if (mod.flagged) {
+    try {
+      await db.collection('reports').add({
+        reporterUid: uid,
+        targetType: 'message',
+        targetId: msgRef.id,
+        targetUserId: uid,
+        matchId: null,
+        reason: mod.categories[0] || 'inappropriate',
+        categories: mod.categories,
+        details: `club:${clubId} ${text}`,
+        autoFlagged: true,
+        matchedTerms: mod.matchedTerms,
+        score: mod.score,
+        status: 'open',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        actionTaken: null,
+      });
+    } catch (e) {
+      console.error('[webSendClubMessage] auto-report failed:', e.message);
+    }
+  }
+
+  return { ok: true, messageId: msgRef.id };
 });
 
 exports.webEnterLivePool = functions.region('us-central1').https.onCall(async (_data, context) => {

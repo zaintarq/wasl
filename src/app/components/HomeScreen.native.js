@@ -459,7 +459,7 @@ export function HomeScreen({ onNavigate }) {
     try {
       const { error } = await createStory(uid, result.assets[0].uri);
       if (error) {
-        Alert.alert('Story failed', error);
+        Alert.alert('Story failed', error.includes('not allowed') ? error : error);
       }
     } finally {
       setPostingStory(false);
@@ -912,7 +912,7 @@ export function HomeScreen({ onNavigate }) {
             console.log('───────────────────────────────────────────────────────────');
             
             // Handle match result (if mutual match)
-            if (likeResult?.matched && !likeResult?.error) {
+            if (likeResult?.matched && likeResult?.matchId && !likeResult?.error) {
               console.log('🎉 MATCH DETECTED! Mutual like!');
               try {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -923,6 +923,11 @@ export function HomeScreen({ onNavigate }) {
               }
             } else if (likeResult?.error) {
               console.error('❌ Like operation had error:', likeResult.error);
+              try {
+                showCuteAlert('error', 'Like failed', likeResult.error);
+              } catch {
+                Alert.alert('Like failed', likeResult.error);
+              }
             } else {
               console.log('✅ Like saved successfully (not mutual yet)');
               try {

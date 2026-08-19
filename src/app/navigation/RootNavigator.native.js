@@ -28,6 +28,7 @@ import { GamePlayScreen } from '../components/GamePlayScreen.native.js';
 import { MehramAccessScreen } from '../components/MehramAccessScreen.native.js';
 import { HomeStackNavigator } from './HomeStackNavigator.native.js';
 import { authService, userService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { db } from '../../services/firebase';
 import { collection, query, where, getDocs, doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { detectCountryCity } from '../../services/locationService.native.js';
 import { registerForPushNotificationsAsync, getNotificationListeners, setBadgeCountAsync } from '../../services/pushService.native';
@@ -253,46 +254,64 @@ function MehramLinkHandler({ isReady }) {
 // Navigation ref for notification handling
 let navigationRef = null;
 
+function resetToRoute(routeName, params) {
+  if (!navigationRef?.isReady?.()) return;
+  navigationRef.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: params ? [{ name: routeName, params }] : [{ name: routeName }],
+    })
+  );
+}
+
 /**
  * Notification Listener - handles in-app notifications and navigation
  */
 function NotificationListener() {
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    if (!user?.uid) return;
+    let detach = () => {};
 
-    // Check if getNotificationListeners is available (may not work in Expo Go)
-    if (typeof getNotificationListeners !== 'function') {
-      console.warn('[Push] getNotificationListeners not available in Expo Go');
-      return;
-    }
+    const attachForUser = (uid) => {
+      detach();
+      if (!uid) return;
 
-    const listeners = getNotificationListeners();
+      if (typeof getNotificationListeners !== 'function') {
+        console.warn('[Push] getNotificationListeners not available in Expo Go');
+        return;
+      }
 
-    // Listen for notifications received while app is open
-    const receivedSubscription = listeners.addNotificationReceivedListener((notification) => {
-      console.log('[Push] Notification received:', notification.request.content);
-      // Update badge count
-      updateBadgeCount(user.uid);
+      const listeners = getNotificationListeners();
+
+      const receivedSubscription = listeners.addNotificationReceivedListener(() => {
+        updateBadgeCount(uid);
+      });
+
+      const responseSubscription = listeners.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data || {};
+        handleNotificationTap(data);
+      });
+
+      updateBadgeCount(uid);
+      const unsub = notificationService.listenMyNotifications(uid, () => {
+        updateBadgeCount(uid);
+      });
+
+      detach = () => {
+        receivedSubscription.remove();
+        responseSubscription.remove();
+        if (unsub) unsub();
+      };
+    };
+
+    const unsubAuth = authService.onAuthStateChange((user) => {
+      attachForUser(user?.uid || null);
     });
 
-    // Listen for user tapping on a notification
-    const responseSubscription = listeners.addNotificationResponseReceivedListener((response) => {
-      console.log('[Push] Notification tapped:', response.notification.request.content);
-      const data = response.notification.request.content.data || {};
-      handleNotificationTap(data);
-    });
-
-    // Update badge on mount and when notifications change
-    updateBadgeCount(user.uid);
-    const unsub = notificationService.listenMyNotifications(user.uid, () => {
-      updateBadgeCount(user.uid);
-    });
+    attachForUser(authService.getCurrentUser()?.uid || null);
 
     return () => {
-      receivedSubscription.remove();
-      responseSubscription.remove();
-      if (unsub) unsub();
+      unsubAuth && unsubAuth();
+      detach();
     };
   }, []);
 
@@ -385,6 +404,12 @@ function DeviceBanGate() {
         const { banned } = await deviceBanService.isBanned(deviceHash);
         if (banned) {
           await authService.signOutUser();
+          Alert.alert(
+            'Device restricted',
+            'This device has been banned from Huzz for violating our policies.',
+            [{ text: 'OK', onPress: () => resetToRoute(Routes.Welcome) }]
+          );
+          resetToRoute(Routes.Welcome);
         }
       }
     } finally {
@@ -520,6 +545,14 @@ function useLegacyOnNavigate(navigation) {
             })
           );
           return;
+        case 'mehramAccess':
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: Routes.MehramAccess }],
+            })
+          );
+          return;
         case 'filters':
           navigation.navigate(Routes.TabHome, {
             screen: Routes.Filters,
@@ -557,9 +590,14 @@ function mainTabScreenOptions() {
 
 export function RootNavigator() {
   const navRef = React.useRef(null);
+  const isReadyRef = React.useRef(false);
   const [initialRoute, setInitialRoute] = React.useState(Routes.Welcome);
   const [onboardingParams, setOnboardingParams] = React.useState({});
   const [isReady, setIsReady] = React.useState(false);
+
+  useEffect(() => {
+    isReadyRef.current = isReady;
+  }, [isReady]);
 
   // Check auth state on mount for persistent login
   // Use onAuthStateChanged to wait for auth to restore from AsyncStorage
@@ -573,6 +611,9 @@ export function RootNavigator() {
         if (user?.uid && mehramService.isMehramUid(user.uid)) {
           setInitialRoute(Routes.MehramAccess);
           setIsReady(true);
+          if (isReadyRef.current) {
+            resetToRoute(Routes.MehramAccess);
+          }
           return;
         }
         if (user?.uid) {
@@ -639,6 +680,7 @@ export function RootNavigator() {
       }
 
       unsub = authService.onAuthStateChange((user) => finishAuthRouting(user));
+      finishAuthRouting(authService.getCurrentUser());
     })();
 
     return () => {
@@ -682,6 +724,7 @@ export function RootNavigator() {
       ref={navRef}
       initialState={rootInitialState}
       onReady={() => {
+        navigationRef = navRef.current;
         try {
           const s = navRef.current?.getRootState?.();
           if (s) syncScreenCaptureToNavigationState(s);

@@ -8,6 +8,7 @@ try {
   // Root .env only (no functions/.env).
 }
 const { AccessToken } = require('livekit-server-sdk');
+const { isMessageToxic } = require('./messageModeration');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
@@ -843,26 +844,14 @@ async function recordSafetyEventAndRefresh(payload) {
   return refreshUserSafetyProfile(targetUid);
 }
 
-function isMessageToxic(text) {
-  if (typeof text !== 'string' || !text.trim()) return false;
-  try {
-    const Filter = require('bad-words').Filter;
-    const filter = new Filter();
-    return filter.isProfane(text.trim());
-  } catch (e) {
-    console.error('[checkMessageToxicity] Filter error:', e.message);
-    return false;
-  }
-}
-
 exports.checkMessageToxicity = functions
-  .region('us-central1')
   .https.onCall(async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
     }
     const text = typeof data?.text === 'string' ? data.text : '';
     const matchId = typeof data?.matchId === 'string' ? data.matchId : null;
+    const clubId = typeof data?.clubId === 'string' ? data.clubId : null;
     const uid = context.auth.uid;
 
     const toxic = isMessageToxic(text);
@@ -872,6 +861,7 @@ exports.checkMessageToxicity = functions
           userId: uid,
           originalMessage: text.trim(),
           matchId: matchId || null,
+          clubId: clubId || null,
           status: 'blocked',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -883,7 +873,7 @@ exports.checkMessageToxicity = functions
           categories: ['harassment'],
           severity: 'medium',
           matchId: matchId || null,
-          details: text.trim(),
+          details: clubId ? `club:${clubId} ${text.trim()}` : text.trim(),
           score: 1,
         });
       } catch (e) {

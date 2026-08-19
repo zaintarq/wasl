@@ -8,6 +8,9 @@ const config = getDefaultConfig(__dirname);
 // This avoids Metro picking Node/Web export conditions that are incompatible with native.
 config.resolver.unstable_enablePackageExports = false;
 
+// TensorFlow / NSFWJS model weight files
+config.resolver.assetExts = [...config.resolver.assetExts, 'bin'];
+
 // CRITICAL: ensure @firebase/app does NOT resolve to its CJS "main" entry,
 // because that entry registers the "node" variant (`registerCoreComponents('node')`).
 // Using browser entries keeps it in the correct client runtime and fixes:

@@ -1047,15 +1047,19 @@ export const likeService = {
       console.log(`   ${likesSentSuccess && likesReceivedSuccess ? '🎉 Both writes succeeded!' : likesSentSuccess || likesReceivedSuccess ? '⚠️ Partial success' : '❌ Both writes failed'}`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
-      // If both writes failed, log but continue anyway (don't fail the like operation)
       if (!likesSentSuccess && !likesReceivedSuccess) {
-        console.error('⚠️ WARNING: Both like writes failed, but continuing anyway');
-        console.error('   This might indicate a Firestore permission issue');
-        // Still continue - we'll try to check for mutual match anyway
-      } else if (likesSentSuccess && likesReceivedSuccess) {
-        console.log('✅ Both like records saved successfully to Firestore!');
-      } else {
-        console.log('⚠️ Partial success - one write succeeded, one failed');
+        return {
+          matched: false,
+          matchId: null,
+          error: 'Could not save your like. Check your connection and try again.',
+        };
+      }
+      if (!likesSentSuccess || !likesReceivedSuccess) {
+        return {
+          matched: false,
+          matchId: null,
+          error: 'Like may not have registered. Please try again.',
+        };
       }
 
       // Get sender + receiver names for notifications
@@ -1095,12 +1099,18 @@ export const likeService = {
               source: 'mutual_like',
               initiatedBy: from,
             });
-            const mid = matchResult?.matchId || getMatchId(from, to);
+            if (matchResult?.error) {
+              console.error('[LikeService] Failed to create active match:', matchResult.error);
+              return { matched: false, matchId: null, error: matchResult.error };
+            }
+            matchId = matchResult?.matchId || getMatchId(from, to);
+            matchStatus = matchResult?.status || 'active';
+            console.log(`[LikeService] Active match created: ${matchId}`);
             try {
               await notificationService.createNotification(from, {
                 type: 'match_mutual',
                 fromUid: from,
-                matchId: mid,
+                matchId,
                 title: "It's a match!",
                 body: `You and ${receiverName} liked each other. Open Matches to chat.`,
                 status: 'unread',
@@ -1108,7 +1118,7 @@ export const likeService = {
               await notificationService.createNotification(to, {
                 type: 'match_mutual',
                 fromUid: from,
-                matchId: mid,
+                matchId,
                 title: "It's a match!",
                 body: `${senderName} liked you back. Open Matches to chat.`,
                 status: 'unread',
@@ -1116,36 +1126,14 @@ export const likeService = {
             } catch (mutualNotifErr) {
               console.warn('[LikeService] Mutual notification (non-critical):', mutualNotifErr);
             }
-            if (matchResult?.error) {
-              console.error('[LikeService] Failed to create active match:', matchResult.error);
-              return { matched: true, matchId: null, status: 'active', error: matchResult.error };
-            }
-            matchId = matchResult?.matchId || null;
-            matchStatus = matchResult?.status || 'active';
-            console.log(`[LikeService] Active match created: ${matchId}`);
             return { matched: true, matchId, status: matchStatus, error: null };
           } catch (matchError) {
             console.error('[LikeService] Match creation exception:', matchError);
-            const mid = getMatchId(from, to);
-            try {
-              await notificationService.createNotification(from, {
-                type: 'match_mutual',
-                fromUid: from,
-                matchId: mid,
-                title: "It's a match!",
-                body: `You and ${receiverName} liked each other. Open Matches to chat.`,
-                status: 'unread',
-              });
-              await notificationService.createNotification(to, {
-                type: 'match_mutual',
-                fromUid: from,
-                matchId: mid,
-                title: "It's a match!",
-                body: `${senderName} liked you back. Open Matches to chat.`,
-                status: 'unread',
-              });
-            } catch (_) {}
-            return { matched: true, matchId: null, status: 'active', error: matchError?.message || String(matchError) };
+            return {
+              matched: false,
+              matchId: null,
+              error: matchError?.message || String(matchError),
+            };
           }
         } else {
           console.log(`[LikeService] Not mutual yet (reciprocal exists: ${reciprocal.exists()}, action: ${reciprocal.data()?.action})`);
@@ -1364,13 +1352,17 @@ export const messageService = {
    * Returns true if the message is toxic (block send), false otherwise.
    * On Cloud Function error, returns false so we don't block sends when the check is unavailable.
    */
-  async checkMessageToxicity(matchId, text) {
+  async checkMessageToxicity(matchId, text, { clubId = null } = {}) {
     const trimmed = String(text || '').trim();
     if (!trimmed) return false;
     const callable = _checkMessageToxicityCallable;
     if (!callable) return false;
     try {
-      const { data } = await callable({ text: trimmed, matchId: matchId || null });
+      const { data } = await callable({
+        text: trimmed,
+        matchId: matchId || null,
+        clubId: clubId || null,
+      });
       return data && data.toxic === true;
     } catch {
       return false;
@@ -2829,12 +2821,29 @@ export const photoUploadService = {
 };
 
 /**
+ * Client-side NSFWJS gate before Storage upload (native only).
+ */
+async function gateStorageImage(imageUri) {
+  try {
+    const { gateImageBeforeUpload } = require('../utils/nsfwImageGate.native');
+    return await gateImageBeforeUpload(imageUri);
+  } catch {
+    return { allowed: true, blocked: false, message: null };
+  }
+}
+
+/**
  * Storage Service (for images)
  */
 export const storageService = {
   // Upload image
   async uploadImage(userId, imageUri) {
     try {
+      const gate = await gateStorageImage(imageUri);
+      if (gate.blocked) {
+        return { url: null, error: gate.message || 'This photo is not allowed.' };
+      }
+
       // For React Native, we need to convert URI to blob
       const response = await fetch(imageUri);
       const blob = await response.blob();
@@ -3539,18 +3548,67 @@ export const clubService = {
   },
 
   async sendMessage(clubId, uid, text) {
+    const cid = String(clubId || '').trim();
+    const me = String(uid || '').trim();
     const t = String(text || '').trim();
-    if (!t) return { error: 'Message empty.' };
+    if (!cid || !me || !t) return { error: 'Message empty.' };
+    if (t.length > 2000) return { error: 'Message too long.' };
+
+    const mod = scanMessageText(t);
     try {
-      await addDoc(this._messagesCol(clubId), {
-        fromUid: String(uid),
+      const msgRef = await addDoc(this._messagesCol(cid), {
+        fromUid: me,
         text: t.slice(0, 2000),
+        clubId: cid,
         createdAt: serverTimestamp(),
+        moderation: mod.flagged
+          ? {
+              flagged: true,
+              categories: Array.isArray(mod.categories) ? mod.categories.map(String) : [],
+              matchedTerms: Array.isArray(mod.matchedTerms) ? mod.matchedTerms.map(String) : [],
+              score: Number(mod.score || 0),
+            }
+          : { flagged: false },
       });
+
+      if (mod.flagged) {
+        try {
+          await reportService.createReport({
+            reporterUid: me,
+            targetType: 'message',
+            targetId: String(msgRef.id),
+            targetUserId: me,
+            reason: mod.categories?.[0] || 'inappropriate',
+            categories: mod.categories,
+            details: `club:${cid} ${t}`,
+            autoFlagged: true,
+            matchedTerms: mod.matchedTerms,
+            score: mod.score,
+          });
+        } catch {}
+
+        try {
+          await safetyService.recordEvent({
+            source: 'keyword_scan',
+            targetUid: me,
+            categories: Array.isArray(mod.categories) ? mod.categories.map(String) : [],
+            matchedTerms: Array.isArray(mod.matchedTerms) ? mod.matchedTerms.map(String) : [],
+            score: Number(mod.score || 0),
+            details: t,
+            severity: Number(mod.score || 0) >= 3 ? 'high' : 'medium',
+          });
+        } catch {}
+      }
+
       return { error: null };
     } catch (e) {
       return { error: e?.message || String(e) };
     }
+  },
+
+  /** Pre-send profanity block — same cloud function as match chat. */
+  async checkMessageToxicity(clubId, text) {
+    return messageService.checkMessageToxicity(null, text, { clubId: String(clubId || '') || null });
   },
 
   async requestMic(clubId, uid) {

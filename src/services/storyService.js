@@ -34,6 +34,16 @@ export function toStoryMillis(value) {
 
 export async function uploadStoryImage(uid, imageUri) {
   try {
+    try {
+      const { gateImageBeforeUpload } = require('../utils/nsfwImageGate.native');
+      const gate = await gateImageBeforeUpload(imageUri);
+      if (gate.blocked) {
+        return { url: null, error: gate.message || 'This photo is not allowed.' };
+      }
+    } catch {
+      // Scanner unavailable — server moderation still applies.
+    }
+
     const response = await fetch(imageUri);
     const blob = await response.blob();
     const path = `stories/${uid}/${Date.now()}.jpg`;

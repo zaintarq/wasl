@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Shuffle } from 'lucide-react-native';
-import { authService, liveRandomService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { authService, liveRandomService, userService, checkUserRoleFromAdminCollection, reportService } from '../../services/firebaseService';
 import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
+import { preloadNsfwModel } from '../../services/nsfwScanner.native';
 import { tokens } from '../../ui/tokens';
 import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
@@ -47,6 +48,10 @@ export function LiveRandomScreen({ onNavigate }) {
     userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
     checkUserRoleFromAdminCollection(meUid).then(setRoleCheck).catch(() => {});
   }, [meUid]);
+
+  useEffect(() => {
+    preloadNsfwModel();
+  }, []);
 
   const partnerUid = useMemo(() => {
     if (!session?.uids || !meUid) return null;
@@ -153,7 +158,7 @@ export function LiveRandomScreen({ onNavigate }) {
     setError(null);
   };
 
-  const skipOrLeave = async (reason) => {
+  const skipOrLeave = useCallback(async (reason) => {
     const sid = session?.id;
     clearTimers();
     if (meUid && sid) {
@@ -161,7 +166,7 @@ export function LiveRandomScreen({ onNavigate }) {
     }
     setSession(null);
     setMessages([]);
-    if (reason === 'skip') {
+    if (reason === 'skip' || reason === 'nsfw') {
       setPhase('searching');
       try {
         await startOrSearch();
@@ -171,7 +176,35 @@ export function LiveRandomScreen({ onNavigate }) {
     } else {
       setPhase('idle');
     }
-  };
+  }, [session?.id, meUid, clearTimers, startOrSearch]);
+
+  const handleNsfwDetected = useCallback(
+    async ({ predictions }) => {
+      const sid = session?.id;
+      if (meUid && partnerUid && sid) {
+        try {
+          const topScore = Array.isArray(predictions)
+            ? Math.max(...predictions.map((p) => Number(p.probability || 0)))
+            : 0;
+          await reportService.createReport({
+            reporterUid: meUid,
+            targetType: 'user',
+            targetId: partnerUid,
+            targetUserId: partnerUid,
+            reason: 'nsfw_live_video',
+            categories: ['sexual'],
+            details: JSON.stringify(predictions || []),
+            autoFlagged: true,
+            score: topScore,
+          });
+        } catch {
+          // Report failure should not block skip.
+        }
+      }
+      await skipOrLeave('nsfw');
+    },
+    [meUid, partnerUid, session?.id, skipOrLeave]
+  );
 
   const sendChat = async () => {
     const t = chatText.trim();
@@ -180,6 +213,18 @@ export function LiveRandomScreen({ onNavigate }) {
     const { error: err } = await liveRandomService.sendMessage(session.id, meUid, t);
     if (err) setError(err);
   };
+
+  const handleLiveKitError = useCallback((msg) => {
+    setError(msg);
+  }, []);
+
+  const handleSkip = useCallback(() => {
+    skipOrLeave('skip');
+  }, [skipOrLeave]);
+
+  const handleLeave = useCallback(() => {
+    skipOrLeave('leave');
+  }, [skipOrLeave]);
 
   const listPadBottom = Math.max(12, insets.bottom);
   const navClearance = mainBottomNavClearance(bottomNavH, 12);
@@ -246,7 +291,14 @@ export function LiveRandomScreen({ onNavigate }) {
           {phase === 'session' && session ? (
             <View style={styles.sessionWrap}>
               <LiveSessionHeader secondsLeft={secondsLeft} totalSeconds={60} />
-              <LiveVideoTiles partnerConnected={!!partnerUid} />
+              <LiveVideoTiles
+                sessionId={session.id}
+                partnerConnected={!!partnerUid}
+                onNsfwDetected={handleNsfwDetected}
+                onLiveKitError={handleLiveKitError}
+                onSkip={handleSkip}
+                onLeave={handleLeave}
+              />
 
               <LiveContentWidth style={styles.chatHead}>
                 <View style={styles.chatRow}>

@@ -41,7 +41,7 @@ function ExpoGoVideoFallback({ partnerConnected, onSkip, onLeave }) {
   );
 }
 
-function LiveKitLazy({ sessionId, onLiveKitError, onSkip, onLeave }) {
+function LiveKitLazy({ sessionId, onLiveKitError, onSkip, onLeave, onNsfwDetected }) {
   const [SessionView, setSessionView] = useState(null);
   const [bootErr, setBootErr] = useState(null);
 
@@ -63,7 +63,8 @@ function LiveKitLazy({ sessionId, onLiveKitError, onSkip, onLeave }) {
     return () => {
       cancelled = true;
     };
-  }, [onLiveKitError]);
+    // Boot LiveKit once — do not re-run when parent re-renders (timer ticks every 1s).
+  }, []);
 
   if (bootErr) {
     return (
@@ -95,7 +96,13 @@ function LiveKitLazy({ sessionId, onLiveKitError, onSkip, onLeave }) {
   }
 
   return (
-    <SessionView sessionId={sessionId} onError={onLiveKitError} onSkip={onSkip} onLeave={onLeave} />
+    <SessionView
+      sessionId={sessionId}
+      onError={onLiveKitError}
+      onSkip={onSkip}
+      onLeave={onLeave}
+      onNsfwDetected={onNsfwDetected}
+    />
   );
 }
 
@@ -108,6 +115,7 @@ export function LiveVideoTiles({
   onLiveKitError,
   onSkip,
   onLeave,
+  onNsfwDetected,
 }) {
   if (!sessionId) {
     return (
@@ -147,6 +155,7 @@ export function LiveVideoTiles({
         onLiveKitError={onLiveKitError}
         onSkip={onSkip}
         onLeave={onLeave}
+        onNsfwDetected={onNsfwDetected}
       />
     </LiveContentWidth>
   );

@@ -156,7 +156,7 @@ export function StaffScreen({ onNavigate }) {
 
   const handleLogout = async () => {
     try {
-      await authService.signOut();
+      await authService.signOutUser();
       onNavigate('welcome');
     } catch (error) {
       Alert.alert('Logout Error', error.message);
