@@ -24,7 +24,7 @@ function hashMehramToken(raw) {
 }
 
 function getInviteBaseUrl() {
-  return String(process.env.MEHRAM_INVITE_BASE_URL || 'https://zaintarq.github.io/huzz/mehram.html').replace(/\/$/, '');
+  return String(process.env.MEHRAM_APP_DEEP_LINK_BASE || 'huzz://mehram').replace(/\/$/, '');
 }
 
 function buildInviteUrl(rawToken) {
@@ -390,6 +390,47 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
       await syncMatchMehram(matchId, { ...snap.data(), sessionActive: false }, accessId);
     }
     return { left: true };
+  });
+
+  exports.mehramSendMessage = region.https.onCall(async (data, context) => {
+    const { accessId, matchId, girlUserId } = assertMehramAuth(context);
+    const snap = await db.collection(MEHRAM_COL).doc(accessId).get();
+    if (!snap.exists || snap.data()?.status !== 'active') {
+      throw new functions.https.HttpsError('permission-denied', 'Mehram access has ended.');
+    }
+    if (snap.data()?.permission !== 'reply') {
+      throw new functions.https.HttpsError('permission-denied', 'Replying is disabled for this session.');
+    }
+
+    const text = String(data?.text || '').trim();
+    if (!text || text.length > 2000) {
+      throw new functions.https.HttpsError('invalid-argument', 'Message is empty or too long.');
+    }
+
+    await db.collection(MATCHES).doc(String(matchId)).collection('messages').add({
+      fromUid: String(girlUserId),
+      senderType: 'mehram',
+      mehramAccessId: String(accessId),
+      type: 'text',
+      text,
+      replyTo: null,
+      reactions: {},
+      editedAt: null,
+      deletedAt: null,
+      readAt: null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      moderation: { flagged: false },
+    });
+
+    await db.collection(MATCHES).doc(String(matchId)).set(
+      {
+        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageText: text,
+      },
+      { merge: true }
+    );
+
+    return { sent: true };
   });
 
   exports.mehramBlockGuy = region.https.onCall(async (data, context) => {

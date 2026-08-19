@@ -1,0 +1,297 @@
+/* Huzz marketing site — matches app shell (#FBCFE8, ink #831843) */
+:root {
+  --bg: #fbcfe8;
+  --bg-deep: #f9a8d4;
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-solid: #ffffff;
+  --ink: #831843;
+  --ink-soft: rgba(131, 24, 67, 0.68);
+  --ink-muted: rgba(131, 24, 67, 0.52);
+  --accent: #db2777;
+  --accent-dark: #be185d;
+  --border: rgba(131, 24, 67, 0.14);
+  --max: 440px;
+  --gutter: 18px;
+  --cream: #f7f1e8;
+  --shell-ink: #2b2420;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  min-height: 100%;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  overflow-x: hidden;
+}
+
+body {
+  background-image:
+    radial-gradient(ellipse 100% 70% at 50% -10%, rgba(255, 255, 255, 0.35) 0%, transparent 55%),
+    linear-gradient(165deg, #fbcfe8 0%, #f9a8d4 48%, #f472b6 100%);
+  background-attachment: fixed;
+}
+
+a { color: var(--accent-dark); }
+
+.page {
+  display: flex;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) var(--gutter) max(28px, env(safe-area-inset-bottom));
+}
+
+.shell {
+  width: 100%;
+  max-width: var(--max);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.brand-logo {
+  font-family: "Kaushan Script", cursive;
+  font-size: 2.6rem;
+  line-height: 1;
+  color: var(--ink);
+  text-align: center;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.mascot-wrap {
+  position: relative;
+  width: min(280px, 72vw);
+  aspect-ratio: 1;
+  margin: 4px 0;
+}
+
+.mascot-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 28px rgba(131, 24, 67, 0.18));
+}
+
+.tagline-main {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.tagline-sub {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.hero-intro {
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px 18px;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+  backdrop-filter: blur(8px);
+}
+
+.card h2 {
+  font-family: "Kaushan Script", cursive;
+  font-size: 1.35rem;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.card p, .card li {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.cta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: var(--shell-ink);
+  color: var(--cream);
+  box-shadow: 0 8px 24px rgba(43, 36, 32, 0.22);
+}
+
+.btn-outline {
+  background: var(--surface-solid);
+  color: var(--ink);
+  border: 2px solid var(--border);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px dashed var(--border);
+}
+
+.feature-grid {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feature-grid li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+
+.feature-grid strong {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.feature-grid span {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.feature-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(219, 39, 119, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.contact-card .founder-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+  margin-top: 8px;
+}
+
+.founder-link-value {
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.site-footer {
+  text-align: center;
+  padding-top: 8px;
+}
+
+.safety-line {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+}
+
+.legal a {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.legal a:hover { opacity: 1; text-decoration: underline; }
+
+.footer-note {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.verse-card {
+  text-align: center;
+  padding: 20px 16px;
+}
+
+.verse-text {
+  font-size: 0.88rem;
+  line-height: 1.65;
+  font-style: italic;
+  color: var(--ink-soft);
+  margin: 8px 0;
+}
+
+.verse-ref {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+  font-style: normal;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+}
+
+.top-nav a {
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--ink);
+}

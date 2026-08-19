@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AppState, Linking, View, ActivityIndicator } from 'react-native';
+import { AppState, Linking, View, ActivityIndicator, Alert } from 'react-native';
 
 import { Routes } from './routes';
 
@@ -25,9 +25,9 @@ import { StaffScreen } from '../components/StaffScreen.native.js';
 import { NotificationsScreen } from '../components/NotificationsScreen.native.js';
 import { SocialScreen } from '../components/SocialScreen.native.js';
 import { GamePlayScreen } from '../components/GamePlayScreen.native.js';
+import { MehramAccessScreen } from '../components/MehramAccessScreen.native.js';
 import { HomeStackNavigator } from './HomeStackNavigator.native.js';
 import { authService, userService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
-import { db } from '../../services/firebase';
 import { collection, query, where, getDocs, doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { detectCountryCity } from '../../services/locationService.native.js';
 import { registerForPushNotificationsAsync, getNotificationListeners, setBadgeCountAsync } from '../../services/pushService.native';
@@ -40,6 +40,8 @@ import {
 import { LocationRequiredGate } from '../components/LocationRequiredGate.native';
 import { AppUpdateAlertGate } from '../components/AppUpdateAlertGate.native';
 import { PLAY_STORE_WEB_URL } from '../../config/appStore';
+import { parseMehramTokenFromUrl } from '../../services/mehramLinking';
+import { mehramService } from '../../services/mehramService';
 
 const RootStack = createNativeStackNavigator();
 
@@ -50,8 +52,8 @@ function LocationSyncGate() {
   const runOnce = async () => {
     // Only run if user is logged in
     const user = authService.getCurrentUser();
-    if (!user?.uid) {
-      return; // User not logged in - skip location sync
+    if (!user?.uid || mehramService.isMehramUid(user.uid)) {
+      return;
     }
 
     // Skip location sync for admin and staff - only for normal users
@@ -137,8 +139,7 @@ function PushTokenGate() {
 
   const run = async () => {
     const user = authService.getCurrentUser();
-    if (!user?.uid) {
-      // Silently return if no user - don't log errors
+    if (!user?.uid || mehramService.isMehramUid(user.uid)) {
       return;
     }
     if (runningRef.current) return;
@@ -184,6 +185,67 @@ function PushTokenGate() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  return null;
+}
+
+function MehramLinkHandler({ isReady }) {
+  const handlingRef = useRef(false);
+
+  const openMehramLink = useCallback(async (url) => {
+    const token = parseMehramTokenFromUrl(url);
+    if (!token) return false;
+    if (handlingRef.current) return true;
+    handlingRef.current = true;
+    try {
+      const { data, error } = await mehramService.signInFromInvite(token);
+      if (error) {
+        Alert.alert('Mehram invitation', error);
+        return true;
+      }
+      const go = () => {
+        if (!navigationRef?.isReady?.()) {
+          setTimeout(go, 200);
+          return;
+        }
+        navigationRef.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: Routes.MehramAccess, params: { session: data } }],
+          })
+        );
+      };
+      go();
+      return true;
+    } finally {
+      handlingRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isReady) return undefined;
+    let mounted = true;
+    (async () => {
+      try {
+        const initial = await Linking.getInitialURL();
+        if (mounted && initial) {
+          const user = authService.getCurrentUser();
+          if (!user?.uid || !mehramService.isMehramUid(user.uid)) {
+            await openMehramLink(initial);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      openMehramLink(url);
+    });
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, [isReady, openMehramLink]);
 
   return null;
 }
@@ -306,7 +368,7 @@ function DeviceBanGate() {
 
   const run = async () => {
     const user = authService.getCurrentUser();
-    if (!user?.uid) return;
+    if (!user?.uid || mehramService.isMehramUid(user.uid)) return;
     if (runningRef.current) return;
     runningRef.current = true;
     try {
@@ -503,60 +565,84 @@ export function RootNavigator() {
   // Use onAuthStateChanged to wait for auth to restore from AsyncStorage
   useEffect(() => {
     let unsub;
-    const checkAuth = () => {
-      // Wait for auth state to restore from persistence
-      unsub = authService.onAuthStateChange((user) => {
-        try {
-          if (user?.uid) {
-            // User is logged in, check admin collection FIRST
-            checkUserRoleFromAdminCollection(user.uid)
-              .then((roleCheck) => {
-                // Check admin collection FIRST - only log if admin/staff found
-                if (roleCheck.isAdmin) {
-                  console.log('[RootNavigator] ✅ Admin detected, routing to Admin screen');
-                  setInitialRoute(Routes.Admin);
-                  setIsReady(true);
-                  return;
-                } else if (roleCheck.isStaff) {
-                  console.log('[RootNavigator] ✅ Staff detected, routing to Staff screen');
-                  setInitialRoute(Routes.Staff);
-                  setIsReady(true);
-                  return;
-                }
-                
-                // Normal user - continue to check users collection
-                
-                // Not admin/staff — route normal users to home
-                userService.getUserById(user.uid)
-                  .then(() => {
+    let cancelled = false;
+
+    const finishAuthRouting = (user) => {
+      if (cancelled) return;
+      try {
+        if (user?.uid && mehramService.isMehramUid(user.uid)) {
+          setInitialRoute(Routes.MehramAccess);
+          setIsReady(true);
+          return;
+        }
+        if (user?.uid) {
+          checkUserRoleFromAdminCollection(user.uid)
+            .then((roleCheck) => {
+              if (cancelled) return;
+              if (roleCheck.isAdmin) {
+                setInitialRoute(Routes.Admin);
+                setIsReady(true);
+                return;
+              }
+              if (roleCheck.isStaff) {
+                setInitialRoute(Routes.Staff);
+                setIsReady(true);
+                return;
+              }
+              userService
+                .getUserById(user.uid)
+                .then(() => {
+                  if (!cancelled) {
                     setInitialRoute(Routes.TabHome);
                     setIsReady(true);
-                  })
-                  .catch(() => {
+                  }
+                })
+                .catch(() => {
+                  if (!cancelled) {
                     setInitialRoute(Routes.TabHome);
                     setIsReady(true);
-                  });
-              })
-              .catch(() => {
+                  }
+                });
+            })
+            .catch(() => {
+              if (!cancelled) {
                 setInitialRoute(Routes.TabHome);
                 setIsReady(true);
-              });
-          } else {
-            // No user logged in — clear stale onboarding params so "Log in" is not merged with initialStep: 3
-            setOnboardingParams({});
-            setInitialRoute(Routes.Welcome);
-            setIsReady(true);
-          }
-        } catch (e) {
-          console.warn('[RootNavigator] Auth check error:', e);
-          setOnboardingParams({});
-          setInitialRoute(Routes.Welcome);
-          setIsReady(true);
+              }
+            });
+          return;
         }
-      });
+
+        setOnboardingParams({});
+        setInitialRoute(Routes.Welcome);
+        setIsReady(true);
+      } catch (e) {
+        console.warn('[RootNavigator] Auth check error:', e);
+        setOnboardingParams({});
+        setInitialRoute(Routes.Welcome);
+        setIsReady(true);
+      }
     };
-    checkAuth();
+
+    (async () => {
+      try {
+        const initial = await Linking.getInitialURL();
+        const token = parseMehramTokenFromUrl(initial);
+        if (token && !authService.getCurrentUser()?.uid) {
+          const { error } = await mehramService.signInFromInvite(token);
+          if (error) {
+            Alert.alert('Mehram invitation', error);
+          }
+        }
+      } catch {
+        /* ignore cold-start link errors */
+      }
+
+      unsub = authService.onAuthStateChange((user) => finishAuthRouting(user));
+    })();
+
     return () => {
+      cancelled = true;
       if (unsub) unsub();
     };
   }, []);
@@ -612,6 +698,7 @@ export function RootNavigator() {
       <PushTokenGate />
       <DeviceBanGate />
       <NotificationListener />
+      <MehramLinkHandler isReady={isReady} />
       <RootStack.Navigator
         screenOptions={screenOptionsBase()}
         initialRouteName={rootInitialState ? undefined : initialRoute}
@@ -706,6 +793,21 @@ export function RootNavigator() {
         </RootStack.Screen>
         <RootStack.Screen name={Routes.Notifications} options={{ animation: 'slide_from_right' }}>
           {({ navigation }) => <NotificationsScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.MehramAccess} options={{ animation: 'fade', gestureEnabled: false }}>
+          {({ navigation, route }) => (
+            <MehramAccessScreen
+              session={route?.params?.session || null}
+              onExit={() => {
+                navigation.dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [{ name: Routes.Welcome }],
+                  })
+                );
+              }}
+            />
+          )}
         </RootStack.Screen>
       </RootStack.Navigator>
     </NavigationContainer>

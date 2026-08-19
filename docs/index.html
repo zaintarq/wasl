@@ -3,727 +3,35 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Huzz — Connect freely</title>
-  <meta name="description" content="Discover, chat, clubs, and live sessions — on Android and the web." />
-  <link rel="icon" href="assets/icon-512.png" type="image/png" />
+  <title>Huzz — Connect with intention</title>
+  <meta name="description" content="Halal-minded dating and community — discover, match, chat, clubs, live, Mehram supervision, and games. Android app and web." />
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="icon" href="assets/favicon-192.png" sizes="192x192" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --twitter-blue: #1992e4;
-      --twitter-blue-deep: #0b7ec4;
-      --twitter-blue-glow: #42b4ec;
-      --on-blue: #ffffff;
-      --on-blue-soft: rgba(255, 255, 255, 0.9);
-      --on-blue-muted: rgba(255, 255, 255, 0.72);
-      --glass: rgba(255, 255, 255, 0.14);
-      --glass-border: rgba(255, 255, 255, 0.28);
-      --max: 440px;
-      --gutter: 18px;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      min-height: 100%;
-      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: var(--on-blue);
-      background: var(--twitter-blue-deep);
-      overflow-x: hidden;
-    }
-
-    /* Layered 3D sky — depth without clutter */
-    body {
-      background-image:
-        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 255, 255, 0.12) 0%, transparent 55%),
-        radial-gradient(ellipse 70% 50% at 85% 15%, rgba(66, 180, 236, 0.23) 0%, transparent 50%),
-        radial-gradient(ellipse 60% 45% at 10% 75%, rgba(11, 126, 196, 0.41) 0%, transparent 55%),
-        linear-gradient(165deg, #1992e4 0%, #1178b8 42%, #0b7ec4 100%);
-      background-attachment: fixed;
-    }
-
-    .bg-orbs {
-      pointer-events: none;
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      overflow: hidden;
-    }
-
-    .bg-orbs span {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(40px);
-      opacity: 0.33;
-      animation: orbDrift 18s ease-in-out infinite;
-    }
-
-    .bg-orbs span:nth-child(1) {
-      width: 280px;
-      height: 280px;
-      top: -60px;
-      right: -40px;
-      background: rgba(255, 255, 255, 0.16);
-    }
-
-    .bg-orbs span:nth-child(2) {
-      width: 220px;
-      height: 220px;
-      bottom: 18%;
-      left: -70px;
-      background: rgba(66, 180, 236, 0.23);
-      animation-delay: -6s;
-    }
-
-    .bg-orbs span:nth-child(3) {
-      width: 160px;
-      height: 160px;
-      top: 42%;
-      right: 8%;
-      background: rgba(255, 255, 255, 0.12);
-      animation-delay: -11s;
-    }
-
-    @keyframes orbDrift {
-      0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-      50% { transform: translate3d(0, -18px, 0) scale(1.06); }
-    }
-
-    .page {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      justify-content: center;
-      padding: max(16px, env(safe-area-inset-top)) var(--gutter) max(24px, env(safe-area-inset-bottom));
-    }
-
-    .shell {
-      width: 100%;
-      max-width: var(--max);
-      display: flex;
-      flex-direction: column;
-      gap: 22px;
-    }
-
-    .hero {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      perspective: 900px;
-    }
-
-    .mascot-stage {
-      position: relative;
-      margin-bottom: 6px;
-    }
-
-    .mascot-glow {
-      position: absolute;
-      left: 50%;
-      bottom: 6%;
-      transform: translateX(-50%);
-      width: 78%;
-      height: 20%;
-      border-radius: 50%;
-      background: radial-gradient(ellipse, rgba(0, 60, 120, 0.35) 0%, transparent 72%);
-      filter: blur(6px);
-      z-index: 0;
-    }
-
-    .mascot-btn {
-      position: relative;
-      z-index: 1;
-      border: none;
-      background: transparent;
-      padding: 0;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-      transform-style: preserve-3d;
-    }
-
-    .mascot-inner {
-      width: min(360px, 90vw);
-      height: min(360px, 90vw);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transform-origin: center center;
-      transform-style: preserve-3d;
-    }
-
-    .mascot-btn img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      pointer-events: none;
-      filter:
-        drop-shadow(0 4px 0 rgba(0, 50, 100, 0.12))
-        drop-shadow(0 18px 32px rgba(0, 40, 90, 0.28))
-        drop-shadow(0 2px 8px rgba(255, 255, 255, 0.15));
-    }
-
-    .mascot-inner.emerge-shake { animation: mascotEmergeShake 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-    .mascot-inner.shrink-out { animation: mascotShrink 0.18s cubic-bezier(0.4, 0, 1, 1) forwards; }
-    .mascot-inner.return-in { animation: mascotReturn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-
-    @keyframes mascotEmergeShake {
-      0% { transform: scale(0.34) rotate(0deg); }
-      45% { transform: scale(1.06) rotate(0deg); }
-      72% { transform: scale(1) rotate(-5deg); }
-      100% { transform: scale(1) rotate(0deg); }
-    }
-    @keyframes mascotShrink { from { transform: scale(1); } to { transform: scale(0.34); } }
-    @keyframes mascotReturn { from { transform: scale(0.34); } to { transform: scale(1); } }
-
-    .mascot-hint {
-      font-size: 0.72rem;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--on-blue-muted);
-      margin-bottom: 4px;
-    }
-
-    .brand {
-      font-family: "Kaushan Script", cursive;
-      font-size: clamp(3.6rem, 16vw, 4.8rem);
-      line-height: 0.95;
-      color: #fff;
-      letter-spacing: 0.02em;
-      text-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.5),
-        0 3px 0 #0a7ec4,
-        0 5px 0 #086faa,
-        0 7px 0 #065f96,
-        0 9px 0 #044f7c,
-        0 14px 22px rgba(0, 40, 90, 0.45);
-      transform: translateZ(20px);
-    }
-
-    .brand-line {
-      width: 110px;
-      height: 4px;
-      margin: 10px auto 12px;
-      border-radius: 999px;
-      background: linear-gradient(90deg, transparent, #fff 20%, #fff 80%, transparent);
-      box-shadow: 0 2px 8px rgba(255, 255, 255, 0.35);
-    }
-
-    .tagline-main {
-      font-family: "Kaushan Script", cursive;
-      font-size: clamp(1.1rem, 4.5vw, 1.25rem);
-      color: var(--on-blue-soft);
-      line-height: 1.45;
-      text-shadow: 0 2px 12px rgba(0, 40, 90, 0.2);
-    }
-
-    .tagline-sub {
-      font-family: "Kaushan Script", cursive;
-      font-size: 0.92rem;
-      color: var(--on-blue-muted);
-      margin-top: 5px;
-    }
-
-    .hero-intro {
-      margin-top: 14px;
-      padding: 0 6px;
-      max-width: 36ch;
-    }
-
-    .hero-intro p {
-      font-size: 0.88rem;
-      line-height: 1.65;
-      color: var(--on-blue-soft);
-    }
-
-    .hero-intro p + p {
-      margin-top: 8px;
-    }
-
-    .cta-stack {
-      display: flex;
-      flex-direction: column;
-      gap: 11px;
-      width: 100%;
-    }
-
-    .btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      min-height: 54px;
-      padding: 14px 20px;
-      border-radius: 999px;
-      font-size: 0.96rem;
-      font-weight: 700;
-      text-decoration: none;
-      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, background 0.22s ease;
-    }
-
-    .btn-primary {
-      background: linear-gradient(180deg, #ffffff 0%, #eef8ff 100%);
-      color: var(--twitter-blue-deep) !important;
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.9) inset,
-        0 -2px 0 rgba(0, 100, 160, 0.08) inset,
-        0 8px 20px rgba(0, 50, 100, 0.22),
-        0 2px 4px rgba(0, 40, 90, 0.12);
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.9) inset,
-        0 -2px 0 rgba(0, 100, 160, 0.08) inset,
-        0 12px 28px rgba(0, 50, 100, 0.28),
-        0 4px 8px rgba(0, 40, 90, 0.14);
-    }
-
-    .btn-primary:active { transform: translateY(1px) scale(0.99); }
-
-    .btn-outline {
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%);
-      color: #fff !important;
-      border: 1.5px solid rgba(255, 255, 255, 0.45);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.25) inset,
-        0 8px 18px rgba(0, 40, 90, 0.18);
-    }
-
-    .btn-outline:hover {
-      transform: translateY(-2px);
-      border-color: rgba(255, 255, 255, 0.65);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.1) 100%);
-    }
-
-    .btn-outline:active { transform: translateY(1px) scale(0.99); }
-
-    .btn-ghost {
-      background: transparent;
-      color: var(--on-blue-soft) !important;
-      font-size: 0.88rem;
-      min-height: 42px;
-      font-weight: 600;
-      box-shadow: none;
-    }
-
-    .btn-ghost:hover { color: #fff !important; }
-
-    .verse-card {
-      position: relative;
-      padding: 24px 20px 22px;
-      border-radius: 22px;
-      text-align: center;
-      background:
-        linear-gradient(155deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 100%),
-        linear-gradient(180deg, rgba(255, 248, 230, 0.08) 0%, transparent 100%);
-      border: 1px solid rgba(255, 255, 255, 0.38);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.25) inset,
-        0 18px 42px rgba(0, 40, 90, 0.2);
-      overflow: hidden;
-    }
-
-    .verse-card::before,
-    .verse-card::after {
-      content: "";
-      position: absolute;
-      width: 120px;
-      height: 120px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255, 236, 200, 0.14) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .verse-card::before { top: -40px; left: -30px; }
-    .verse-card::after { bottom: -50px; right: -20px; }
-
-    .verse-mark {
-      display: block;
-      font-size: 1.6rem;
-      line-height: 1;
-      color: rgba(255, 248, 230, 0.85);
-      margin-bottom: 10px;
-      text-shadow: 0 2px 12px rgba(0, 40, 90, 0.2);
-    }
-
-    .verse-text {
-      position: relative;
-      z-index: 1;
-      margin: 0;
-      font-size: 0.94rem;
-      line-height: 1.75;
-      font-style: italic;
-      color: rgba(255, 255, 255, 0.95);
-      text-wrap: pretty;
-    }
-
-    .verse-ref {
-      position: relative;
-      z-index: 1;
-      display: block;
-      margin-top: 14px;
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: rgba(255, 248, 230, 0.88);
-    }
-
-    .mission-card {
-      padding: 22px 18px 20px;
-      border-radius: 22px;
-      background: linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.2) inset,
-        0 16px 40px rgba(0, 40, 90, 0.18);
-    }
-
-    .mission-card h2 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #fff;
-      margin-bottom: 6px;
-      text-align: center;
-    }
-
-    .mission-lead {
-      font-size: 0.82rem;
-      line-height: 1.55;
-      color: var(--on-blue-soft);
-      text-align: center;
-      margin-bottom: 18px;
-      max-width: 34ch;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    .mission-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      list-style: none;
-    }
-
-    .mission-item {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding: 14px 12px;
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      min-height: 100%;
-    }
-
-    .mission-icon {
-      flex-shrink: 0;
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      display: grid;
-      place-items: center;
-      color: #fff;
-      background: rgba(255, 255, 255, 0.12);
-    }
-
-    .mission-icon svg {
-      width: 18px;
-      height: 18px;
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 1.75;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    .mission-copy strong {
-      display: block;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: #fff;
-      line-height: 1.25;
-      margin-bottom: 4px;
-    }
-
-    .mission-copy span {
-      display: block;
-      font-size: 0.72rem;
-      line-height: 1.45;
-      color: var(--on-blue-muted);
-    }
-
-    .story-card {
-      padding: 22px 18px;
-      border-radius: 22px;
-      background: linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.2) inset,
-        0 16px 40px rgba(0, 40, 90, 0.18);
-    }
-
-    .story-card h2 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #fff;
-      text-align: center;
-      margin-bottom: 6px;
-    }
-
-    .story-lead {
-      font-size: 0.82rem;
-      line-height: 1.6;
-      color: var(--on-blue-soft);
-      text-align: center;
-      margin-bottom: 18px;
-    }
-
-    .story-blocks {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      list-style: none;
-    }
-
-    .story-block {
-      padding-top: 14px;
-      border-top: 1px solid rgba(255, 255, 255, 0.14);
-    }
-
-    .story-blocks li:first-child {
-      padding-top: 0;
-      border-top: none;
-    }
-
-    .story-block h3 {
-      font-size: 0.84rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 6px;
-    }
-
-    .story-block p {
-      font-size: 0.8rem;
-      line-height: 1.62;
-      color: var(--on-blue-muted);
-    }
-
-    .site-footer {
-      text-align: center;
-      padding: 0 4px;
-    }
-
-    .safety-line {
-      font-size: 0.78rem;
-      color: var(--on-blue-soft);
-      line-height: 1.5;
-      margin-bottom: 12px;
-    }
-
-    .safety-line strong { font-weight: 700; color: #fff; }
-
-    .legal {
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      font-size: 0.8rem;
-      margin-bottom: 8px;
-    }
-
-    .legal a {
-      color: #fff;
-      text-decoration: none;
-      font-weight: 600;
-    }
-
-    .legal a:hover { text-decoration: underline; }
-
-    .footer-note {
-      font-size: 0.72rem;
-      color: var(--on-blue-muted);
-      line-height: 1.55;
-    }
-
-    .footer-note a {
-      color: #fff;
-      text-decoration: none;
-      font-weight: 600;
-    }
-
-    .contact-card {
-      padding: 18px 16px 16px;
-      border-radius: 22px;
-      background: linear-gradient(160deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%);
-      border: 1.5px solid rgba(255, 255, 255, 0.48);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.32) inset,
-        0 20px 44px rgba(0, 40, 90, 0.22);
-    }
-
-    .founder-top {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .founder-avatar {
-      width: 48px;
-      height: 48px;
-      flex-shrink: 0;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      font-size: 1.15rem;
-      font-weight: 800;
-      color: var(--twitter-blue-deep);
-      background: linear-gradient(180deg, #ffffff 0%, #e8f4ff 100%);
-      border: 2px solid rgba(255, 255, 255, 0.85);
-      box-shadow: 0 6px 16px rgba(0, 50, 100, 0.18);
-    }
-
-    .founder-headings {
-      text-align: left;
-      min-width: 0;
-    }
-
-    .founder-kicker {
-      font-family: "Kaushan Script", cursive;
-      font-size: 1.45rem;
-      line-height: 1.1;
-      color: #fff;
-      text-shadow: 0 2px 12px rgba(0, 40, 90, 0.2);
-      margin: 0;
-    }
-
-    .founder-lead {
-      font-size: 0.8rem;
-      line-height: 1.45;
-      color: var(--on-blue-soft);
-      margin: 3px 0 0;
-    }
-
-    .founder-links {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    @media (max-width: 380px) {
-      .founder-links { grid-template-columns: 1fr; }
-    }
-
-    .founder-link {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
-      padding: 12px 13px;
-      border-radius: 14px;
-      text-decoration: none;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(240, 248, 255, 0.94) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.95);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.9) inset,
-        0 8px 18px rgba(0, 45, 95, 0.14);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      min-width: 0;
-    }
-
-    .founder-link:hover {
-      transform: translateY(-2px);
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.9) inset,
-        0 12px 24px rgba(0, 45, 95, 0.2);
-    }
-
-    .founder-link:active { transform: translateY(0); }
-
-    .founder-link-label {
-      font-size: 0.62rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: #64748b;
-    }
-
-    .founder-link-value {
-      font-size: 0.82rem;
-      font-weight: 700;
-      color: var(--twitter-blue-deep);
-      word-break: break-word;
-      line-height: 1.3;
-    }
-
-    .founder-link-arrow {
-      align-self: flex-end;
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--twitter-blue-deep);
-      opacity: 0.55;
-    }
-
-    .founder-app {
-      margin-top: 11px;
-      font-size: 0.76rem;
-      color: var(--on-blue-muted);
-      text-align: center;
-    }
-
-    .founder-app a {
-      color: #fff;
-      font-weight: 700;
-      text-decoration: none;
-    }
-
-    .founder-app a:hover { text-decoration: underline; }
-
-    @media (prefers-reduced-motion: reduce) {
-      .mascot-inner, .bg-orbs span { animation: none !important; }
-      .btn:hover, .btn-outline:hover, .founder-link:hover { transform: none; }
-    }
-  </style>
+  <link rel="stylesheet" href="assets/site.css" />
 </head>
 <body>
-  <div class="bg-orbs" aria-hidden="true">
-    <span></span><span></span><span></span>
-  </div>
-
   <div class="page">
     <div class="shell">
+      <nav class="top-nav" aria-label="Site">
+        <a href="trust.html">Trust &amp; policies</a>
+        <a href="app.html">Open app</a>
+      </nav>
+
       <header class="hero">
-        <div class="mascot-stage">
-          <div class="mascot-glow" aria-hidden="true"></div>
-          <button type="button" class="mascot-btn" id="mascotBtn" aria-label="Huzz mascot — tap for a surprise">
-            <div class="mascot-inner" id="mascotInner">
-              <img id="mascotImg" src="assets/app-logo.png" alt="" width="360" height="360" />
-            </div>
-          </button>
+        <div class="mascot-wrap">
+          <img src="assets/app-logo.png" alt="Huzz mascot" width="280" height="280" />
         </div>
-        <p class="mascot-hint">Tap the mascot</p>
-        <h1 class="brand">Huzz</h1>
-        <div class="brand-line" aria-hidden="true"></div>
+        <h1 class="brand-logo">Huzz</h1>
         <p class="tagline-main">Connect authentically. Connect freely.</p>
         <p class="tagline-sub">Halal-minded · intentional · community-built</p>
         <div class="hero-intro">
-          <p>Huzz is a dating and discovery app for adults who want to meet with purpose — not noise, not games, not wasted time.</p>
-          <p>Create a profile, discover people nearby, match when interest goes both ways, and talk in a space built for respect and accountability.</p>
+          <p>Huzz is a dating and discovery platform for adults who want to meet with purpose — with accountability, safety, and respect built in.</p>
+          <p>One account works on Android and the web: discover profiles, match, chat, join clubs, go live, play games with friends, and invite a Mehram to supervise any conversation.</p>
         </div>
       </header>
 
@@ -733,179 +41,76 @@
         <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
       </div>
 
-      <section class="contact-card" aria-label="Speak to the founder">
-        <div class="founder-top">
-          <div class="founder-avatar" aria-hidden="true">Z</div>
-          <div class="founder-headings">
-            <p class="founder-kicker">Speak to the founder</p>
-            <p class="founder-lead">Questions, feedback, or ideas — reach Zain directly.</p>
-          </div>
-        </div>
-        <div class="founder-links">
-          <a class="founder-link" href="mailto:zain.tariq@mail.com">
-            <span class="founder-link-label">Email</span>
-            <span class="founder-link-value">zain.tariq@mail.com</span>
-            <span class="founder-link-arrow" aria-hidden="true">→</span>
-          </a>
-          <a class="founder-link" href="https://instagram.com/izaintariq" target="_blank" rel="noopener">
-            <span class="founder-link-label">Instagram</span>
-            <span class="founder-link-value">@izaintariq</span>
-            <span class="founder-link-arrow" aria-hidden="true">→</span>
-          </a>
-        </div>
-        <p class="founder-app">Follow Huzz · <a href="https://instagram.com/huzz.app" target="_blank" rel="noopener">@huzz.app</a></p>
+      <section class="card" aria-label="Features">
+        <h2>Everything in one place</h2>
+        <ul class="feature-grid">
+          <li>
+            <span class="feature-icon" aria-hidden="true">✦</span>
+            <div><strong>Discover &amp; match</strong><span>Swipe profiles, like with intention, chat when you both match.</span></div>
+          </li>
+          <li>
+            <span class="feature-icon" aria-hidden="true">🛡</span>
+            <div><strong>Mehram supervision</strong><span>Sisters invite a trusted Mehram to view or reply in a private chat — same Huzz app, no dating signup for them.</span></div>
+          </li>
+          <li>
+            <span class="feature-icon" aria-hidden="true">💬</span>
+            <div><strong>Chats &amp; social</strong><span>Private messaging, voice notes, translation, and a social hub for people you know from matches and clubs.</span></div>
+          </li>
+          <li>
+            <span class="feature-icon" aria-hidden="true">🎙</span>
+            <div><strong>Clubs</strong><span>Community spaces for group chat and live audio hangouts.</span></div>
+          </li>
+          <li>
+            <span class="feature-icon" aria-hidden="true">📹</span>
+            <div><strong>Live Random</strong><span>Short live video sessions with another verified user (full video in the Android app).</span></div>
+          </li>
+          <li>
+            <span class="feature-icon" aria-hidden="true">🎮</span>
+            <div><strong>Games</strong><span>Play Ludo, chess, and cards with matches and friends.</span></div>
+          </li>
+          <li>
+            <span class="feature-icon" aria-hidden="true">✓</span>
+            <div><strong>18+ verified</strong><span>Age assurance before likes, matches, chat, live, and clubs.</span></div>
+          </li>
+        </ul>
       </section>
 
-      <section class="verse-card" aria-label="Quranic verse">
-        <span class="verse-mark" aria-hidden="true">﴿ ﴾</span>
+      <section class="card contact-card" aria-label="Contact">
+        <h2>Contact</h2>
+        <p>Questions, safety reports, account help, or feedback — reach us directly.</p>
+        <a class="founder-link" href="mailto:zain.tariq@mail.com">
+          <span>General support &amp; privacy</span>
+          <span class="founder-link-value">zain.tariq@mail.com</span>
+        </a>
+        <a class="founder-link" href="mailto:saudbilal1999@gmail.com">
+          <span>Child safety (CSAE)</span>
+          <span class="founder-link-value">saudbilal1999@gmail.com</span>
+        </a>
+        <p style="margin-top:12px;font-size:0.85rem;">Follow <a href="https://instagram.com/huzz.app" target="_blank" rel="noopener">@huzz.app</a> · Founder <a href="https://instagram.com/izaintariq" target="_blank" rel="noopener">@izaintariq</a></p>
+      </section>
+
+      <section class="card verse-card" aria-label="Verse">
         <blockquote class="verse-text">
-          And of His signs is that He created for you from yourselves mates that you may find tranquility in them; and He placed between you affection and mercy. Indeed in that are signs for a people who give thought.
+          And of His signs is that He created for you from yourselves mates that you may find tranquility in them; and He placed between you affection and mercy.
         </blockquote>
         <cite class="verse-ref">Qur'an 30:21</cite>
       </section>
 
-      <section class="mission-card" aria-label="What Huzz is built for">
-        <h2>Connection with intention</h2>
-        <p class="mission-lead">Huzz is for adults who want to meet in a halal, respectful way — with accountability built into the experience.</p>
-        <ul class="mission-grid">
-          <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-            </span>
-            <div class="mission-copy">
-              <strong>Mehram supervision</strong>
-              <span>Invite a trusted Mehram to view or join a private chat.</span>
-            </div>
-          </li>
-          <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </span>
-            <div class="mission-copy">
-              <strong>Match &amp; chat</strong>
-              <span>Discover profiles, match with intention, and talk privately.</span>
-            </div>
-          </li>
-          <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
-            </span>
-            <div class="mission-copy">
-              <strong>Live Random</strong>
-              <span>Short live video sessions with another signed-in user.</span>
-            </div>
-          </li>
-          <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </span>
-            <div class="mission-copy">
-              <strong>Clubs</strong>
-              <span>Community spaces for group chat and voice rooms.</span>
-            </div>
-          </li>
-          <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
-            </span>
-            <div class="mission-copy">
-              <strong>18+ verified</strong>
-              <span>Age assurance before likes, matches, chat, live, and clubs.</span>
-            </div>
-          </li>
-          <li class="mission-item">
-            <span class="mission-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-            </span>
-            <div class="mission-copy">
-              <strong>Safety first</strong>
-              <span>Block, report, and unmatch. Meet in public, stay accountable.</span>
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      <section class="story-card" aria-label="About the Huzz experience">
-        <h2>What Huzz actually is</h2>
-        <p class="story-lead">A modern app for halal-minded connection — on Android and the web, with one account.</p>
-        <ul class="story-blocks">
-          <li class="story-block">
-            <h3>Discover &amp; match with intention</h3>
-            <p>Browse real profiles with photos, bio, and preferences. Filter who you see, like people you are genuinely interested in, and open a private chat when you both match. Send voice notes, photos, and messages with translation when you need it.</p>
-          </li>
-          <li class="story-block">
-            <h3>Accountability built in</h3>
-            <p>Sisters can invite a Mehram into any conversation — view-only or with reply access — without them needing a Huzz account. Every user passes 18+ age verification before they can like, match, chat, go live, or join clubs. Block and report are always one tap away.</p>
-          </li>
-          <li class="story-block">
-            <h3>Clubs, Live, and community</h3>
-            <p>Join clubs for group chat and voice-room hangouts, or jump into Live Random for a short, timed video session with another signed-in user. Huzz is not just swiping — it is meeting, talking, and building toward something real, in a way that fits how you live your values.</p>
-          </li>
-        </ul>
-      </section>
-
       <div class="site-footer">
-        <p class="safety-line"><strong>Stay safe</strong> — meet in public, trust your gut, and block or report anyone who makes you uncomfortable.</p>
-        <nav class="legal">
-          <a href="trust.html">Privacy &amp; Features</a>
-          <a href="privacy.html">Privacy Policy</a>
-          <a href="child-safety.html">Child Safety</a>
+        <p class="safety-line"><strong>Stay safe</strong> — meet in public, trust your instincts, block or report anyone who makes you uncomfortable.</p>
+        <nav class="legal" aria-label="Legal">
+          <a href="trust.html">Trust center</a>
+          <a href="terms.html">Terms</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="community.html">Community &amp; moderation</a>
+          <a href="child-safety.html">Child safety</a>
+          <a href="business.html">Business</a>
         </nav>
         <footer class="footer-note">
-          <p>18+ adults only · Built by <a href="https://instagram.com/izaintariq" target="_blank" rel="noopener">@izaintariq</a></p>
-          <p>© Huzz 2026</p>
+          <p>18+ adults only · © Huzz 2026</p>
         </footer>
       </div>
     </div>
   </div>
-
-  <script>
-    (function () {
-      var LOGO = 'assets/app-logo.png';
-      var ANGRY = 'assets/stop-touching.png';
-      var btn = document.getElementById('mascotBtn');
-      var inner = document.getElementById('mascotInner');
-      var img = document.getElementById('mascotImg');
-      var angryTimer = null;
-      var busy = false;
-      new Image().src = ANGRY;
-
-      function clearAnimClasses() {
-        inner.classList.remove('emerge-shake', 'shrink-out', 'return-in');
-      }
-
-      btn.addEventListener('click', function () {
-        if (busy) return;
-        busy = true;
-        btn.classList.add('mascot-busy');
-        if (angryTimer) clearTimeout(angryTimer);
-        clearAnimClasses();
-        inner.style.transform = '';
-        img.src = ANGRY;
-        inner.style.transform = 'scale(0.34)';
-        void inner.offsetWidth;
-        inner.classList.add('emerge-shake');
-        angryTimer = setTimeout(function () {
-          clearAnimClasses();
-          inner.style.transform = 'scale(1)';
-          void inner.offsetWidth;
-          inner.classList.add('shrink-out');
-          setTimeout(function () {
-            img.src = LOGO;
-            clearAnimClasses();
-            inner.style.transform = 'scale(0.34)';
-            void inner.offsetWidth;
-            inner.classList.add('return-in');
-            setTimeout(function () {
-              clearAnimClasses();
-              inner.style.transform = '';
-              btn.classList.remove('mascot-busy');
-              busy = false;
-            }, 340);
-          }, 180);
-        }, 1000);
-      });
-    })();
-  </script>
 </body>
 </html>

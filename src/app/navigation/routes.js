@@ -32,6 +32,7 @@ export const Routes = {
   SelectCountry: 'SelectCountry',
   Notifications: 'Notifications',
   GamePlay: 'GamePlay',
+  MehramAccess: 'MehramAccess',
 };
 
 

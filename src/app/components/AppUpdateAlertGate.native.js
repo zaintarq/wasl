@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, Platform, Linking } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Application from 'expo-application';
 import { authService, appUpdateService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { mehramService } from '../../services/mehramService';
 import { getPlayStoreOpenUrl, PLAY_STORE_WEB_URL } from '../../config/appStore';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { tokens } from '../../ui/tokens';
@@ -57,6 +58,12 @@ export function AppUpdateAlertGate() {
         const user = authService.getCurrentUser();
         if (!user?.uid) {
           skipRef.current = false;
+          setBlocked(false);
+          return;
+        }
+
+        if (mehramService.isMehramUid(user.uid)) {
+          skipRef.current = true;
           setBlocked(false);
           return;
         }

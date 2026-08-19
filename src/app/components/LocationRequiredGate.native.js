@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { authService, checkUserRoleFromAdminCollection, userService } from '../../services/firebaseService';
+import { mehramService } from '../../services/mehramService';
 import {
   detectCountryCity,
   getLocationPermissionStatus,
@@ -46,7 +47,7 @@ export function LocationRequiredGate() {
     setChecking(true);
     try {
       const user = authService.getCurrentUser();
-      if (!user?.uid) {
+      if (!user?.uid || mehramService.isMehramUid(user.uid)) {
         setBlocked(false);
         return;
       }

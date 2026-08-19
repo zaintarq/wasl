@@ -1,17 +1,17 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { app, auth, db } from './firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   collection,
   doc,
-  addDoc,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
-  updateDoc,
 } from 'firebase/firestore';
 
 const MEHRAM_COL = 'mehramAccess';
+const MEHRAM_SESSION_KEY = '@huzz/mehram_session_v1';
 
 function fn(name) {
   const functions = getFunctions(app, 'us-central1');
@@ -19,6 +19,64 @@ function fn(name) {
 }
 
 export const mehramService = {
+  isMehramUid(uid) {
+    return String(uid || '').startsWith('mehram_');
+  },
+
+  async persistSession(session) {
+    if (!session?.accessId) return;
+    await AsyncStorage.setItem(MEHRAM_SESSION_KEY, JSON.stringify(session));
+  },
+
+  async loadSession() {
+    try {
+      const raw = await AsyncStorage.getItem(MEHRAM_SESSION_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  },
+
+  async clearSession() {
+    await AsyncStorage.removeItem(MEHRAM_SESSION_KEY);
+  },
+
+  /** Open invite link in app — exchanges token and signs in as Mehram supervisor. */
+  async signInFromInvite(token) {
+    try {
+      const { data, error } = await this.exchangeToken(token);
+      if (error || !data?.customToken) {
+        return { data: null, error: error || 'Invalid invitation link.' };
+      }
+      await signInWithCustomToken(auth, data.customToken);
+      const session = {
+        accessId: data.accessId,
+        matchId: data.matchId,
+        permission: data.permission === 'reply' ? 'reply' : 'view',
+        girlUserId: data.girlUserId,
+        guyUserId: data.guyUserId,
+        girlDisplayName: data.girlDisplayName || 'Her',
+        guyDisplayName: data.guyDisplayName || 'User',
+        expiresAt: data.expiresAt || null,
+      };
+      await this.persistSession(session);
+      return { data: session, error: null };
+    } catch (e) {
+      return { data: null, error: e?.message || String(e) };
+    }
+  },
+
+  async signOutMehram() {
+    try {
+      await this.leaveSession().catch(() => {});
+    } catch {
+      /* ignore */
+    }
+    await this.clearSession();
+    await signOut(auth);
+  },
+
   async createInvite(matchId, permission = 'view') {
     try {
       const { data } = await fn('createMehramInvite')({
@@ -96,24 +154,7 @@ export const mehramService = {
     try {
       const trimmed = String(text || '').trim();
       if (!trimmed) return { error: 'Message is empty.' };
-      await addDoc(collection(db, 'matches', String(matchId), 'messages'), {
-        fromUid: String(girlUserId),
-        senderType: 'mehram',
-        mehramAccessId: String(accessId),
-        type: 'text',
-        text: trimmed,
-        replyTo: null,
-        reactions: {},
-        editedAt: null,
-        deletedAt: null,
-        readAt: null,
-        createdAt: serverTimestamp(),
-        moderation: { flagged: false },
-      });
-      await updateDoc(doc(db, 'matches', String(matchId)), {
-        lastMessageAt: serverTimestamp(),
-        lastMessageText: trimmed,
-      });
+      await fn('mehramSendMessage')({ text: trimmed });
       return { error: null };
     } catch (e) {
       return { error: e?.message || String(e) };

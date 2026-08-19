@@ -48,6 +48,8 @@ function isAgeVerified(profile) {
 const AGE_VERIFY_HOST =
   'https://us-central1-huzz-10264.cloudfunctions.net/ageVerifyPage';
 
+const GAMES_CLIENT_URL = 'https://huzz-games.pages.dev';
+
 function filterCandidate(me, candidate, swiped, blocked) {
   const uid = String(candidate?.id || candidate?.uid || '');
   const myUid = String(me?.id || me?.uid || '');
@@ -99,7 +101,7 @@ export function createWebApp(ctx) {
     getFirestore, collection, query, where, orderBy, limit, getDocs, getDoc, doc,
     setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction,
     httpsCallable, onAuthStateChanged,
-    main, bottomNav, logoutBtn,
+    main, bottomNav, profileBtn,
   } = ctx;
 
   let signupSessionId = '';
@@ -164,11 +166,11 @@ export function createWebApp(ctx) {
     clearListeners();
     main.classList.add('no-nav');
     bottomNav.classList.remove('on');
-    logoutBtn.classList.add('hidden');
+    profileBtn.classList.add('hidden');
     main.innerHTML = `
       <div class="card">
         <h2>Welcome back</h2>
-        <p class="sub">Sign up or log in — Discover, Chats, Clubs, and Live work on the web.</p>
+        <p class="sub">Sign up or log in — Home, Chats, Social, Clubs, Live, Games, and Profile work on the web (same account as Android).</p>
         <button type="button" class="btn btn-primary" id="goSignup">Sign up with email</button>
         <button type="button" class="btn btn-outline" id="goLogin">Log in</button>
       </div>`;
@@ -180,7 +182,7 @@ export function createWebApp(ctx) {
     clearListeners();
     main.classList.add('no-nav');
     bottomNav.classList.remove('on');
-    logoutBtn.classList.add('hidden');
+    profileBtn.classList.add('hidden');
     main.innerHTML = `
       <div class="card">
         <h2>Log in</h2>
@@ -216,7 +218,7 @@ export function createWebApp(ctx) {
     clearListeners();
     main.classList.add('no-nav');
     bottomNav.classList.remove('on');
-    logoutBtn.classList.add('hidden');
+    profileBtn.classList.add('hidden');
     drawSignupStep();
   }
 
@@ -432,8 +434,8 @@ export function createWebApp(ctx) {
       paint(`
         ${!isAgeVerified(meProfile) ? ageVerifyBannerHtml() : ''}
         <div class="card">
-          <h2>Discover</h2>
-          <div class="empty">No one new right now. Check back later or adjust your profile in the app.</div>
+          <h2>Home</h2>
+          <div class="empty">No one new right now. Check back later or update your profile.</div>
           <button type="button" class="btn btn-outline" id="discRefresh">Refresh</button>
         </div>`, gen);
       document.getElementById('goAgeVerify')?.addEventListener('click', () => renderAgeVerify(auth.currentUser, gen));
@@ -496,14 +498,14 @@ export function createWebApp(ctx) {
     clearListeners();
     chatMatchId = null;
     clubRoomId = null;
-    paint(`<div class="card"><h2>Discover</h2><p class="sub">Loading people near you…</p></div>`, gen);
+    paint(`<div class="card"><h2>Home</h2><p class="sub">Loading people near you…</p></div>`, gen);
     try {
       discoverCandidates = await loadDiscoverCandidates(user.uid);
       if (isStale(gen)) return;
       discoverIndex = 0;
       renderDiscoverCard(gen);
     } catch (e) {
-      paint(`<div class="card"><h2>Discover</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
+      paint(`<div class="card"><h2>Home</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -926,6 +928,141 @@ export function createWebApp(ctx) {
     };
   }
 
+  // ─── Social ───────────────────────────────────────────────────────────
+
+  async function renderSocial(user, gen) {
+    clearListeners();
+    chatMatchId = null;
+    clubRoomId = null;
+    paint(`<div class="card"><h2>Social</h2><p class="sub">Loading your circle…</p></div>`, gen);
+    try {
+      const matchSnap = await getDocs(
+        query(collection(db, 'matches'), where('uids', 'array-contains', user.uid), limit(40))
+      );
+      const active = matchSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => m.status === 'active' && m.isBlocked !== true);
+      const friendUids = [
+        ...new Set(
+          active
+            .map((m) => (m.uids || []).find((u) => u !== user.uid))
+            .filter(Boolean)
+        ),
+      ];
+      const users = await loadUserMap(friendUids);
+      const rows = friendUids.length
+        ? friendUids.map((uid) => {
+          const u = users[uid] || {};
+          const img = photoUrl(u);
+          const mid = getMatchId(user.uid, uid);
+          return `
+            <div class="friend-row">
+              ${img ? `<img class="friend-avatar" src="${esc(img)}" alt="" />` : '<div class="friend-avatar"></div>'}
+              <div style="flex:1">
+                <strong>${esc(u.name || 'User')}</strong>
+                <span>${esc(u.username ? `@${u.username}` : 'Match')}</span>
+              </div>
+              <button type="button" class="mini-btn mini-primary" data-chat="${esc(mid)}">Chat</button>
+              <button type="button" class="mini-btn" data-game="${esc(uid)}">Play</button>
+            </div>`;
+        }).join('')
+        : `<div class="empty">No social connections yet. Match with someone or join a club.</div>`;
+
+      if (!paint(`
+        <div class="card">
+          <h2>Social</h2>
+          <p class="sub">People from your matches — chat or launch a game.</p>
+          ${rows}
+          <a class="btn btn-outline" href="${GAMES_CLIENT_URL}" target="_blank" rel="noopener" style="text-decoration:none;margin-top:12px">Open games hub</a>
+        </div>`, gen)) return;
+
+      main.querySelectorAll('[data-chat]').forEach((btn) => {
+        btn.onclick = () => {
+          chatMatchId = btn.dataset.chat;
+          showAppScreen('chats', user);
+        };
+      });
+      main.querySelectorAll('[data-game]').forEach((btn) => {
+        btn.onclick = () => {
+          window.open(`${GAMES_CLIENT_URL}?opponent=${encodeURIComponent(btn.dataset.game)}`, '_blank');
+        };
+      });
+    } catch (e) {
+      paint(`<div class="card"><h2>Social</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
+    }
+  }
+
+  // ─── Profile & Settings ───────────────────────────────────────────────
+
+  async function renderProfile(user, gen) {
+    clearListeners();
+    chatMatchId = null;
+    clubRoomId = null;
+    if (!meProfile) meProfile = await loadMe(user.uid);
+    const p = meProfile || {};
+    const img = photoUrl(p);
+    const verified = isAgeVerified(p) ? '<span class="pill">18+ verified</span>' : '<span class="pill">Verify age</span>';
+
+    if (!paint(`
+      <div class="card">
+        <h2>Profile</h2>
+        ${img ? `<img class="profile-photo" src="${esc(img)}" alt="" />` : ''}
+        <p style="text-align:center;font-weight:700;font-size:1.1rem">${esc(p.name || 'You')}</p>
+        <p style="text-align:center;color:var(--muted);font-size:0.85rem">@${esc(p.username || 'username')}</p>
+        <p style="text-align:center;margin:8px 0">${verified}</p>
+        <p class="sub">${esc(p.bio || 'Add a bio in the Android app or edit below.')}</p>
+        <label for="profBio">Bio</label>
+        <textarea id="profBio" maxlength="500">${esc(p.bio || '')}</textarea>
+        <button type="button" class="btn btn-primary" id="profSave">Save bio</button>
+        <button type="button" class="btn btn-outline" id="goSettings">Settings</button>
+        ${!isAgeVerified(p) ? '<button type="button" class="btn btn-outline" id="profAge">Verify 18+</button>' : ''}
+      </div>`, gen)) return;
+
+    document.getElementById('goSettings').onclick = () => showAppScreen('settings', user);
+    document.getElementById('profAge')?.addEventListener('click', () => renderAgeVerify(user, gen));
+    document.getElementById('profSave').onclick = async () => {
+      const bio = document.getElementById('profBio').value.trim();
+      await updateDoc(doc(db, 'users', user.uid), { bio, updatedAt: serverTimestamp() });
+      meProfile = { ...p, bio };
+      const toast = document.createElement('div');
+      toast.className = 'ok';
+      toast.textContent = 'Profile updated.';
+      main.querySelector('.card').appendChild(toast);
+    };
+  }
+
+  async function renderSettings(user, gen) {
+    clearListeners();
+    if (!paint(`
+      <div class="card">
+        <h2>Settings</h2>
+        <p class="sub">Account, safety, and policies.</p>
+        <a class="settings-link" href="trust.html">Trust center <span>→</span></a>
+        <a class="settings-link" href="community.html">Community &amp; moderation <span>→</span></a>
+        <a class="settings-link" href="privacy.html">Privacy policy <span>→</span></a>
+        <a class="settings-link" href="terms.html">Terms of service <span>→</span></a>
+        <a class="settings-link" href="child-safety.html">Child safety <span>→</span></a>
+        <a class="settings-link" href="mailto:zain.tariq@mail.com">Contact support <span>→</span></a>
+        <button type="button" class="btn btn-outline" id="settingsBlocked">Blocked users</button>
+        <button type="button" class="btn btn-outline" id="settingsLogout">Log out</button>
+      </div>`, gen)) return;
+
+    document.getElementById('settingsLogout').onclick = () => {
+      clearListeners();
+      signOut(auth);
+    };
+    document.getElementById('settingsBlocked').onclick = async () => {
+      const snap = await getDocs(collection(db, 'users', user.uid, 'blocks'));
+      const ids = snap.docs.map((d) => d.id);
+      const users = await loadUserMap(ids);
+      const rows = ids.length
+        ? ids.map((id) => `<div class="list-item"><strong>${esc(users[id]?.name || id)}</strong></div>`).join('')
+        : '<div class="empty">No blocked users.</div>';
+      paint(`<div class="card"><button type="button" class="thread-back" id="settingsBack">← Settings</button><h2>Blocked</h2>${rows}</div>`, gen);
+      document.getElementById('settingsBack').onclick = () => renderSettings(user, bumpScreen());
+    };
+  }
+
   // ─── Navigation ───────────────────────────────────────────────────────
 
   async function showAppScreen(screen, user) {
@@ -948,12 +1085,15 @@ export function createWebApp(ctx) {
       if (clubRoomId) await renderClubRoom(user, clubRoomId, gen);
       else await renderClubs(user, gen);
     } else if (screen === 'live') await renderLive(user, gen);
+    else if (screen === 'social') await renderSocial(user, gen);
+    else if (screen === 'profile') await renderProfile(user, gen);
+    else if (screen === 'settings') await renderSettings(user, gen);
   }
 
   function enterApp(user) {
     main.classList.remove('no-nav');
     bottomNav.classList.add('on');
-    logoutBtn.classList.remove('hidden');
+    profileBtn.classList.remove('hidden');
     document.querySelectorAll('.nav-item').forEach((btn) => {
       btn.onclick = () => {
         if (btn.dataset.screen !== 'chats') chatMatchId = null;
@@ -961,13 +1101,9 @@ export function createWebApp(ctx) {
         showAppScreen(btn.dataset.screen, user);
       };
     });
+    profileBtn.onclick = () => showAppScreen('profile', user);
     showAppScreen('discover', user);
   }
-
-  logoutBtn.onclick = () => {
-    clearListeners();
-    signOut(auth);
-  };
 
   function start(startMode) {
     onAuthStateChanged(auth, (user) => {

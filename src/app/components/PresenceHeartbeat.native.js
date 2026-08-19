@@ -15,7 +15,7 @@ export function PresenceHeartbeat() {
 
   const tick = useCallback(() => {
     const u = authService.getCurrentUser();
-    if (!u?.uid) return;
+    if (!u?.uid || String(u.uid).startsWith('mehram_')) return;
     userService.updateUser(u.uid, { lastSeen: serverTimestamp() }).catch(() => {});
   }, []);
 

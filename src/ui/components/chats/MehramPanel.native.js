@@ -94,7 +94,7 @@ export function MehramPanel({
     if (!inviteUrl) return;
     try {
       await Share.share({
-        message: `You're invited to supervise my Huzz conversation.\n\n${inviteUrl}`,
+        message: `You're invited to supervise my Huzz conversation.\n\nInstall or open the Huzz app, then tap this link:\n\n${inviteUrl}`,
       });
     } catch {
       /* ignore */
