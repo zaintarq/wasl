@@ -132,7 +132,7 @@ export function createWebApp(ctx) {
 
   function liveShellHtml(body) {
     return `
-      <div class="card live-session" data-live-root="1">
+      <div class="shell-card live-session" data-live-root="1">
         <div class="live-badge">⚡ Live Random</div>
         ${body}
       </div>`;
@@ -168,9 +168,9 @@ export function createWebApp(ctx) {
     bottomNav.classList.remove('on');
     profileBtn.classList.add('hidden');
     main.innerHTML = `
-      <div class="card">
+      <div class="shell-card">
         <h2>Welcome back</h2>
-        <p class="sub">Sign up or log in — Home, Chats, Social, Clubs, Live, Games, and Profile work on the web (same account as Android).</p>
+        <p class="sub">Same pink shell as the app — one account on web &amp; Android.</p>
         <button type="button" class="btn btn-primary" id="goSignup">Sign up with email</button>
         <button type="button" class="btn btn-outline" id="goLogin">Log in</button>
       </div>`;
@@ -184,7 +184,7 @@ export function createWebApp(ctx) {
     bottomNav.classList.remove('on');
     profileBtn.classList.add('hidden');
     main.innerHTML = `
-      <div class="card">
+      <div class="shell-card">
         <h2>Log in</h2>
         <p class="sub">Same account as the Android app.</p>
         <label for="loginEmail">Email</label>
@@ -225,7 +225,7 @@ export function createWebApp(ctx) {
   function drawSignupStep() {
     if (signupStep === 'email') {
       main.innerHTML = `
-        <div class="card">
+        <div class="shell-card">
           <h2>Sign up</h2>
           <p class="step-hint">Step 1 of 4 — verify your email</p>
           <label for="suEmail">Email</label>
@@ -252,7 +252,7 @@ export function createWebApp(ctx) {
       };
     } else if (signupStep === 'otp') {
       main.innerHTML = `
-        <div class="card">
+        <div class="shell-card">
           <h2>Enter code</h2>
           <p class="step-hint">Step 2 of 4 — check your inbox</p>
           <label for="suOtp">6-digit code</label>
@@ -279,7 +279,7 @@ export function createWebApp(ctx) {
       };
     } else if (signupStep === 'profile') {
       main.innerHTML = `
-        <div class="card">
+        <div class="shell-card">
           <h2>Your profile</h2>
           <p class="step-hint">Step 3 of 4 — pick a username</p>
           <label for="suName">Name</label>
@@ -300,7 +300,7 @@ export function createWebApp(ctx) {
       };
     } else if (signupStep === 'password') {
       main.innerHTML = `
-        <div class="card">
+        <div class="shell-card">
           <h2>Create password</h2>
           <p class="step-hint">Step 4 of 4</p>
           <label for="suPass">Password</label>
@@ -332,7 +332,7 @@ export function createWebApp(ctx) {
 
   function ageVerifyBannerHtml() {
     return `
-      <div class="card age-banner">
+      <div class="shell-card age-banner">
         <strong>Verify you're 18+</strong>
         <p class="sub">Quick face scan unlocks likes, matches, chat, live, and clubs.</p>
         <button type="button" class="btn btn-primary" id="goAgeVerify">Verify now</button>
@@ -345,7 +345,7 @@ export function createWebApp(ctx) {
     clubRoomId = null;
     const url = `${AGE_VERIFY_HOST}?uid=${encodeURIComponent(user.uid)}&t=${Date.now()}`;
     if (!paint(`
-      <div class="card age-verify-card">
+      <div class="shell-card age-verify-card">
         <h2>18+ face scan</h2>
         <p class="sub">Allow camera access when prompted. Scan runs on your device — Huzz only gets a signed pass/fail.</p>
         <iframe id="ageFrame" class="age-frame" src="${url}" allow="camera *; microphone" title="Age verification"></iframe>
@@ -433,7 +433,7 @@ export function createWebApp(ctx) {
     if (!c) {
       paint(`
         ${!isAgeVerified(meProfile) ? ageVerifyBannerHtml() : ''}
-        <div class="card">
+        <div class="shell-card">
           <h2>Home</h2>
           <div class="empty">No one new right now. Check back later or update your profile.</div>
           <button type="button" class="btn btn-outline" id="discRefresh">Refresh</button>
@@ -498,14 +498,14 @@ export function createWebApp(ctx) {
     clearListeners();
     chatMatchId = null;
     clubRoomId = null;
-    paint(`<div class="card"><h2>Home</h2><p class="sub">Loading people near you…</p></div>`, gen);
+    paint(`<div class="shell-card"><h2>Home</h2><p class="sub">Loading people near you…</p></div>`, gen);
     try {
       discoverCandidates = await loadDiscoverCandidates(user.uid);
       if (isStale(gen)) return;
       discoverIndex = 0;
       renderDiscoverCard(gen);
     } catch (e) {
-      paint(`<div class="card"><h2>Home</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
+      paint(`<div class="shell-card"><h2>Home</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -525,7 +525,7 @@ export function createWebApp(ctx) {
     chatMatchId = matchId;
     const matchSnap = await getDoc(doc(db, 'matches', matchId));
     if (!matchSnap.exists()) {
-      main.innerHTML = `<div class="card"><div class="empty">Chat not found.</div></div>`;
+      main.innerHTML = `<div class="shell-card"><div class="empty">Chat not found.</div></div>`;
       return;
     }
     const m = matchSnap.data();
@@ -593,14 +593,14 @@ export function createWebApp(ctx) {
   async function renderChats(user, gen) {
     clearListeners();
     clubRoomId = null;
-    paint(`<div class="card"><h2>Chats</h2><p class="sub">Loading…</p></div>`, gen);
+    paint(`<div class="shell-card"><h2>Chats</h2><p class="sub">Loading…</p></div>`, gen);
     try {
       const res = await httpsCallable(functions, 'webListMatches')({});
       if (isStale(gen)) return;
       const { matches = [], users = {} } = res.data || {};
 
       if (!matches.length) {
-        paint(`<div class="card"><h2>Chats</h2><div class="empty">No matches yet — like people in Discover.</div></div>`, gen);
+        paint(`<div class="shell-card"><h2>Chats</h2><div class="empty">No matches yet — like people in Discover.</div></div>`, gen);
         return;
       }
 
@@ -614,7 +614,7 @@ export function createWebApp(ctx) {
         </button>`;
       }).join('');
 
-      if (!paint(`<div class="card"><h2>Chats</h2>${rows}</div>`, gen)) return;
+      if (!paint(`<div class="shell-card"><h2>Chats</h2>${rows}</div>`, gen)) return;
       main.querySelectorAll('[data-mid]').forEach((btn) => {
         btn.onclick = () => {
           chatMatchId = btn.dataset.mid;
@@ -622,7 +622,7 @@ export function createWebApp(ctx) {
         };
       });
     } catch (e) {
-      paint(`<div class="card"><h2>Chats</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
+      paint(`<div class="shell-card"><h2>Chats</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -652,17 +652,17 @@ export function createWebApp(ctx) {
   async function renderClubRoom(user, clubId, gen) {
     clearListeners();
     clubRoomId = clubId;
-    paint(`<div class="card"><h2>Club</h2><p class="sub">Loading…</p></div>`, gen);
+    paint(`<div class="shell-card"><h2>Club</h2><p class="sub">Loading…</p></div>`, gen);
     try {
       const res = await httpsCallable(functions, 'webGetClubRoom')({ clubId: String(clubId) });
       if (isStale(gen)) return;
       const { club, isMember, messages = [] } = res.data || {};
       if (!club) {
-        main.innerHTML = `<div class="card"><div class="empty">Club not found.</div></div>`;
+        main.innerHTML = `<div class="shell-card"><div class="empty">Club not found.</div></div>`;
         return;
       }
       if (!isMember) {
-        main.innerHTML = `<div class="card"><div class="empty">Join this club to view messages.</div></div>`;
+        main.innerHTML = `<div class="shell-card"><div class="empty">Join this club to view messages.</div></div>`;
         return;
       }
 
@@ -720,14 +720,14 @@ export function createWebApp(ctx) {
         }
       };
     } catch (e) {
-      main.innerHTML = `<div class="card"><div class="empty">${esc(e.message || 'Could not open club.')}</div></div>`;
+      main.innerHTML = `<div class="shell-card"><div class="empty">${esc(e.message || 'Could not open club.')}</div></div>`;
     }
   }
 
   async function renderClubs(user, gen) {
     clearListeners();
     chatMatchId = null;
-    paint(`<div class="card"><h2>Clubs</h2><p class="sub">Loading…</p></div>`, gen);
+    paint(`<div class="shell-card"><h2>Clubs</h2><p class="sub">Loading…</p></div>`, gen);
     try {
       const res = await httpsCallable(functions, 'webListClubs')({});
       if (isStale(gen)) return;
@@ -735,7 +735,7 @@ export function createWebApp(ctx) {
       const joined = new Set(joinedIds);
 
       if (!clubs.length) {
-        paint(`<div class="card"><h2>Clubs</h2><div class="empty">No public clubs yet.</div></div>`, gen);
+        paint(`<div class="shell-card"><h2>Clubs</h2><div class="empty">No public clubs yet.</div></div>`, gen);
         return;
       }
 
@@ -752,7 +752,7 @@ export function createWebApp(ctx) {
         </div>`;
       }).join('');
 
-      if (!paint(`<div class="card"><h2>Clubs</h2><p class="sub">Public clubs — join and chat here on the web.</p>${rows}</div>`, gen)) return;
+      if (!paint(`<div class="shell-card"><h2>Clubs</h2><p class="sub">Public clubs — join and chat here on the web.</p>${rows}</div>`, gen)) return;
 
       main.querySelectorAll('[data-join]').forEach((btn) => {
         btn.onclick = async () => {
@@ -778,7 +778,7 @@ export function createWebApp(ctx) {
         };
       });
     } catch (e) {
-      paint(`<div class="card"><h2>Clubs</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
+      paint(`<div class="shell-card"><h2>Clubs</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -934,7 +934,7 @@ export function createWebApp(ctx) {
     clearListeners();
     chatMatchId = null;
     clubRoomId = null;
-    paint(`<div class="card"><h2>Social</h2><p class="sub">Loading your circle…</p></div>`, gen);
+    paint(`<div class="shell-card"><h2>Social</h2><p class="sub">Loading your circle…</p></div>`, gen);
     try {
       const matchSnap = await getDocs(
         query(collection(db, 'matches'), where('uids', 'array-contains', user.uid), limit(40))
@@ -969,7 +969,7 @@ export function createWebApp(ctx) {
         : `<div class="empty">No social connections yet. Match with someone or join a club.</div>`;
 
       if (!paint(`
-        <div class="card">
+        <div class="shell-card">
           <h2>Social</h2>
           <p class="sub">People from your matches — chat or launch a game.</p>
           ${rows}
@@ -988,7 +988,7 @@ export function createWebApp(ctx) {
         };
       });
     } catch (e) {
-      paint(`<div class="card"><h2>Social</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
+      paint(`<div class="shell-card"><h2>Social</h2><div class="empty">${esc(e.message)}</div></div>`, gen);
     }
   }
 
@@ -1004,7 +1004,7 @@ export function createWebApp(ctx) {
     const verified = isAgeVerified(p) ? '<span class="pill">18+ verified</span>' : '<span class="pill">Verify age</span>';
 
     if (!paint(`
-      <div class="card">
+      <div class="shell-card">
         <h2>Profile</h2>
         ${img ? `<img class="profile-photo" src="${esc(img)}" alt="" />` : ''}
         <p style="text-align:center;font-weight:700;font-size:1.1rem">${esc(p.name || 'You')}</p>
@@ -1027,14 +1027,14 @@ export function createWebApp(ctx) {
       const toast = document.createElement('div');
       toast.className = 'ok';
       toast.textContent = 'Profile updated.';
-      main.querySelector('.card').appendChild(toast);
+      main.querySelector('.shell-card').appendChild(toast);
     };
   }
 
   async function renderSettings(user, gen) {
     clearListeners();
     if (!paint(`
-      <div class="card">
+      <div class="shell-card">
         <h2>Settings</h2>
         <p class="sub">Account, safety, and policies.</p>
         <a class="settings-link" href="trust.html">Trust center <span>→</span></a>
@@ -1058,7 +1058,7 @@ export function createWebApp(ctx) {
       const rows = ids.length
         ? ids.map((id) => `<div class="list-item"><strong>${esc(users[id]?.name || id)}</strong></div>`).join('')
         : '<div class="empty">No blocked users.</div>';
-      paint(`<div class="card"><button type="button" class="thread-back" id="settingsBack">← Settings</button><h2>Blocked</h2>${rows}</div>`, gen);
+      paint(`<div class="shell-card"><button type="button" class="thread-back" id="settingsBack">← Settings</button><h2>Blocked</h2>${rows}</div>`, gen);
       document.getElementById('settingsBack').onclick = () => renderSettings(user, bumpScreen());
     };
   }
@@ -1068,7 +1068,7 @@ export function createWebApp(ctx) {
   async function showAppScreen(screen, user) {
     const gen = bumpScreen();
     currentScreen = screen;
-    document.querySelectorAll('.nav-item').forEach((n) => {
+    document.querySelectorAll('.nav-tile').forEach((n) => {
       n.classList.toggle('on', n.dataset.screen === screen);
     });
 
@@ -1094,7 +1094,7 @@ export function createWebApp(ctx) {
     main.classList.remove('no-nav');
     bottomNav.classList.add('on');
     profileBtn.classList.remove('hidden');
-    document.querySelectorAll('.nav-item').forEach((btn) => {
+    document.querySelectorAll('.nav-tile').forEach((btn) => {
       btn.onclick = () => {
         if (btn.dataset.screen !== 'chats') chatMatchId = null;
         if (btn.dataset.screen !== 'clubs') clubRoomId = null;
