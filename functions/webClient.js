@@ -26,6 +26,7 @@ function stripUser(id, raw) {
     photos,
     photoURL: String(d.photoURL || d.photoUrl || ''),
     isDisabled: d.isDisabled === true,
+    ageChecked18Plus: d.ageChecked18Plus === true,
   };
 }
 
@@ -346,6 +347,169 @@ exports.webSendClubMessage = functions.region('us-central1').https.onCall(async 
       });
     } catch (e) {
       console.error('[webSendClubMessage] auto-report failed:', e.message);
+    }
+  }
+
+  return { ok: true, messageId: msgRef.id };
+});
+
+exports.webSendMatchMessage = functions.region('us-central1').https.onCall(async (data, context) => {
+  const uid = await assertSignedIn(context);
+  const matchId = String(data?.matchId || '').trim();
+  const text = String(data?.text || '').trim().slice(0, 2000);
+  if (!matchId || !text) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing match or message.');
+  }
+
+  const matchSnap = await db.collection('matches').doc(matchId).get();
+  if (!matchSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Chat not found.');
+  }
+  const match = matchSnap.data() || {};
+  const uids = Array.isArray(match.uids) ? match.uids : [];
+  if (!uids.includes(uid)) {
+    throw new functions.https.HttpsError('permission-denied', 'Not a participant.');
+  }
+  if (match.isBlocked === true || match.status === 'blocked') {
+    throw new functions.https.HttpsError('failed-precondition', 'This chat is blocked.');
+  }
+
+  if (isMessageToxic(text)) {
+    try {
+      await db.collection('vulgarAttempts').add({
+        userId: uid,
+        originalMessage: text,
+        matchId,
+        status: 'blocked',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      console.error('[webSendMatchMessage] vulgar log failed:', e.message);
+    }
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'This message was flagged as inappropriate. Please change it before sending.'
+    );
+  }
+
+  const mod = scanMessageText(text);
+  const msgRef = await db.collection('matches').doc(matchId).collection('messages').add({
+    fromUid: uid,
+    type: 'text',
+    text,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    moderation: mod.flagged
+      ? {
+          flagged: true,
+          categories: mod.categories,
+          matchedTerms: mod.matchedTerms,
+          score: mod.score,
+        }
+      : { flagged: false },
+  });
+
+  await db.collection('matches').doc(matchId).set({
+    lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastMessageText: text,
+  }, { merge: true });
+
+  if (mod.flagged) {
+    try {
+      await db.collection('reports').add({
+        reporterUid: uid,
+        targetType: 'message',
+        targetId: msgRef.id,
+        targetUserId: uid,
+        matchId,
+        reason: mod.categories[0] || 'inappropriate',
+        categories: mod.categories,
+        details: text,
+        autoFlagged: true,
+        matchedTerms: mod.matchedTerms,
+        score: mod.score,
+        status: 'open',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        actionTaken: null,
+      });
+    } catch (e) {
+      console.error('[webSendMatchMessage] auto-report failed:', e.message);
+    }
+  }
+
+  return { ok: true, messageId: msgRef.id };
+});
+
+exports.webSendLiveRandomMessage = functions.region('us-central1').https.onCall(async (data, context) => {
+  const uid = await assertSignedIn(context);
+  const sessionId = String(data?.sessionId || '').trim();
+  const text = String(data?.text || '').trim().slice(0, 500);
+  if (!sessionId || !text) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing session or message.');
+  }
+
+  const sessionSnap = await db.collection('liveRandomSessions').doc(sessionId).get();
+  if (!sessionSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Session not found.');
+  }
+  const session = sessionSnap.data() || {};
+  const uids = Array.isArray(session.uids) ? session.uids : [];
+  if (!uids.includes(uid) || session.status !== 'active') {
+    throw new functions.https.HttpsError('permission-denied', 'Not in this live session.');
+  }
+
+  if (isMessageToxic(text)) {
+    try {
+      await db.collection('vulgarAttempts').add({
+        userId: uid,
+        originalMessage: text,
+        sessionId,
+        status: 'blocked',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      console.error('[webSendLiveRandomMessage] vulgar log failed:', e.message);
+    }
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'This message was flagged as inappropriate. Please change it before sending.'
+    );
+  }
+
+  const mod = scanMessageText(text);
+  const msgRef = await db.collection('liveRandomSessions').doc(sessionId).collection('messages').add({
+    fromUid: uid,
+    text,
+    sessionId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    moderation: mod.flagged
+      ? {
+          flagged: true,
+          categories: mod.categories,
+          matchedTerms: mod.matchedTerms,
+          score: mod.score,
+        }
+      : { flagged: false },
+  });
+
+  if (mod.flagged) {
+    try {
+      await db.collection('reports').add({
+        reporterUid: uid,
+        targetType: 'message',
+        targetId: msgRef.id,
+        targetUserId: uid,
+        reason: mod.categories[0] || 'inappropriate',
+        categories: mod.categories,
+        details: `live:${sessionId} ${text}`,
+        autoFlagged: true,
+        matchedTerms: mod.matchedTerms,
+        score: mod.score,
+        status: 'open',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        actionTaken: null,
+      });
+    } catch (e) {
+      console.error('[webSendLiveRandomMessage] auto-report failed:', e.message);
     }
   }
 

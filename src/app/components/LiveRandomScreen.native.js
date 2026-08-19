@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
+import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Shuffle } from 'lucide-react-native';
 import { authService, liveRandomService, userService, checkUserRoleFromAdminCollection, reportService } from '../../services/firebaseService';
@@ -209,9 +209,22 @@ export function LiveRandomScreen({ onNavigate }) {
   const sendChat = async () => {
     const t = chatText.trim();
     if (!t || !session?.id || !meUid) return;
-    setChatText('');
-    const { error: err } = await liveRandomService.sendMessage(session.id, meUid, t);
-    if (err) setError(err);
+    try {
+      const toxic = await liveRandomService.checkMessageToxicity(session.id, t);
+      if (toxic) {
+        Alert.alert(
+          'Message not allowed',
+          'This message was flagged as inappropriate. Please change it before sending. Repeated attempts may be reported to admins.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      setChatText('');
+      const { error: err } = await liveRandomService.sendMessage(session.id, meUid, t);
+      if (err) setError(err);
+    } catch (e) {
+      setError(e?.message || 'Could not send message.');
+    }
   };
 
   const handleLiveKitError = useCallback((msg) => {

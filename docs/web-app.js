@@ -114,6 +114,7 @@ export function createWebApp(ctx) {
   let meProfile = null;
   let unsubscribers = [];
   let screenGen = 0;
+  let liveWaitingInPool = false;
 
   function bumpScreen() {
     screenGen += 1;
@@ -139,6 +140,10 @@ export function createWebApp(ctx) {
   }
 
   function clearListeners() {
+    if (liveWaitingInPool) {
+      liveWaitingInPool = false;
+      httpsCallable(functions, 'webLeaveLivePool')({}).catch(() => {});
+    }
     unsubscribers.forEach((fn) => { try { fn(); } catch {} });
     unsubscribers = [];
   }
@@ -577,16 +582,12 @@ export function createWebApp(ctx) {
       const text = input.value.trim();
       if (!text) return;
       input.value = '';
-      await addDoc(collection(db, 'matches', matchId, 'messages'), {
-        fromUid: user.uid,
-        type: 'text',
-        text,
-        createdAt: serverTimestamp(),
-      });
-      await setDoc(doc(db, 'matches', matchId), {
-        lastMessageAt: serverTimestamp(),
-        lastMessageText: text,
-      }, { merge: true });
+      try {
+        await httpsCallable(functions, 'webSendMatchMessage')({ matchId, text });
+      } catch (e) {
+        input.value = text;
+        showErr(e.message || 'Could not send message.');
+      }
     };
   }
 
@@ -819,6 +820,7 @@ export function createWebApp(ctx) {
         const s = liveRes.data?.session;
         if (s?.id) {
           stopLivePoll();
+          liveWaitingInPool = false;
           await renderLiveSession(user, s.id, s.partnerUid, gen, s.partnerName);
         }
       } catch (err) {
@@ -865,11 +867,12 @@ export function createWebApp(ctx) {
       const text = input.value.trim();
       if (!text) return;
       input.value = '';
-      await addDoc(collection(db, 'liveRandomSessions', sessionId, 'messages'), {
-        fromUid: user.uid,
-        text: text.slice(0, 500),
-        createdAt: serverTimestamp(),
-      });
+      try {
+        await httpsCallable(functions, 'webSendLiveRandomMessage')({ sessionId, text });
+      } catch (e) {
+        input.value = text;
+        showErr(e.message || 'Could not send message.');
+      }
     };
 
     document.getElementById('liveEnd').onclick = async () => {
@@ -906,25 +909,46 @@ export function createWebApp(ctx) {
         <h2>Live Random</h2>
         <p class="sub">Get matched with another signed-in user for a short session. Text chat works here on the web; camera and mic work best in the Android app.</p>
         <button type="button" class="btn btn-primary" id="liveStart">Find someone live</button>
+        <button type="button" class="btn btn-outline hidden" id="liveCancel">Cancel search</button>
         <p class="step-hint" id="liveStatus"></p>`), gen)) return;
 
     document.getElementById('liveStart').onclick = async () => {
       const btn = document.getElementById('liveStart');
+      const cancelBtn = document.getElementById('liveCancel');
       const status = document.getElementById('liveStatus');
       btn.disabled = true;
       status.textContent = 'Looking for someone…';
       try {
         const res = await enterLivePool(user.uid);
         if (res.type === 'matched') {
+          liveWaitingInPool = false;
+          cancelBtn.classList.add('hidden');
           await renderLiveSession(user, res.sessionId, res.partnerUid, gen, res.partnerName);
         } else {
-          status.textContent = 'Waiting for a partner… keep this open.';
-          await pollLiveMatch(user, gen);
+          liveWaitingInPool = true;
+          cancelBtn.classList.remove('hidden');
+          status.textContent = 'Waiting for a partner… keep this open or cancel below.';
+          await pollLiveMatch(user, gen, () => {
+            liveWaitingInPool = true;
+          });
         }
       } catch (e) {
+        liveWaitingInPool = false;
+        cancelBtn.classList.add('hidden');
         status.textContent = e.message || 'Could not join live.';
         btn.disabled = false;
       }
+    };
+
+    document.getElementById('liveCancel').onclick = async () => {
+      liveWaitingInPool = false;
+      stopLivePoll();
+      try {
+        await httpsCallable(functions, 'webLeaveLivePool')({});
+      } catch {}
+      document.getElementById('liveCancel').classList.add('hidden');
+      document.getElementById('liveStart').disabled = false;
+      document.getElementById('liveStatus').textContent = '';
     };
   }
 

@@ -28,6 +28,7 @@ import { GamePlayScreen } from '../components/GamePlayScreen.native.js';
 import { MehramAccessScreen } from '../components/MehramAccessScreen.native.js';
 import { HomeStackNavigator } from './HomeStackNavigator.native.js';
 import { authService, userService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { hasPassedAgeCheck, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
 import { db } from '../../services/firebase';
 import { collection, query, where, getDocs, doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { detectCountryCity } from '../../services/locationService.native.js';
@@ -321,7 +322,7 @@ function NotificationListener() {
 /**
  * Handle notification tap - navigate to relevant screen
  */
-function handleNotificationTap(data) {
+async function handleNotificationTap(data) {
   if (!navigationRef || !navigationRef.isReady()) {
     console.warn('[Push] Navigation not ready, retrying...');
     setTimeout(() => handleNotificationTap(data), 500);
@@ -340,6 +341,22 @@ function handleNotificationTap(data) {
     ) {
       navigationRef.navigate(Routes.TabMatches);
     } else if ((type === 'message' || type === 'message_new') && matchId) {
+      const user = authService.getCurrentUser();
+      if (user?.uid) {
+        try {
+          const [profileRes, roleCheck] = await Promise.all([
+            userService.getUserById(user.uid),
+            checkUserRoleFromAdminCollection(user.uid),
+          ]);
+          const profile = profileRes?.data || null;
+          if (!shouldSkipAgeCheck(profile, roleCheck) && !hasPassedAgeCheck(profile)) {
+            navigationRef.navigate(Routes.AgeCheck);
+            return;
+          }
+        } catch {
+          /* proceed if profile check fails */
+        }
+      }
       navigationRef.navigate(Routes.ChatThread, { matchId });
     } else if (type === 'verification') {
       navigationRef.navigate(Routes.Verification);

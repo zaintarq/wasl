@@ -29,7 +29,9 @@ import {
   userService,
   translationService,
   aiSuggestionService,
+  checkUserRoleFromAdminCollection,
 } from '../../services/firebaseService';
+import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
 import { mehramService } from '../../services/mehramService';
 import { MehramBanner } from '../../ui/components/chats/MehramBanner.native';
 import { MehramPanel } from '../../ui/components/chats/MehramPanel.native';
@@ -291,6 +293,8 @@ export function ChatScreen({ onNavigate, matchId }) {
   const [aiMode, setAiMode] = useState('reply_suggestions');
   const [aiLoading, setAiLoading] = useState(false);
   const [myProfile, setMyProfile] = useState(null);
+  const [roleCheck, setRoleCheck] = useState(null);
+  const [pendingUpgradeError, setPendingUpgradeError] = useState(null);
   const [mehramPanelOpen, setMehramPanelOpen] = useState(false);
 
   useEffect(() => {
@@ -323,11 +327,57 @@ export function ChatScreen({ onNavigate, matchId }) {
         /* ignore */
       }
     })();
+    checkUserRoleFromAdminCollection(meUid).then((rc) => {
+      if (!cancelled) setRoleCheck(rc);
+    }).catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [meUid]);
 
+  useEffect(() => {
+    if (!meUid || myProfile === null) return;
+    if (blockIfAgeNotVerified(myProfile, onNavigate, roleCheck)) {
+      onNavigate('matches');
+    }
+  }, [meUid, myProfile, roleCheck, onNavigate]);
+
+  // Legacy pending matches from older builds — open chat immediately without approval.
+  useEffect(() => {
+    if (!matchId || !meUid || String(match?.status || '') !== 'pending') {
+      setPendingUpgradeError(null);
+      return;
+    }
+    const parts = String(matchId).split('_');
+    const otherUid = parts.find((p) => p && p !== meUid) || null;
+    if (!otherUid) {
+      setPendingUpgradeError('Could not open this chat.');
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const res = await matchService.createActiveMatch(meUid, otherUid, { initiatedBy: meUid });
+      if (cancelled) return;
+      if (res?.error) {
+        setPendingUpgradeError(res.error);
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, meUid, match?.status]);
+
+  useEffect(() => {
+    if (String(match?.status || '') !== 'pending') return;
+    const timer = setTimeout(() => {
+      setLoading(false);
+      setPendingUpgradeError((prev) => prev || 'This chat is still pending. Go back to Matches and try again.');
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [match?.status]);
   const mehramMeta = match?.mehram && match.mehram.active ? match.mehram : null;
   const isGirl = mehramService.isGirlUser(myProfile);
   const mehramDisplayLabel = useMemo(() => {
@@ -413,16 +463,6 @@ export function ChatScreen({ onNavigate, matchId }) {
     return () => unsub && unsub();
   }, [matchId]);
 
-  // Legacy pending matches from older builds — open chat immediately without approval.
-  useEffect(() => {
-    if (!matchId || !meUid || String(match?.status || '') !== 'pending') return;
-    const parts = String(matchId).split('_');
-    const otherUid = parts.find((p) => p && p !== meUid) || null;
-    if (!otherUid) return;
-    matchService.createActiveMatch(meUid, otherUid, { initiatedBy: meUid }).catch(() => {});
-  }, [matchId, meUid, match?.status]);
-
-  // Restore messages from cache when switching to this chat (instant load)
   useEffect(() => {
     if (!matchId) return;
     const cached = messageCache.get(matchId);
@@ -541,8 +581,8 @@ export function ChatScreen({ onNavigate, matchId }) {
       const uri = recorder.uri || recorder.getStatus?.()?.url;
 
       // Allow any length; only warn for very short (< 1s) to avoid accidental sends
-      if (dur < 800 && !auto) {
-        Alert.alert('Too short', 'Record at least ~1 second or tap Stop when done.');
+      if (dur < 1000 && !auto) {
+        Alert.alert('Too short', 'Record at least 1 second or tap Stop when done.');
         return;
       }
       if (!uri) {
@@ -891,6 +931,15 @@ export function ChatScreen({ onNavigate, matchId }) {
         </View>
 
         <View style={{ flex: 1, minHeight: 0 }}>
+        {pendingUpgradeError ? (
+          <View style={styles.pendingBox}>
+            <Text style={styles.pendingTitle}>Chat unavailable</Text>
+            <Text style={styles.pendingText}>{pendingUpgradeError}</Text>
+            <HuzzPressable style={styles.headerBtn} onPress={() => onNavigate('matches')} haptic="light">
+              <Text style={styles.headerBtnText}>Back to chats</Text>
+            </HuzzPressable>
+          </View>
+        ) : null}
         <FlatList
           ref={listRef}
           style={styles.list}

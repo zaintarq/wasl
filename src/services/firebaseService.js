@@ -960,93 +960,44 @@ export const likeService = {
 
   async likeUser(fromUid, toUid) {
     // CRITICAL: This function MUST NEVER throw - always return an object
-    // Wrap everything in try-catch to prevent any errors from propagating
-    
-    // Early validation and logging
-    try {
-      console.log('\n');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('🔥 LIKESERVICE.likeUser() CALLED');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`📤 From UID: ${fromUid}`);
-      console.log(`📥 To UID: ${toUid}`);
-      console.log(`📁 Collection Path 1: users/${fromUid}/likesSent/${toUid}`);
-      console.log(`📁 Collection Path 2: users/${toUid}/likesReceived/${fromUid}`);
-      console.log(`✅ DB Available: ${!!db}`);
-      console.log(`✅ Firestore Functions Available: ${typeof doc !== 'undefined'}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    } catch (earlyLogError) {
-      console.error('❌ Failed to log early:', earlyLogError);
-      // Continue anyway
-    }
-    
-    // Main try-catch - catch EVERYTHING
     try {
       if (!fromUid || !toUid) {
         const error = 'Missing fromUid or toUid';
-        console.error(`[LikeService] ❌ ${error}: fromUid=${fromUid}, toUid=${toUid}`);
+        if (__DEV__) console.warn(`[LikeService] ${error}`);
         return { matched: false, matchId: null, error };
       }
       
       const from = String(fromUid);
       const to = String(toUid);
-      
-      console.log(`[LikeService] likeUser called: from=${from}, to=${to}`);
 
-      // Record like both sides (sent + received) for simple mutual detection
-      // CRITICAL: Wrap each write in its own try-catch to prevent one failure from blocking the other
-      // Use Promise.allSettled to ensure both writes are attempted even if one fails
       let likesSentSuccess = false;
       let likesReceivedSuccess = false;
       
-      console.log('💾 Starting Firestore writes...');
-      console.log(`   📝 Writing to: users/${from}/likesSent/${to}`);
-      console.log(`   📝 Writing to: users/${to}/likesReceived/${from}`);
-      
-      const writeResults = await Promise.allSettled([
-        // Write like sent
+      await Promise.allSettled([
         setDoc(this._likesSentRef(from, to), { 
           toUid: to, 
           action: 'like', 
           createdAt: serverTimestamp() 
         }, { merge: true }).then(() => {
           likesSentSuccess = true;
-          console.log(`   ✅ SUCCESS: Like sent saved to users/${from}/likesSent/${to}`);
         }).catch((sentError) => {
-          console.error(`   ❌ FAILED: Like sent write error:`, {
-            message: sentError?.message,
-            code: sentError?.code,
-            permissionError: sentError?.code === 'permission-denied',
-            path: `users/${from}/likesSent/${to}`
-          });
+          if (__DEV__) {
+            console.warn('[LikeService] Like sent write error:', sentError?.message || sentError);
+          }
         }),
         
-        // Write like received
         setDoc(this._likesReceivedRef(to, from), { 
           fromUid: from, 
           action: 'like', 
           createdAt: serverTimestamp() 
         }, { merge: true }).then(() => {
           likesReceivedSuccess = true;
-          console.log(`   ✅ SUCCESS: Like received saved to users/${to}/likesReceived/${from}`);
         }).catch((receivedError) => {
-          console.error(`   ❌ FAILED: Like received write error:`, {
-            message: receivedError?.message,
-            code: receivedError?.code,
-            permissionError: receivedError?.code === 'permission-denied',
-            path: `users/${to}/likesReceived/${from}`
-          });
+          if (__DEV__) {
+            console.warn('[LikeService] Like received write error:', receivedError?.message || receivedError);
+          }
         })
       ]);
-      
-      // Log results
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📊 WRITE RESULTS SUMMARY:');
-      console.log(`   ✅ likesSent: ${likesSentSuccess ? 'SUCCESS' : 'FAILED'}`);
-      console.log(`   ✅ likesReceived: ${likesReceivedSuccess ? 'SUCCESS' : 'FAILED'}`);
-      console.log(`   ${likesSentSuccess && likesReceivedSuccess ? '🎉 Both writes succeeded!' : likesSentSuccess || likesReceivedSuccess ? '⚠️ Partial success' : '❌ Both writes failed'}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
       if (!likesSentSuccess && !likesReceivedSuccess) {
         return {
           matched: false,
@@ -1088,11 +1039,9 @@ export const likeService = {
       let matchStatus = null;
       
       try {
-        console.log(`[LikeService] Checking for mutual like: ${from} <- ${to}`);
         const reciprocal = await getDoc(this._likesReceivedRef(from, to));
         if (reciprocal.exists() && reciprocal.data()?.action === 'like') {
           isMutual = true;
-          console.log(`[LikeService] ✅ Mutual like detected! Creating active match...`);
 
           try {
             const matchResult = await matchService.createActiveMatch(from, to, {
@@ -1100,12 +1049,11 @@ export const likeService = {
               initiatedBy: from,
             });
             if (matchResult?.error) {
-              console.error('[LikeService] Failed to create active match:', matchResult.error);
+              if (__DEV__) console.warn('[LikeService] Failed to create active match:', matchResult.error);
               return { matched: false, matchId: null, error: matchResult.error };
             }
             matchId = matchResult?.matchId || getMatchId(from, to);
             matchStatus = matchResult?.status || 'active';
-            console.log(`[LikeService] Active match created: ${matchId}`);
             try {
               await notificationService.createNotification(from, {
                 type: 'match_mutual',
@@ -1124,26 +1072,22 @@ export const likeService = {
                 status: 'unread',
               });
             } catch (mutualNotifErr) {
-              console.warn('[LikeService] Mutual notification (non-critical):', mutualNotifErr);
+              if (__DEV__) console.warn('[LikeService] Mutual notification (non-critical):', mutualNotifErr);
             }
             return { matched: true, matchId, status: matchStatus, error: null };
           } catch (matchError) {
-            console.error('[LikeService] Match creation exception:', matchError);
+            if (__DEV__) console.warn('[LikeService] Match creation exception:', matchError);
             return {
               matched: false,
               matchId: null,
               error: matchError?.message || String(matchError),
             };
           }
-        } else {
-          console.log(`[LikeService] Not mutual yet (reciprocal exists: ${reciprocal.exists()}, action: ${reciprocal.data()?.action})`);
         }
       } catch (mutualCheckError) {
-        console.error('[LikeService] Error checking mutual like (non-critical):', mutualCheckError);
-        // Continue - we'll send notification anyway
+        if (__DEV__) console.warn('[LikeService] Error checking mutual like:', mutualCheckError);
       }
 
-      // Not mutual yet — like only; chat unlocks when they like back or either person taps Msg.
       if (!isMutual) {
         try {
           await notificationService.createNotification(to, {
@@ -1154,39 +1098,16 @@ export const likeService = {
             body: `${senderName} liked you. Like them back to match and chat.`,
             status: 'unread',
           });
-          console.log('[LikeService] ✅ Like notification sent to recipient');
         } catch (notifError) {
-          console.warn('[LikeService] Like notification (non-critical):', notifError);
+          if (__DEV__) console.warn('[LikeService] Like notification (non-critical):', notifError);
         }
       }
-      console.log('✅ Like recorded successfully (not mutual yet)');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('✅ LIKESERVICE.likeUser() COMPLETED SUCCESSFULLY');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
       return { matched: false, matchId: null, error: null };
     } catch (error) {
-      // CRITICAL: Always return an object, never throw
-      try {
-        console.error('\n');
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('❌❌❌ TOP-LEVEL LIKE USER ERROR ❌❌❌');
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error(`Error Type: ${typeof error}`);
-        console.error(`Error Message: ${error?.message || String(error)}`);
-        console.error(`Error Code: ${error?.code || 'none'}`);
-        console.error(`Error Name: ${error?.name || 'none'}`);
-        if (error?.stack) {
-          console.error(`Error Stack:\n${error.stack}`);
-        }
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('❌ LIKESERVICE.likeUser() FAILED');
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-      } catch (logError) {
-        // Even error logging can fail, continue anyway
-        console.error('❌ Failed to log error:', logError);
+      if (__DEV__) {
+        console.warn('[LikeService] likeUser error:', error?.message || error);
       }
       
-      // ALWAYS return an object, never throw
       return { matched: false, matchId: null, error: error?.message || String(error) || 'Unknown error' };
     }
   },
@@ -1819,18 +1740,64 @@ export const liveRandomService = {
     );
   },
 
+  /** Pre-send profanity block — same cloud function as match/club chat. */
+  async checkMessageToxicity(_sessionId, text) {
+    return messageService.checkMessageToxicity(null, text, {});
+  },
+
   async sendMessage(sessionId, fromUid, text) {
     const sid = String(sessionId || '').trim();
     const me = String(fromUid || '').trim();
     const t = String(text || '').trim();
     if (!sid || !me || !t) return { error: 'Message empty.' };
     if (t.length > 2000) return { error: 'Message too long.' };
+
+    const mod = scanMessageText(t);
     try {
-      await addDoc(this._messagesCol(sid), {
+      const msgRef = await addDoc(this._messagesCol(sid), {
         fromUid: me,
-        text: t,
+        text: t.slice(0, 2000),
+        sessionId: sid,
         createdAt: serverTimestamp(),
+        moderation: mod.flagged
+          ? {
+              flagged: true,
+              categories: Array.isArray(mod.categories) ? mod.categories.map(String) : [],
+              matchedTerms: Array.isArray(mod.matchedTerms) ? mod.matchedTerms.map(String) : [],
+              score: Number(mod.score || 0),
+            }
+          : { flagged: false },
       });
+
+      if (mod.flagged) {
+        try {
+          await reportService.createReport({
+            reporterUid: me,
+            targetType: 'message',
+            targetId: String(msgRef.id),
+            targetUserId: me,
+            reason: mod.categories?.[0] || 'inappropriate',
+            categories: mod.categories,
+            details: `live:${sid} ${t}`,
+            autoFlagged: true,
+            matchedTerms: mod.matchedTerms,
+            score: mod.score,
+          });
+        } catch {}
+
+        try {
+          await safetyService.recordEvent({
+            source: 'keyword_scan',
+            targetUid: me,
+            categories: Array.isArray(mod.categories) ? mod.categories.map(String) : [],
+            matchedTerms: Array.isArray(mod.matchedTerms) ? mod.matchedTerms.map(String) : [],
+            score: Number(mod.score || 0),
+            details: t,
+            severity: Number(mod.score || 0) >= 3 ? 'high' : 'medium',
+          });
+        } catch {}
+      }
+
       return { error: null };
     } catch (e) {
       return { error: e?.message || String(e) };

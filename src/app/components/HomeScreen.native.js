@@ -853,21 +853,11 @@ export function HomeScreen({ onNavigate }) {
 
       if (direction === 'up') {
         await handleDirectMessage(target);
-        console.log('[Swipe] ========== SWIPE END (direct message) ==========');
+        if (__DEV__) console.log('[Swipe] SWIPE END (direct message)');
         return;
       }
       
       if (direction === 'right') {
-        console.log('\n');
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('🔄 SWIPE RIGHT DETECTED');
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log(`📤 From User ID: ${authUser.uid}`);
-        console.log(`📥 To User ID: ${targetId || 'UNKNOWN'}`);
-        console.log(`👤 Target Name: ${target?.name || 'Unknown'}`);
-        console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
-        console.log('───────────────────────────────────────────────────────────');
-        
         if (!targetId) {
           return;
         }
@@ -878,119 +868,71 @@ export function HomeScreen({ onNavigate }) {
           /* ignore */
         }
         
-        // CRITICAL: Fire-and-forget the like operation - don't wait for it
-        // This ensures the UI never blocks and the app never crashes
         Promise.resolve().then(async () => {
           try {
-            console.log('📝 Starting Firestore save operation...');
-            console.log(`   Collection: users/${authUser.uid}/likesSent/${targetId}`);
-            console.log(`   Collection: users/${targetId}/likesReceived/${authUser.uid}`);
-            
-            // Validate likeService exists
             if (!likeService || typeof likeService.likeUser !== 'function') {
-              console.error('❌ ERROR: likeService.likeUser is not available');
+              if (__DEV__) console.warn('[Swipe] likeService.likeUser is not available');
               return;
             }
             
-            console.log('💾 Calling likeUser service...');
-            // Call likeUser in background - don't await, don't block
             const likeResult = await likeService.likeUser(authUser.uid, targetId).catch((e) => {
-              console.error('❌ ERROR in likeUser service:', {
-                error: e?.message || String(e),
-                code: e?.code,
-                stack: e?.stack
-              });
+              if (__DEV__) console.warn('[Swipe] likeUser error:', e?.message || e);
               return { matched: false, matchId: null, error: e?.message || String(e) };
             });
             
-            console.log('───────────────────────────────────────────────────────────');
-            console.log('📊 Like Operation Result:');
-            console.log(`   ✅ Matched: ${likeResult?.matched || false}`);
-            console.log(`   🆔 Match ID: ${likeResult?.matchId || 'null'}`);
-            console.log(`   📋 Status: ${likeResult?.status || 'null'}`);
-            console.log(`   ❌ Error: ${likeResult?.error || 'none'}`);
-            console.log('───────────────────────────────────────────────────────────');
-            
-            // Handle match result (if mutual match)
             if (likeResult?.matched && likeResult?.matchId && !likeResult?.error) {
-              console.log('🎉 MATCH DETECTED! Mutual like!');
               try {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 showCuteAlert('match', 'Connected!', 'Open Chats to message them');
-                console.log('✅ Match alert shown to user');
               } catch (matchError) {
-                console.warn('⚠️ Error showing match alert:', matchError);
+                if (__DEV__) console.warn('[Swipe] Match alert error:', matchError);
               }
             } else if (likeResult?.error) {
-              console.error('❌ Like operation had error:', likeResult.error);
               try {
                 showCuteAlert('error', 'Like failed', likeResult.error);
               } catch {
                 Alert.alert('Like failed', likeResult.error);
               }
             } else {
-              console.log('✅ Like saved successfully (not mutual yet)');
               try {
                 showCuteAlert('success', 'LIKE SENT!', 'If they like you back you can chat');
               } catch (_) {}
             }
-            
-            console.log('═══════════════════════════════════════════════════════════');
-            console.log('✅ SWIPE OPERATION COMPLETE');
-            console.log('═══════════════════════════════════════════════════════════\n');
           } catch (backgroundError) {
-            // Even background errors should be caught
-            console.error('❌❌❌ CRITICAL ERROR in background operation:', {
-              error: backgroundError?.message || String(backgroundError),
-              stack: backgroundError?.stack
-            });
-            console.log('═══════════════════════════════════════════════════════════\n');
+            if (__DEV__) console.warn('[Swipe] Background like error:', backgroundError?.message || backgroundError);
           }
         }).catch((outerError) => {
-          // Catch any errors in the promise chain
-          console.error('❌❌❌ CRITICAL ERROR in promise chain:', {
-            error: outerError?.message || String(outerError),
-            stack: outerError?.stack
-          });
-          console.log('═══════════════════════════════════════════════════════════\n');
+          if (__DEV__) console.warn('[Swipe] Like promise error:', outerError?.message || outerError);
         });
         
         // Card already advanced in finally block, so we're done here
       } else {
-        console.log(`[Swipe] Pass action: from=${authUser.uid}, to=${targetId || 'unknown'}`);
+        if (__DEV__) console.log(`[Swipe] Pass: from=${authUser.uid}, to=${targetId || 'unknown'}`);
         try {
           showSwipeToast('nope');
         } catch (toastErr) {
-          console.warn('[Swipe] Swipe toast error:', toastErr);
+          if (__DEV__) console.warn('[Swipe] Swipe toast error:', toastErr);
         }
         if (!targetId) {
-          console.error('[Swipe] ❌ Cannot pass: target has no id');
+          if (__DEV__) console.warn('[Swipe] Cannot pass: target has no id');
         } else {
-          // Fire-and-forget pass operation - don't block
           Promise.resolve().then(async () => {
             try {
               if (likeService && typeof likeService.passUser === 'function') {
                 const res = await likeService.passUser(authUser.uid, targetId).catch((e) => {
-                  console.error('[Swipe] Background pass error (non-critical):', {
-                    error: e?.message || String(e),
-                    code: e?.code
-                  });
+                  if (__DEV__) console.warn('[Swipe] Background pass error:', e?.message || e);
                   return { error: e?.message || String(e) };
                 });
                 
-                if (res?.error) {
-                  console.error('[Swipe] Pass error (non-critical):', res.error);
-                } else {
-                  console.log('[Swipe] ✅ Pass recorded in background');
+                if (res?.error && __DEV__) {
+                  console.warn('[Swipe] Pass error:', res.error);
                 }
               }
             } catch (passError) {
-              console.error('[Swipe] Background pass exception (non-critical):', {
-                error: passError?.message || String(passError)
-              });
+              if (__DEV__) console.warn('[Swipe] Background pass exception:', passError?.message || passError);
             }
           }).catch((outerError) => {
-            console.error('[Swipe] Outer pass promise error (non-critical):', outerError);
+            if (__DEV__) console.warn('[Swipe] Outer pass promise error:', outerError?.message || outerError);
           });
         }
       }
