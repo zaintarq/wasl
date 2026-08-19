@@ -404,12 +404,20 @@
     });
 
     document.getElementById('reportBtn').addEventListener('click', async () => {
-      if (!confirm('Block and report this user on her behalf?')) return;
+      if (!confirm('Report this user on her behalf? They can also be blocked.')) return;
       try {
-        await httpsCallable(functions, 'mehramBlockGuy')({});
-        showError('User blocked. Supervision session ended.');
+        await httpsCallable(functions, 'mehramReportGuy')({
+          reason: 'inappropriate',
+          details: 'Reported by Mehram supervisor via web.',
+        });
+        if (confirm('Report submitted. Block this user and end the session?')) {
+          await httpsCallable(functions, 'mehramBlockGuy')({});
+          showError('User reported and blocked. Supervision session ended.');
+        } else {
+          showError('Report submitted.');
+        }
       } catch (e) {
-        alert(e?.message || 'Could not block.');
+        alert(e?.message || 'Could not submit report.');
       }
     });
 

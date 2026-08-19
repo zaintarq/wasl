@@ -3,7 +3,7 @@
  */
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const { isMessageToxic, scanMessageText } = require('./messageModeration');
+const { isMessageToxicLocal, moderateMessageText } = require('./messageModeration');
 
 const db = admin.firestore();
 
@@ -40,6 +40,34 @@ async function assertSignedIn(context) {
     throw new functions.https.HttpsError('permission-denied', 'Account disabled.');
   }
   return uid;
+}
+
+const POOL_WAIT_TTL_MS = 2 * 60 * 1000;
+
+function poolWaitingUid(poolData) {
+  const waiting = String(poolData?.waitingUid || '').trim();
+  if (!waiting) return '';
+  const updatedAt = poolData?.updatedAt?.toMillis?.() || 0;
+  if (updatedAt && Date.now() - updatedAt > POOL_WAIT_TTL_MS) return '';
+  return waiting;
+}
+
+async function assertAgeVerified(uid) {
+  const userSnap = await db.collection('users').doc(uid).get();
+  if (userSnap.data()?.ageChecked18Plus === true) return;
+  try {
+    const adminSnap = await db.collection('admin').doc(uid).get();
+    if (adminSnap.exists) {
+      const role = String(adminSnap.data()?.role || '').toLowerCase();
+      if (role === 'admin' || role === 'staff') return;
+    }
+  } catch {
+    /* ignore */
+  }
+  throw new functions.https.HttpsError(
+    'failed-precondition',
+    '18+ verification required. Complete age check in your profile first.'
+  );
 }
 
 exports.webDiscoverFeed = functions.region('us-central1').https.onCall(async (_data, context) => {
@@ -269,6 +297,7 @@ exports.webGetClubRoom = functions.region('us-central1').https.onCall(async (dat
 
 exports.webSendClubMessage = functions.region('us-central1').https.onCall(async (data, context) => {
   const uid = await assertSignedIn(context);
+  await assertAgeVerified(uid);
   const clubId = String(data?.clubId || '').trim();
   const text = String(data?.text || '').trim().slice(0, 2000);
   if (!clubId || !text) {
@@ -293,7 +322,7 @@ exports.webSendClubMessage = functions.region('us-central1').https.onCall(async 
     });
   }
 
-  if (isMessageToxic(text)) {
+  if (isMessageToxicLocal(text)) {
     try {
       await db.collection('vulgarAttempts').add({
         userId: uid,
@@ -311,7 +340,7 @@ exports.webSendClubMessage = functions.region('us-central1').https.onCall(async 
     );
   }
 
-  const mod = scanMessageText(text);
+  const mod = moderateMessageText(text);
   const msgRef = await db.collection('clubs').doc(clubId).collection('messages').add({
     fromUid: uid,
     text,
@@ -355,6 +384,7 @@ exports.webSendClubMessage = functions.region('us-central1').https.onCall(async 
 
 exports.webSendMatchMessage = functions.region('us-central1').https.onCall(async (data, context) => {
   const uid = await assertSignedIn(context);
+  await assertAgeVerified(uid);
   const matchId = String(data?.matchId || '').trim();
   const text = String(data?.text || '').trim().slice(0, 2000);
   if (!matchId || !text) {
@@ -374,7 +404,7 @@ exports.webSendMatchMessage = functions.region('us-central1').https.onCall(async
     throw new functions.https.HttpsError('failed-precondition', 'This chat is blocked.');
   }
 
-  if (isMessageToxic(text)) {
+  if (isMessageToxicLocal(text)) {
     try {
       await db.collection('vulgarAttempts').add({
         userId: uid,
@@ -392,7 +422,7 @@ exports.webSendMatchMessage = functions.region('us-central1').https.onCall(async
     );
   }
 
-  const mod = scanMessageText(text);
+  const mod = moderateMessageText(text);
   const msgRef = await db.collection('matches').doc(matchId).collection('messages').add({
     fromUid: uid,
     type: 'text',
@@ -441,6 +471,7 @@ exports.webSendMatchMessage = functions.region('us-central1').https.onCall(async
 
 exports.webSendLiveRandomMessage = functions.region('us-central1').https.onCall(async (data, context) => {
   const uid = await assertSignedIn(context);
+  await assertAgeVerified(uid);
   const sessionId = String(data?.sessionId || '').trim();
   const text = String(data?.text || '').trim().slice(0, 500);
   if (!sessionId || !text) {
@@ -457,7 +488,7 @@ exports.webSendLiveRandomMessage = functions.region('us-central1').https.onCall(
     throw new functions.https.HttpsError('permission-denied', 'Not in this live session.');
   }
 
-  if (isMessageToxic(text)) {
+  if (isMessageToxicLocal(text)) {
     try {
       await db.collection('vulgarAttempts').add({
         userId: uid,
@@ -475,7 +506,7 @@ exports.webSendLiveRandomMessage = functions.region('us-central1').https.onCall(
     );
   }
 
-  const mod = scanMessageText(text);
+  const mod = moderateMessageText(text);
   const msgRef = await db.collection('liveRandomSessions').doc(sessionId).collection('messages').add({
     fromUid: uid,
     text,
@@ -518,12 +549,14 @@ exports.webSendLiveRandomMessage = functions.region('us-central1').https.onCall(
 
 exports.webEnterLivePool = functions.region('us-central1').https.onCall(async (_data, context) => {
   const uid = await assertSignedIn(context);
+  await assertAgeVerified(uid);
   const poolRef = db.collection('liveRandomPool').doc('current');
   const sessionRef = db.collection('liveRandomSessions').doc();
 
   const result = await db.runTransaction(async (tx) => {
     const poolSnap = await tx.get(poolRef);
-    const waiting = poolSnap.exists ? String(poolSnap.data()?.waitingUid || '').trim() : '';
+    const poolData = poolSnap.exists ? poolSnap.data() || {} : {};
+    let waiting = poolWaitingUid(poolData);
 
     if (waiting && waiting !== uid) {
       tx.set(poolRef, {

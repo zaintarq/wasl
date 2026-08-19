@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.com.huzz.app",
+        "paths": [
+          "/mehram.html",
+          "/mehram.html/*",
+          "/mehram",
+          "/mehram/*"
+        ]
+      }
+    ]
+  }
+}

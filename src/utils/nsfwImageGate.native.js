@@ -8,8 +8,13 @@ export async function gateImageBeforeUpload(uri) {
   const { predictions, nsfw, error } = await classifyImageUri(uri);
 
   if (error) {
-    // Don't block upload if scanner fails (offline model load, decode error).
-    return { allowed: true, blocked: false, predictions, scanError: error };
+    return {
+      allowed: false,
+      blocked: true,
+      predictions,
+      message: 'Safety scan unavailable. Connect to the internet and try again.',
+      scanError: error,
+    };
   }
 
   if (nsfw) {

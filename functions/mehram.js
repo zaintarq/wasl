@@ -16,7 +16,12 @@ const MIN_CHAT_MS = 10 * 60 * 1000;
 const MIN_MESSAGES = 2;
 
 function getMehramPepper() {
-  return process.env.MEHRAM_TOKEN_PEPPER || 'huzz-mehram-v1-change-in-prod';
+  const fromEnv = String(process.env.MEHRAM_TOKEN_PEPPER || '').trim();
+  if (fromEnv) return fromEnv;
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    return 'huzz-mehram-dev-only-not-for-prod';
+  }
+  throw new Error('MEHRAM_TOKEN_PEPPER not configured — set in Firebase functions env.');
 }
 
 function hashMehramToken(raw) {
@@ -393,6 +398,7 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
   });
 
   exports.mehramSendMessage = region.https.onCall(async (data, context) => {
+    const { isMessageToxicLocal, moderateMessageText } = require('./messageModeration');
     const { accessId, matchId, girlUserId } = assertMehramAuth(context);
     const snap = await db.collection(MEHRAM_COL).doc(accessId).get();
     if (!snap.exists || snap.data()?.status !== 'active') {
@@ -407,6 +413,15 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError('invalid-argument', 'Message is empty or too long.');
     }
 
+    if (isMessageToxicLocal(text)) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'This message was flagged as inappropriate. Please change it before sending.'
+      );
+    }
+
+    const mod = moderateMessageText(text);
+
     await db.collection(MATCHES).doc(String(matchId)).collection('messages').add({
       fromUid: String(girlUserId),
       senderType: 'mehram',
@@ -419,7 +434,14 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
       deletedAt: null,
       readAt: null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      moderation: { flagged: false },
+      moderation: mod.flagged
+        ? {
+            flagged: true,
+            categories: mod.categories,
+            matchedTerms: mod.matchedTerms,
+            score: mod.score,
+          }
+        : { flagged: false },
     });
 
     await db.collection(MATCHES).doc(String(matchId)).set(

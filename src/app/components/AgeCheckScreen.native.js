@@ -118,6 +118,11 @@ export function AgeCheckScreen({ onNavigate }) {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.errorText}>Sign in to verify your age.</Text>
+        <RetroButton
+          title="Log in"
+          onPress={() => onNavigate?.('onboarding', { mode: 'login' })}
+          style={{ marginTop: 16, marginHorizontal: 24 }}
+        />
       </SafeAreaView>
     );
   }

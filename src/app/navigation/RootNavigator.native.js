@@ -200,6 +200,27 @@ function MehramLinkHandler({ isReady }) {
     if (handlingRef.current) return true;
     handlingRef.current = true;
     try {
+      const current = authService.getCurrentUser();
+      if (current?.uid && !mehramService.isMehramUid(current.uid)) {
+        const proceed = await new Promise((resolve) => {
+          Alert.alert(
+            'Open Mehram supervision?',
+            'This will sign you out of your current Huzz account and open the Mehram session for the person you are supervising.',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              {
+                text: 'Continue',
+                style: 'destructive',
+                onPress: () => {
+                  authService.signOutUser().finally(() => resolve(true));
+                },
+              },
+            ]
+          );
+        });
+        if (!proceed) return true;
+      }
+
       const { data, error } = await mehramService.signInFromInvite(token);
       if (error) {
         Alert.alert('Mehram invitation', error);

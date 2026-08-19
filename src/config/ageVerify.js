@@ -8,16 +8,13 @@ const DEFAULT_HOSTED_PAGE =
 export const ZOIVERA_API_BASE =
   'https://wlctyycddctuxhnhtdug.supabase.co/functions/v1';
 
-const FALLBACK_ZOIVERA_KEY =
-  'zv_live_fa30721874e3df857d948e2d9a3d580bb94ae7585b2028da4f09662aaa54988a';
-
 export function getZoiVeraApiKey() {
   const fromEnv =
     typeof process.env.EXPO_PUBLIC_ZOIVERA_API_KEY === 'string'
       ? process.env.EXPO_PUBLIC_ZOIVERA_API_KEY.trim()
       : '';
   const fromExtra = String(Constants.expoConfig?.extra?.zoiVeraApiKey || '').trim();
-  return fromEnv || fromExtra || FALLBACK_ZOIVERA_KEY;
+  return fromEnv || fromExtra || '';
 }
 
 export function getZoiVeraAudience() {

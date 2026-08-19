@@ -8,7 +8,7 @@ try {
   // Root .env only (no functions/.env).
 }
 const { AccessToken } = require('livekit-server-sdk');
-const { isMessageToxic } = require('./messageModeration');
+const { isMessageToxicLocal } = require('./messageModeration');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
@@ -854,7 +854,7 @@ exports.checkMessageToxicity = functions
     const clubId = typeof data?.clubId === 'string' ? data.clubId : null;
     const uid = context.auth.uid;
 
-    const toxic = isMessageToxic(text);
+    const toxic = isMessageToxicLocal(text);
     if (toxic) {
       try {
         await db.collection(VULGAR_COLLECTION).add({
@@ -2176,3 +2176,4 @@ exports.getGameLaunchSession = functions.region('us-central1').https.onCall(asyn
 Object.assign(exports, require('./mehram'));
 Object.assign(exports, require('./zoivera'));
 Object.assign(exports, require('./webClient'));
+Object.assign(exports, require('./likes'));

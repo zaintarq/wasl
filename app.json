@@ -17,6 +17,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.huzz.app",
+      "associatedDomains": [
+        "applinks:huzz-ezh.pages.dev"
+      ],
       "usesAppleSignIn": true,
       "icon": "./assets/images/icon-1024.png",
       "infoPlist": {

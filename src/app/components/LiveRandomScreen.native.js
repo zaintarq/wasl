@@ -93,17 +93,22 @@ export function LiveRandomScreen({ onNavigate }) {
   }, [meUid, myProfile, onNavigate, roleCheck]);
 
   useEffect(() => {
-    if (!meUid || phase !== 'searching') return undefined;
+    if (!meUid || (phase !== 'searching' && phase !== 'session')) return undefined;
     const unsub = liveRandomService.listenActiveSessionForUser(meUid, ({ data, error: err }) => {
       if (err) setError(err);
-      if (data && data.status === 'active') {
+      if (phase === 'searching' && data?.status === 'active') {
         setSession(data);
         setPhase('session');
         setError(null);
+      } else if (phase === 'session' && (!data || data.status !== 'active')) {
+        setSession(null);
+        setPhase('idle');
+        setMessages([]);
+        clearTimers();
       }
     });
     return () => unsub && unsub();
-  }, [meUid, phase]);
+  }, [meUid, phase, clearTimers]);
 
   useEffect(() => {
     const sid = session?.id;
@@ -129,8 +134,10 @@ export function LiveRandomScreen({ onNavigate }) {
       const ends = ms + SESSION_MS;
       const left = Math.max(0, Math.ceil((ends - Date.now()) / 1000));
       setSecondsLeft(left);
-      if (left <= 0 && meUid) {
-        liveRandomService.endSession(s.id, meUid, 'timeout').catch(() => {});
+      if (left <= 0 && meUid && s?.id) {
+        liveRandomService.endSession(s.id, meUid, 'timeout').then(({ error: endErr }) => {
+          if (endErr) setError(endErr);
+        });
       }
     };
 
@@ -138,19 +145,6 @@ export function LiveRandomScreen({ onNavigate }) {
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
   }, [phase, session?.id, session?.startedAt, meUid, clearTimers]);
-
-  useEffect(() => {
-    if (!meUid || phase !== 'session' || !session?.id) return undefined;
-    const unsub = liveRandomService.listenActiveSessionForUser(meUid, ({ data }) => {
-      if (!data || data.status !== 'active') {
-        setSession(null);
-        setPhase('idle');
-        setMessages([]);
-        clearTimers();
-      }
-    });
-    return () => unsub && unsub();
-  }, [meUid, phase, session?.id, clearTimers]);
 
   const cancelSearch = async () => {
     if (meUid) await liveRandomService.leavePool(meUid);
@@ -162,7 +156,8 @@ export function LiveRandomScreen({ onNavigate }) {
     const sid = session?.id;
     clearTimers();
     if (meUid && sid) {
-      await liveRandomService.endSession(sid, meUid, reason);
+      const { error: endErr } = await liveRandomService.endSession(sid, meUid, reason);
+      if (endErr) setError(endErr);
     }
     setSession(null);
     setMessages([]);

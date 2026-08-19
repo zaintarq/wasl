@@ -403,27 +403,13 @@ export function createWebApp(ctx) {
   }
 
   async function likeUser(from, to) {
-    await setDoc(doc(db, 'users', from, 'likesSent', to), {
-      toUid: to, action: 'like', createdAt: serverTimestamp(),
-    }, { merge: true });
-    await setDoc(doc(db, 'users', to, 'likesReceived', from), {
-      fromUid: from, action: 'like', createdAt: serverTimestamp(),
-    }, { merge: true });
-    const reciprocal = await getDoc(doc(db, 'users', from, 'likesReceived', to));
-    if (reciprocal.exists() && reciprocal.data()?.action === 'like') {
-      const matchId = getMatchId(from, to);
-      const sorted = [from, to].sort();
-      await setDoc(doc(db, 'matches', matchId), {
-        id: matchId,
-        uids: sorted,
-        status: 'active',
-        createdAt: serverTimestamp(),
-        lastMessageAt: serverTimestamp(),
-        source: 'web_discovery',
-      }, { merge: true });
-      return { matched: true, matchId };
-    }
-    return { matched: false };
+    const res = await httpsCallable(functions, 'recordLike')({ toUid: to, source: 'web_discovery' });
+    const data = res.data || {};
+    return {
+      matched: !!data.matched,
+      matchId: data.matchId || null,
+      error: data.error || null,
+    };
   }
 
   async function passUser(from, to) {
@@ -525,7 +511,17 @@ export function createWebApp(ctx) {
     return map;
   }
 
+  function requireAgeForScreen(user, gen) {
+    if (isAgeVerified(meProfile)) return true;
+    renderAgeVerify(user, gen);
+    return false;
+  }
+
   async function renderChatThread(user, matchId, gen) {
+    if (!isAgeVerified(meProfile)) {
+      renderAgeVerify(user, gen);
+      return;
+    }
     clearListeners();
     chatMatchId = matchId;
     const matchSnap = await getDoc(doc(db, 'matches', matchId));
@@ -1103,12 +1099,16 @@ export function createWebApp(ctx) {
     if (screen === 'discover') await renderDiscover(user, gen);
     else if (screen === 'ageVerify') renderAgeVerify(user, gen);
     else if (screen === 'chats') {
+      if (!requireAgeForScreen(user, gen)) return;
       if (chatMatchId) await renderChatThread(user, chatMatchId, gen);
       else await renderChats(user, gen);
     } else if (screen === 'clubs') {
+      if (!requireAgeForScreen(user, gen)) return;
       if (clubRoomId) await renderClubRoom(user, clubRoomId, gen);
       else await renderClubs(user, gen);
-    } else if (screen === 'live') await renderLive(user, gen);
+    } else if (screen === 'live') {
+      if (!requireAgeForScreen(user, gen)) return;
+      await renderLive(user, gen);
     else if (screen === 'social') await renderSocial(user, gen);
     else if (screen === 'profile') await renderProfile(user, gen);
     else if (screen === 'settings') await renderSettings(user, gen);

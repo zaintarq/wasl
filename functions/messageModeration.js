@@ -19,8 +19,31 @@ function isMessageToxic(text) {
     return filter.isProfane(text.trim());
   } catch (e) {
     console.error('[messageModeration] Filter error:', e.message);
-    return false;
+    return scanMessageText(text).flagged;
   }
+}
+
+function isMessageToxicLocal(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return false;
+  if (isMessageToxic(trimmed)) return true;
+  return scanMessageText(trimmed).flagged;
+}
+
+function moderateMessageText(text) {
+  const trimmed = String(text || '').trim();
+  const keywordMod = scanMessageText(trimmed);
+  if (isMessageToxic(trimmed)) {
+    const categories = new Set(keywordMod.categories);
+    categories.add('profanity');
+    return {
+      flagged: true,
+      categories: [...categories],
+      matchedTerms: keywordMod.matchedTerms,
+      score: Math.max(keywordMod.score, 1),
+    };
+  }
+  return keywordMod;
 }
 
 function scanMessageText(text) {
@@ -53,5 +76,7 @@ function scanMessageText(text) {
 
 module.exports = {
   isMessageToxic,
+  isMessageToxicLocal,
+  moderateMessageText,
   scanMessageText,
 };

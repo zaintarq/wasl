@@ -24,8 +24,8 @@ function getZoiVeraApiKey() {
   }
   const fromEnv = String(process.env.ZOIVERA_API_KEY || process.env.EXPO_PUBLIC_ZOIVERA_API_KEY || '').trim();
   if (fromEnv) return fromEnv;
-  // Fallback until Firebase config / secrets are set (rotate key in dashboard later).
-  return 'zv_live_fa30721874e3df857d948e2d9a3d580bb94ae7585b2028da4f09662aaa54988a';
+  console.error('[zoivera] ZOIVERA_API_KEY not configured.');
+  return '';
 }
 
 function getExpectedAudience() {

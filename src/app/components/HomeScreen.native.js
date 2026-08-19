@@ -186,8 +186,6 @@ export function HomeScreen({ onNavigate }) {
   const [matchCountry, setMatchCountry] = useState('');
   
   // Pending match requests (real-time)
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const [pendingRequestUsers, setPendingRequestUsers] = useState({}); // Map of userId -> user profile
   const [roleCheck, setRoleCheck] = useState(null);
 
   const ageBlocked = useMemo(() => {
@@ -294,35 +292,14 @@ export function HomeScreen({ onNavigate }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const successAnim = React.useRef(new RNAnimated.Value(0)).current;
 
-  // Combine pending requests with regular candidates, showing pending requests first
-  const allCandidates = useMemo(() => {
-    const pending = pendingRequests.map(req => {
-      const requesterUid = String(req.requestedBy || '');
-      const user = pendingRequestUsers[requesterUid];
-      if (!user) return null;
-      return {
-        ...user,
-        _isPendingRequest: true,
-        _matchId: req.id,
-        _requestId: req.id,
-      };
-    }).filter(Boolean);
-    
-    // Regular candidates (exclude users who have pending requests)
-    const pendingUids = new Set(pendingRequests.map(req => String(req.requestedBy || '')));
-    const regular = candidates.filter(c => !pendingUids.has(String(c.id || '')));
-    
-    return [...pending, ...regular];
-  }, [pendingRequests, pendingRequestUsers, candidates]);
-
   const advanceCard = useCallback(() => {
     setCurrentIndex((prev) => {
       setIndexHistory((h) => [...h.slice(-8), prev]);
-      const len = allCandidates.length;
+      const len = candidates.length;
       if (len <= 0) return 0;
       return prev < len - 1 ? prev + 1 : 0;
     });
-  }, [allCandidates.length]);
+  }, [candidates.length]);
 
   const onDeckBlocked = useCallback(() => {
     if (ageBlocked) {
@@ -341,26 +318,23 @@ export function HomeScreen({ onNavigate }) {
 
   // Defensive check for currentUser - validate array bounds
   const currentUser = useMemo(() => {
-    if (!Array.isArray(allCandidates) || allCandidates.length === 0) {
-      console.warn('[HomeScreen] allCandidates is empty or not an array:', {
-        isArray: Array.isArray(allCandidates),
-        length: allCandidates?.length || 0,
-        currentIndex
-      });
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      if (__DEV__) {
+        console.warn('[HomeScreen] candidates empty:', { length: candidates?.length || 0, currentIndex });
+      }
       return null;
     }
-    if (currentIndex < 0 || currentIndex >= allCandidates.length) {
-      console.warn('[HomeScreen] currentIndex out of bounds:', {
-        currentIndex,
-        arrayLength: allCandidates.length
-      });
+    if (currentIndex < 0 || currentIndex >= candidates.length) {
+      if (__DEV__) {
+        console.warn('[HomeScreen] currentIndex out of bounds:', { currentIndex, arrayLength: candidates.length });
+      }
       return null;
     }
-    return allCandidates[currentIndex] || null;
-  }, [allCandidates, currentIndex]);
+    return candidates[currentIndex] || null;
+  }, [candidates, currentIndex]);
 
   /** Full lobby only when discovery returned nobody — not while swiping. */
-  const showDiscoveryLobby = !loading && allCandidates.length === 0;
+  const showDiscoveryLobby = !loading && candidates.length === 0;
 
   const onHeaderHuzzPress = useCallback(() => {
     setDeckRefreshKey((k) => k + 1);
@@ -527,11 +501,11 @@ export function HomeScreen({ onNavigate }) {
         // Check role from admin collection FIRST
         const roleCheck = await checkUserRoleFromAdminCollection(authUser.uid);
         if (roleCheck.isAdmin) {
-          console.log('[HomeScreen] Admin detected, redirecting to admin screen');
+          if (__DEV__) console.log('[HomeScreen] Admin detected, redirecting to admin screen');
           if (!cancelled) onNavigate('admin');
           return;
         } else if (roleCheck.isStaff) {
-          console.log('[HomeScreen] Staff detected, redirecting to staff screen');
+          if (__DEV__) console.log('[HomeScreen] Staff detected, redirecting to staff screen');
           if (!cancelled) onNavigate('staff');
           return;
         }
@@ -597,51 +571,6 @@ export function HomeScreen({ onNavigate }) {
       cancelled = true;
     };
   }, [onNavigate, matchCountry, deckRefreshKey]);
-
-  // Real-time listener for pending match requests
-  useEffect(() => {
-    const authUser = authService.getCurrentUser();
-    if (!authUser?.uid) return;
-
-    console.log('[HomeScreen] Setting up real-time listener for pending match requests...');
-    const unsubscribe = matchService.listenPendingMatchRequests(authUser.uid, ({ data, error }) => {
-      if (error) {
-        console.error('[HomeScreen] Pending requests listener error:', error);
-        return;
-      }
-      console.log('[HomeScreen] Pending match requests updated:', data.length);
-      setPendingRequests(data || []);
-
-      // Load user profiles for pending requests
-      if (data && data.length > 0) {
-        const loadUsers = async () => {
-          const userMap = {};
-          for (const request of data) {
-            const requesterUid = String(request.requestedBy || '');
-            if (requesterUid && !userMap[requesterUid]) {
-              try {
-                const res = await userService.getUserById(requesterUid);
-                if (res?.data) {
-                  userMap[requesterUid] = res.data;
-                }
-              } catch (e) {
-                console.warn('[HomeScreen] Failed to load user for request:', requesterUid);
-              }
-            }
-          }
-          setPendingRequestUsers(userMap);
-        };
-        loadUsers();
-      } else {
-        setPendingRequestUsers({});
-      }
-    });
-
-    return () => {
-      console.log('[HomeScreen] Cleaning up pending requests listener');
-      unsubscribe();
-    };
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -752,7 +681,7 @@ export function HomeScreen({ onNavigate }) {
 
     // Resolve target: from gesture we get userId (string); from button we get currentUser (object).
     const target = typeof userOrId === 'string'
-      ? (userOrId ? (allCandidates.find((c) => String(c?.id ?? c?.uid) === userOrId) ?? null) : null)
+      ? (userOrId ? (candidates.find((c) => String(c?.id ?? c?.uid) === userOrId) ?? null) : null)
       : (userOrId || null);
 
     if (__DEV__) {
@@ -787,55 +716,11 @@ export function HomeScreen({ onNavigate }) {
       return;
     }
 
-    if (shouldAdvance) {
+    if (shouldAdvance && direction !== 'right') {
       advanceCard();
     }
 
     try {
-      const pendingRequest = pendingRequests.find(req => String(req.requestedBy) === String(targetId));
-      
-      if (pendingRequest) {
-        console.log('[Swipe] Pending like from someone who liked you:', {
-          requestId: pendingRequest.id,
-          requestedBy: pendingRequest.requestedBy
-        });
-        try {
-          if (direction === 'up') {
-            await handleDirectMessage(target);
-          } else if (direction === 'right') {
-            console.log('[Swipe] Liking back...');
-            const likeResult = await likeService.likeUser(authUser.uid, targetId);
-            if (likeResult?.error) {
-              showCuteAlert('error', 'OOPS!', 'Failed to send like');
-            } else if (likeResult?.matched) {
-              try {
-                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              } catch {}
-              showCuteAlert('match', 'Connected!', 'Open Chats to message them');
-              if (pendingRequest.id) {
-                await matchService.createActiveMatch(authUser.uid, targetId, {
-                  source: 'mutual_like',
-                  initiatedBy: authUser.uid,
-                });
-              }
-            } else {
-              showCuteAlert('success', 'LIKED!', 'If they like you back you can chat');
-            }
-            setPendingRequests((prev) => prev.filter((req) => req.id !== pendingRequest.id));
-          } else {
-            console.log('[Swipe] Passing on like...');
-            if (pendingRequest.id) {
-              await matchService.rejectMatch(pendingRequest.id, authUser.uid);
-            }
-            await likeService.passUser(authUser.uid, targetId);
-            setPendingRequests((prev) => prev.filter((req) => req.id !== pendingRequest.id));
-          }
-        } catch (e) {
-          console.error('[Swipe] Pending like action exception:', e);
-        }
-        return;
-      }
-
       // Normal swipe logic for regular candidates
       void (async () => {
         try {
@@ -887,6 +772,7 @@ export function HomeScreen({ onNavigate }) {
               } catch (matchError) {
                 if (__DEV__) console.warn('[Swipe] Match alert error:', matchError);
               }
+              if (shouldAdvance) advanceCard();
             } else if (likeResult?.error) {
               try {
                 showCuteAlert('error', 'Like failed', likeResult.error);
@@ -897,6 +783,7 @@ export function HomeScreen({ onNavigate }) {
               try {
                 showCuteAlert('success', 'LIKE SENT!', 'If they like you back you can chat');
               } catch (_) {}
+              if (shouldAdvance) advanceCard();
             }
           } catch (backgroundError) {
             if (__DEV__) console.warn('[Swipe] Background like error:', backgroundError?.message || backgroundError);
@@ -1083,7 +970,7 @@ export function HomeScreen({ onNavigate }) {
                     motion="slide"
                     gestureX={gestureX}
                     gestureY={gestureY}
-                    data={allCandidates}
+                    data={candidates}
                     index={currentIndex}
                     canSwipe={deckCanSwipe}
                     onBlocked={onDeckBlocked}

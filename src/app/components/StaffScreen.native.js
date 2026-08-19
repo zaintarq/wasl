@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert, TextInput } from 'react-native';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { authService, userService } from '../../services/firebaseService';
+import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { tokens } from '../../ui/tokens';
 
@@ -28,10 +28,14 @@ export function StaffScreen({ onNavigate }) {
 
         const res = await userService.getUserById(currentUser.uid);
         const userData = res?.data;
-        
-        // Check role from admin collection (not users collection)
-        // Role check is done in WelcomeScreen/OnboardingFlow, but double-check here
-        // If somehow they got here without being staff, they'll be redirected
+        const roleCheck = await checkUserRoleFromAdminCollection(currentUser.uid);
+        if (!roleCheck?.isStaff && !roleCheck?.isAdmin) {
+          if (!cancelled) {
+            Alert.alert('Access denied', 'Staff access only.');
+            onNavigate('home');
+          }
+          return;
+        }
 
         if (!cancelled) {
           setUser(userData);
