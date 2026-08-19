@@ -8,7 +8,7 @@ import { HuzzPressable } from '../../HuzzPressable.native';
 export function HuzzHeader({ onMenuPress, onBellPress, onLogoPress, fontsLoaded }) {
   return (
     <View style={styles.wrap}>
-      <HuzzPressable style={styles.iconHit} onPress={onMenuPress} haptic="light" accessibilityLabel="Menu">
+      <HuzzPressable style={styles.iconHit} onPress={onMenuPress} haptic="light" accessibilityRole="button" accessibilityLabel="Open settings menu">
         <Menu size={22} color={tokens.colors.brandPinkDeep} strokeWidth={2.2} />
       </HuzzPressable>
 
@@ -19,7 +19,7 @@ export function HuzzHeader({ onMenuPress, onBellPress, onLogoPress, fontsLoaded 
         </View>
       </HuzzPressable>
 
-      <HuzzPressable style={styles.iconHit} onPress={onBellPress} haptic="light" accessibilityLabel="Notifications">
+      <HuzzPressable style={styles.iconHit} onPress={onBellPress} haptic="light" accessibilityRole="button" accessibilityLabel="Notifications">
         <Bell size={21} color={tokens.colors.brandPinkDeep} strokeWidth={2.2} />
       </HuzzPressable>
     </View>
@@ -36,11 +36,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   iconHit: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
+    borderRadius: 22,
   },
   logoWrap: {
     alignItems: 'center',

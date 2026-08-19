@@ -2,10 +2,12 @@ import React from 'react';
 import { StyleSheet, TextInput, Platform } from 'react-native';
 import { tokens } from '../tokens';
 
-export function RetroInput({ style, ...props }) {
+export function RetroInput({ style, accessibilityLabel, label, ...props }) {
+  const a11yLabel = accessibilityLabel || label || props.placeholder;
   return (
     <TextInput
       {...props}
+      accessibilityLabel={a11yLabel}
       style={[styles.input, style]}
       placeholderTextColor={tokens.colors.textMuted}
     />

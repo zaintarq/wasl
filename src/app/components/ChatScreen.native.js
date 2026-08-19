@@ -39,6 +39,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
+import { ScreenBackHeader } from '../../ui/components/ScreenBackHeader.native';
 import { KeyboardAwareLayout } from './KeyboardAwareLayout.native';
 import * as Haptics from 'expo-haptics';
 import { useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
@@ -835,13 +836,77 @@ export function ChatScreen({ onNavigate, matchId }) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAwareLayout>
         <View style={styles.header}>
-          <HuzzPressable style={styles.headerBtn} onPress={() => onNavigate('matches')} haptic="light">
-            <Text style={styles.headerBtnText}>← Back</Text>
-          </HuzzPressable>
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.title}>{otherUser?.name || 'Chat'}</Text>
-            </View>
+          <ScreenBackHeader
+            title={otherUser?.name || 'Chat'}
+            onBack={() => onNavigate('matches')}
+            backLabel="Back"
+            rightSlot={
+              <HuzzPressable
+                style={styles.headerBtn}
+                onPress={() => {
+                  Alert.alert('Options', 'What do you want to do?', [
+                    {
+                      text: 'Plan Together',
+                      onPress: () => {
+                        onNavigate('datePlanning', { matchId });
+                      },
+                    },
+                    ...(isGirl
+                      ? [
+                          {
+                            text: mehramMeta ? 'Mehram settings' : 'Add Mehram',
+                            onPress: () => setMehramPanelOpen(true),
+                          },
+                        ]
+                      : []),
+                    {
+                      text: 'Report user',
+                      onPress: async () => {
+                        try {
+                          const reporterUid = authService.getCurrentUser()?.uid;
+                          if (!reporterUid) return;
+                          await reportService.createReport({
+                            reporterUid,
+                            targetType: 'user',
+                            targetId: otherUser?.id || 'unknown',
+                            targetUserId: otherUser?.id || null,
+                            matchId,
+                            reason: 'inappropriate',
+                            details: '',
+                          });
+                          Alert.alert('Reported', 'Thanks — we will review it.');
+                        } catch (e) {
+                          Alert.alert('Error', e?.message || 'Failed to report.');
+                        }
+                      },
+                    },
+                    {
+                      text: 'Block user',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          const uid = authService.getCurrentUser()?.uid;
+                          if (!uid || !otherUser?.id) return;
+                          await blockService.blockUser(uid, otherUser.id);
+                          Alert.alert('Blocked', 'This user has been blocked.');
+                          onNavigate('matches');
+                        } catch (e) {
+                          Alert.alert('Error', e?.message || 'Failed to block.');
+                        }
+                      },
+                    },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                }}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="Chat options"
+              >
+                <Text style={styles.headerBtnText}>⋯</Text>
+              </HuzzPressable>
+            }
+          />
+          <View style={styles.headerMeta}>
             <Text
               style={[
                 styles.subtitle,
@@ -861,73 +926,14 @@ export function ChatScreen({ onNavigate, matchId }) {
                 setLangModalOpen(true);
               }}
               haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={`Translate messages to ${getChatLanguageLabel(chatTranslateLang)}`}
             >
               <Text style={styles.langChipText}>
-                🌐 Translate to: {getChatLanguageLabel(chatTranslateLang)}
+                Translate to: {getChatLanguageLabel(chatTranslateLang)}
               </Text>
             </HuzzPressable>
           </View>
-          <HuzzPressable
-            style={styles.headerBtn}
-            onPress={() => {
-              Alert.alert('Options', 'What do you want to do?', [
-                {
-                  text: '📅 Plan Together',
-                  onPress: () => {
-                    onNavigate('datePlanning', { matchId });
-                  },
-                },
-                ...(isGirl
-                  ? [
-                      {
-                        text: mehramMeta ? 'Mehram settings' : '🛡️ Add Mehram',
-                        onPress: () => setMehramPanelOpen(true),
-                      },
-                    ]
-                  : []),
-                {
-                  text: 'Report user',
-                  onPress: async () => {
-                    try {
-                      const reporterUid = authService.getCurrentUser()?.uid;
-                      if (!reporterUid) return;
-                      await reportService.createReport({
-                        reporterUid,
-                        targetType: 'user',
-                        targetId: otherUser?.id || 'unknown',
-                        targetUserId: otherUser?.id || null,
-                        matchId,
-                        reason: 'inappropriate',
-                        details: '',
-                      });
-                      Alert.alert('Reported', 'Thanks — we will review it.');
-                    } catch (e) {
-                      Alert.alert('Error', e?.message || 'Failed to report.');
-                    }
-                  },
-                },
-                {
-                  text: 'Block user',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      const uid = authService.getCurrentUser()?.uid;
-                      if (!uid || !otherUser?.id) return;
-                      await blockService.blockUser(uid, otherUser.id);
-                      Alert.alert('Blocked', 'This user has been blocked.');
-                      onNavigate('matches');
-                    } catch (e) {
-                      Alert.alert('Error', e?.message || 'Failed to block.');
-                    }
-                  },
-                },
-                { text: 'Cancel', style: 'cancel' },
-              ]);
-            }}
-            haptic="light"
-          >
-            <Text style={styles.headerBtnText}>⋯</Text>
-          </HuzzPressable>
         </View>
 
         <View style={{ flex: 1, minHeight: 0 }}>
@@ -1354,25 +1360,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: tokens.radius.sm,
     backgroundColor: tokens.colors.surfaceElevated,
-    minWidth: 52,
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerMeta: {
+    alignItems: 'center',
+    paddingBottom: 8,
+    gap: 6,
   },
   headerBtnText: { ...tokens.typography.label, color: tokens.colors.text },
   title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
   subtitle: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
   subtitleOnline: { color: '#22c55e', fontWeight: '700' },
   langChip: {
-    marginTop: 6,
+    marginTop: 2,
     alignSelf: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    justifyContent: 'center',
     borderRadius: tokens.radius.full,
     backgroundColor: tokens.colors.surfaceOverlay,
     borderWidth: 1,
     borderColor: tokens.colors.border,
   },
   langChipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: tokens.colors.accent,
   },
@@ -1390,7 +1405,7 @@ const styles = StyleSheet.create({
     borderColor: tokens.colors.border,
   },
   translatedLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: tokens.colors.textMuted,
     textTransform: 'uppercase',
@@ -1556,8 +1571,8 @@ const styles = StyleSheet.create({
   bubbleTextMine: { color: '#FFFFFF' },
   bubbleTextTheirs: { color: tokens.colors.text },
   timeInline: {
-    fontSize: 9,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '400',
     opacity: 0.7,
     letterSpacing: 0.5,
@@ -1565,14 +1580,14 @@ const styles = StyleSheet.create({
   },
   timeInlineTheirs: {
     color: tokens.colors.textMuted,
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '400',
   },
   metaRow: { marginTop: 2, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 },
-  timeText: { fontSize: 10, fontWeight: '500', color: tokens.colors.textMuted },
+  timeText: { fontSize: 12, fontWeight: '500', color: tokens.colors.textMuted },
   timeTextMine: { color: '#FFFFFF' },
   editedText: { ...tokens.typography.caption, color: tokens.colors.textMuted },
-  readReceipt: { fontSize: 10, fontWeight: '500' },
+  readReceipt: { fontSize: 12, fontWeight: '500' },
   readReceiptDelivered: { color: 'rgba(255,255,255,0.85)' },
   readReceiptRead: { color: '#FFFFFF' },
   reactions: { marginTop: 2, ...tokens.typography.bodySmall, fontSize: 13 },

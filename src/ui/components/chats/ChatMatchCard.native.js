@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import { ChevronRight } from 'lucide-react-native';
+import { ChevronRight, MoreVertical } from 'lucide-react-native';
 import { tokens } from '../../tokens';
 import { shellStyles } from '../../styles/shellStyles.native';
 import { HuzzPressable } from '../HuzzPressable.native';
@@ -30,7 +30,7 @@ function Avatar({ profile, name }) {
   );
 }
 
-export function ChatMatchCard({ other, match, canChat, onPress }) {
+export function ChatMatchCard({ other, match, canChat, onPress, onRemove }) {
   const name = other?.name || other?.username || 'Connection';
   const displayName = other?.username ? `@${other.username}` : name;
   const preview = String(match?.lastMessageText || '').trim();
@@ -44,42 +44,63 @@ export function ChatMatchCard({ other, match, canChat, onPress }) {
       : 'Waiting for match';
 
   return (
-    <HuzzPressable
-      style={[styles.wrap, !canChat && styles.wrapDisabled]}
-      onPress={onPress}
-      haptic="light"
-      disabled={!canChat}
-    >
-      <View style={shellStyles.listRow}>
-        <Avatar profile={other} name={name} />
+    <View style={[styles.wrap, !canChat && styles.wrapDisabled]}>
+      <HuzzPressable
+        style={styles.mainTap}
+        onPress={onPress}
+        haptic="light"
+        disabled={!canChat}
+        accessibilityRole="button"
+        accessibilityLabel={canChat ? `Open chat with ${displayName}` : `${displayName}, waiting for match`}
+        accessibilityState={{ disabled: !canChat }}
+      >
+        <View style={shellStyles.listRow}>
+          <Avatar profile={other} name={name} />
 
-        <View style={styles.body}>
-          <LiveText style={styles.name} numberOfLines={1}>
-            {displayName}
-          </LiveText>
-          <LiveText style={styles.meta} numberOfLines={1}>
-            {meta}
-          </LiveText>
-        </View>
+          <View style={styles.body}>
+            <LiveText style={styles.name} numberOfLines={1}>
+              {displayName}
+            </LiveText>
+            <LiveText style={styles.meta} numberOfLines={1}>
+              {meta}
+            </LiveText>
+          </View>
 
-        <View style={styles.action}>
-          {canChat ? (
-            <>
-              <LiveText style={styles.actionText}>Open</LiveText>
-              <ChevronRight size={18} color={tokens.colors.textOnBrand} strokeWidth={2.5} />
-            </>
-          ) : (
-            <LiveText style={styles.pending}>⏳</LiveText>
-          )}
+          <View style={styles.action}>
+            {canChat ? (
+              <>
+                <LiveText style={styles.actionText}>Open</LiveText>
+                <ChevronRight size={18} color={tokens.colors.textOnBrand} strokeWidth={2.5} />
+              </>
+            ) : (
+              <LiveText style={styles.pending}>Waiting</LiveText>
+            )}
+          </View>
         </View>
-      </View>
-    </HuzzPressable>
+      </HuzzPressable>
+      {canChat && onRemove ? (
+        <HuzzPressable
+          style={styles.moreBtn}
+          onPress={onRemove}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel={`Remove connection with ${displayName}`}
+        >
+          <MoreVertical size={18} color={tokens.colors.textMutedOnBrand} strokeWidth={2.2} />
+        </HuzzPressable>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 0 },
+  wrap: {
+    marginBottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   wrapDisabled: { opacity: 0.72 },
+  mainTap: { flex: 1, minWidth: 0 },
   avatarImg: {
     width: 52,
     height: 52,
@@ -106,19 +127,29 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...tokens.typography.caption,
+    fontSize: 13,
     color: tokens.colors.textMutedOnBrand,
     marginTop: 4,
   },
   action: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
+  },
+  moreBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -4,
   },
   actionText: {
     ...tokens.typography.label,
     color: tokens.colors.textOnBrand,
   },
   pending: {
-    fontSize: 18,
+    fontSize: 12,
+    fontWeight: '600',
+    color: tokens.colors.textMutedOnBrand,
   },
 });

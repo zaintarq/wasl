@@ -36,6 +36,19 @@ const WELCOME_BG_LOCATIONS = [0, 1];
 const WELCOME_BG_FALLBACK = tokens.colors.bg;
 const BRAND_UNDERLINE = brandUnderlineGradient;
 
+function getAuthProgress(isLogin, authSubStep, forgotPasswordActive) {
+  if (forgotPasswordActive) {
+    if (authSubStep === 'email') return 0.33;
+    if (authSubStep === 'otp') return 0.66;
+    return 1;
+  }
+  if (isLogin) {
+    return authSubStep === 'email' ? 0.5 : 1;
+  }
+  const map = { email: 0.2, otp: 0.4, password: 0.6, name: 0.8, username: 1 };
+  return map[authSubStep] || 0.2;
+}
+
 /** Step 2 only — auth (email / OTP / password). Match prefs → Settings. */
 
 export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initialStepProp }) {
@@ -562,11 +575,22 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
   };
 
   const kFont = fontsLoaded ? { fontFamily: 'KaushanScript_400Regular' } : { fontWeight: '700' };
+  const sansFont = { fontWeight: '600' };
+  const authProgress = getAuthProgress(isLogin, authSubStep, forgotPasswordActive);
 
   return (
     <View style={{ flex: 1, backgroundColor: WELCOME_BG_FALLBACK }}>
       <LinearGradient colors={WELCOME_BG} locations={WELCOME_BG_LOCATIONS} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={[styles.container, styles.containerOnGradient]} edges={['top', 'bottom']}>
+        {step === 2 && !showWrongPasswordScreen ? (
+          <View
+            style={styles.progressBarContainer}
+            accessibilityRole="progressbar"
+            accessibilityValue={{ min: 0, max: 100, now: Math.round(authProgress * 100) }}
+          >
+            <View style={[styles.progressBar, { width: `${authProgress * 100}%` }]} />
+          </View>
+        ) : null}
         <HuzzKeyboardAwareScrollView
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollContent, styles.scrollContentStep2]}
@@ -652,7 +676,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                 <Text style={[styles.step2ScreenTitle, kFont, { fontSize: 28, marginBottom: 6 }]}>
                   Wrong password
                 </Text>
-                <Text style={[styles.step2ScreenSub, kFont, { fontSize: 17 }]}>
+                <Text style={[styles.step2ScreenSub, sansFont, { fontSize: 17 }]}>
                   That didn’t match — try again from the login screen.
                 </Text>
 
@@ -662,7 +686,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                     title="Back to login"
                     onPress={leaveWrongPasswordScreen}
                     style={[styles.step2BtnShape, styles.step2PrimaryShadow]}
-                    textStyle={[styles.step2BtnLabel, kFont, { fontSize: 19 }]}
+                    textStyle={[styles.step2BtnLabel, sansFont, { fontSize: 19 }]}
                   />
                 </View>
               </View>
@@ -752,7 +776,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                 {authSubStep === 'name' && 'What’s your name?'}
                 {authSubStep === 'username' && 'Pick a username'}
               </Text>
-              <Text style={[styles.step2ScreenSub, kFont, { fontSize: 17 }]}>
+              <Text style={[styles.step2ScreenSub, sansFont, { fontSize: 17 }]}>
                 {forgotPasswordActive && authSubStep === 'email' &&
                   'Enter the email for your account — we’ll send a code if it exists'}
                 {forgotPasswordActive && authSubStep === 'otp' &&
@@ -777,7 +801,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                 <View style={styles.form}>
                   {authSubStep === 'email' && (
                     <>
-                      <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Email</Text>
+                      <Text style={[styles.step2Label, sansFont, { fontSize: 16 }]}>Email</Text>
                       <RetroInput
                         placeholder="your@email.com"
                         keyboardType="email-address"
@@ -791,7 +815,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
 
                   {authSubStep === 'otp' && (!isLogin || forgotPasswordActive) && (
                     <>
-                      <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>6-digit code</Text>
+                      <Text style={[styles.step2Label, sansFont, { fontSize: 16 }]}>6-digit code</Text>
                       <RetroInput
                         placeholder="000000"
                         keyboardType="number-pad"
@@ -801,14 +825,14 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                         style={[styles.step2Input, styles.step2OtpInput]}
                       />
                       <TouchableOpacity onPress={handleResendOtp} disabled={loading} style={styles.step2ResendWrap}>
-                        <Text style={[styles.step2ResendText, kFont]}>Resend code</Text>
+                        <Text style={[styles.step2ResendText, sansFont]}>Resend code</Text>
                       </TouchableOpacity>
                     </>
                   )}
 
                   {authSubStep === 'password' && (
                     <>
-                      <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>
+                      <Text style={[styles.step2Label, sansFont, { fontSize: 16 }]}>
                         {forgotPasswordActive ? 'New password' : 'Password'}
                       </Text>
                       <View style={styles.step2PasswordRow}>
@@ -822,8 +846,10 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                         <TouchableOpacity
                           style={styles.step2EyeBtn}
                           onPress={() => setShowPassword(!showPassword)}
+                          accessibilityRole="button"
+                          accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                         >
-                          <Text style={styles.eyeText}>{showPassword ? '●' : '○'}</Text>
+                          <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
                         </TouchableOpacity>
                       </View>
                       {isLogin && !forgotPasswordActive && (
@@ -839,7 +865,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                           accessibilityRole="button"
                           accessibilityLabel="Forgot password"
                         >
-                          <Text style={[styles.step2ForgotText, kFont]}>Forgot password?</Text>
+                          <Text style={[styles.step2ForgotText, sansFont]}>Forgot password?</Text>
                         </TouchableOpacity>
                       )}
                     </>
@@ -847,7 +873,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
 
                   {authSubStep === 'name' && !isLogin && (
                     <>
-                      <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Name</Text>
+                      <Text style={[styles.step2Label, sansFont, { fontSize: 16 }]}>Name</Text>
                       <RetroInput
                         placeholder="Enter your name"
                         value={name}
@@ -860,7 +886,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
 
                   {authSubStep === 'username' && !isLogin && (
                     <>
-                      <Text style={[styles.step2Label, kFont, { fontSize: 16 }]}>Username</Text>
+                      <Text style={[styles.step2Label, sansFont, { fontSize: 16 }]}>Username</Text>
                       <RetroInput
                         placeholder="e.g. zain_huzz"
                         value={username}
@@ -873,7 +899,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                         autoCorrect={false}
                       />
                       {usernameHint ? (
-                        <Text style={[styles.step2Hint, kFont]}>{usernameHint}</Text>
+                        <Text style={[styles.step2Hint, sansFont]}>{usernameHint}</Text>
                       ) : null}
                     </>
                   )}
@@ -903,7 +929,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                                 : 'Continue'
                   }
                   style={[styles.step2BtnShape, styles.step2PrimaryShadow]}
-                  textStyle={[styles.step2BtnLabel, kFont, { fontSize: 19 }]}
+                  textStyle={[styles.step2BtnLabel, sansFont, { fontSize: 19 }]}
                 />
                 {authSubStep === 'email' && !forgotPasswordActive && (
                   <RetroButton
@@ -920,7 +946,7 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                     }}
                     title={isLogin ? 'Need an account? Sign Up' : 'Already have an account? Login'}
                     style={[styles.step2BtnShape, styles.step2Outline]}
-                    textStyle={[styles.step2BtnLabel, kFont, { fontSize: 16 }]}
+                    textStyle={[styles.step2BtnLabel, sansFont, { fontSize: 16 }]}
                   />
                 )}
               </View>

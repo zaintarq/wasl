@@ -44,14 +44,22 @@ export function RetroButton({
   variant = 'secondary',
   style,
   textStyle,
+  accessibilityLabel,
+  accessibilityHint,
+  ...rest
 }) {
   const v = useMemo(() => VARIANTS[variant] || VARIANTS.secondary, [variant]);
-  const isOutline = variant === 'outline';
+  const label = accessibilityLabel || (typeof title === 'string' ? title : undefined);
 
   return (
     <HuzzPressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: !!disabled }}
+      {...rest}
       style={({ pressed }) => [
         styles.base,
         {

@@ -10,6 +10,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Home, MessageCircle, Users, Mic, Video } from 'lucide-react-native';
 import { tokens } from '../tokens';
+import { useReduceMotion, pickSpring } from '../../utils/reduceMotion.native';
+import { TabQuickLinks } from './TabQuickLinks.native';
 
 export const MAIN_BOTTOM_NAV_FALLBACK_H = 66;
 
@@ -18,6 +20,7 @@ const CREAM = '#F7F1E8';
 const TILE = 52;
 const ACTIVE_ROTATION = -4;
 const SPRING = tokens.motion.spring.jelly;
+const NAV_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -29,14 +32,15 @@ const TABS = [
   { key: 'live', label: 'Live', Icon: Video, route: 'liveRandom', inactiveRotation: 2 },
 ];
 
-function NavTile({ tab, isActive, onPress }) {
+function NavTile({ tab, isActive, onPress, reduceMotion }) {
   const { Icon, label, inactiveRotation } = tab;
   const activeProgress = useSharedValue(isActive ? 1 : 0);
   const pressScale = useSharedValue(1);
+  const spring = pickSpring(SPRING, reduceMotion);
 
   useEffect(() => {
-    activeProgress.value = withSpring(isActive ? 1 : 0, SPRING);
-  }, [activeProgress, isActive]);
+    activeProgress.value = withSpring(isActive ? 1 : 0, spring);
+  }, [activeProgress, isActive, spring]);
 
   const tileStyle = useAnimatedStyle(() => {
     const rotation = interpolate(
@@ -72,12 +76,12 @@ function NavTile({ tab, isActive, onPress }) {
   }, []);
 
   const handlePressIn = useCallback(() => {
-    pressScale.value = withSpring(0.92, tokens.motion.spring.snappy);
-  }, [pressScale]);
+    pressScale.value = withSpring(0.92, pickSpring(tokens.motion.spring.snappy, reduceMotion));
+  }, [pressScale, reduceMotion]);
 
   const handlePressOut = useCallback(() => {
-    pressScale.value = withSpring(1, tokens.motion.spring.jelly);
-  }, [pressScale]);
+    pressScale.value = withSpring(1, spring);
+  }, [pressScale, spring]);
 
   const handlePress = useCallback(() => {
     fireHaptic();
@@ -92,6 +96,7 @@ function NavTile({ tab, isActive, onPress }) {
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: isActive }}
+      hitSlop={NAV_HIT_SLOP}
       style={[styles.tile, tileStyle]}
     >
       <View style={styles.iconStack} pointerEvents="none">
@@ -110,9 +115,16 @@ export function mainBottomNavClearance(measuredNavH, extraGap = 12) {
   return (measuredNavH || MAIN_BOTTOM_NAV_FALLBACK_H) + extraGap;
 }
 
-export function MainBottomNav({ active = 'home', onNavigate, onLayout }) {
+export function MainBottomNav({
+  active = 'home',
+  onNavigate,
+  onLayout,
+  onProfilePress,
+  onSettingsPress,
+}) {
   const insets = useSafeAreaInsets();
   const floatBottom = Math.max(8, insets.bottom + 6);
+  const reduceMotion = useReduceMotion();
 
   return (
     <View
@@ -120,6 +132,7 @@ export function MainBottomNav({ active = 'home', onNavigate, onLayout }) {
       style={[styles.dock, { paddingBottom: floatBottom }]}
       onLayout={(e) => onLayout?.(e?.nativeEvent?.layout?.height || 0)}
     >
+      <TabQuickLinks onProfilePress={onProfilePress} onSettingsPress={onSettingsPress} />
       <View style={styles.row}>
         {TABS.map((tab) => (
           <NavTile
@@ -127,6 +140,7 @@ export function MainBottomNav({ active = 'home', onNavigate, onLayout }) {
             tab={tab}
             isActive={active === tab.key}
             onPress={() => onNavigate(tab.route)}
+            reduceMotion={reduceMotion}
           />
         ))}
       </View>

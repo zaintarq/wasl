@@ -303,7 +303,13 @@ export function ClubsScreen({ onNavigate }) {
           </View>
         </Modal>
 
-        <MainBottomNav active="clubs" onNavigate={onNavigate} onLayout={setBottomNavH} />
+        <MainBottomNav
+          active="clubs"
+          onNavigate={onNavigate}
+          onLayout={setBottomNavH}
+          onProfilePress={() => onNavigate('myProfile')}
+          onSettingsPress={() => onNavigate('settings')}
+        />
       </LiveTypographyProvider>
     </SafeAreaView>
   );

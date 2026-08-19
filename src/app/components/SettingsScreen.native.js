@@ -3,13 +3,14 @@ import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-nativ
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Shield, LogOut, Users } from 'lucide-react-native';
+import { Shield, LogOut, Users } from 'lucide-react-native';
 
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
+import { ScreenBackHeader } from '../../ui/components/ScreenBackHeader.native';
 import { MatchPreferencesSettings } from './MatchPreferencesSettings.native';
 
 const cardShadow =
@@ -75,15 +76,7 @@ export function SettingsScreen({ onNavigate }) {
       />
       <View style={styles.safe}>
         <View style={[styles.header, { paddingTop: insets.top }]}>
-          <View style={styles.headerRow}>
-            <HuzzPressable style={styles.headerSideBtn} onPress={goBack} haptic="light">
-              <ArrowLeft size={22} color={tokens.colors.textOnBrand} strokeWidth={2.25} />
-            </HuzzPressable>
-            <View style={styles.headerTitleWrap}>
-              <Text style={styles.headerTitle}>Settings</Text>
-            </View>
-            <View style={[styles.headerSideBtn, styles.headerRightBtn]} />
-          </View>
+          <ScreenBackHeader title="Settings" onBack={goBack} backLabel="Back" light />
         </View>
         {children}
       </View>

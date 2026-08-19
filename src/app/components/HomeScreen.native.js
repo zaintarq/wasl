@@ -884,10 +884,6 @@ export function HomeScreen({ onNavigate }) {
     await handleDirectMessage(currentUser);
   }, [ageBlocked, currentUser, openVerificationSheet]);
 
-  const handleBoostPress = useCallback(() => {
-    showCuteAlert('info', 'Boost', 'Super-boost is coming soon');
-  }, [showCuteAlert]);
-
   const renderDiscoveryCard = useCallback(
     (u, meta) => (
       <DiscoveryProfileCard
@@ -1065,7 +1061,6 @@ export function HomeScreen({ onNavigate }) {
                   onPass={handlePassPress}
                   onLike={handleLikePress}
                   onMessage={handleMessagePress}
-                  onBoost={handleBoostPress}
                   rewindDisabled={indexHistory.length === 0}
                   nopeBtnStyle={nopeBtnStyle}
                   likeBtnStyle={likeBtnStyle}
@@ -1077,7 +1072,13 @@ export function HomeScreen({ onNavigate }) {
             )}
           </View>
 
-          <MainBottomNav active="home" onNavigate={onNavigate} onLayout={setBottomNavH} />
+          <MainBottomNav
+            active="home"
+            onNavigate={onNavigate}
+            onLayout={setBottomNavH}
+            onProfilePress={() => onNavigate('myProfile')}
+            onSettingsPress={() => onNavigate('settings')}
+          />
         </View>
 
         <StoryViewerModal

@@ -21,6 +21,7 @@ import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native'
 import { ChatLobbyHero } from '../../ui/components/chats/ChatLobbyHero.native';
 import { ChatFeatureGrid } from '../../ui/components/chats/ChatFeatureGrid.native';
 import { ChatSafetyNote } from '../../ui/components/chats/ChatSafetyNote.native';
+import { ScreenBackHeader } from '../../ui/components/ScreenBackHeader.native';
 import { ChatMatchCard } from '../../ui/components/chats/ChatMatchCard.native';
 
 export function MatchListScreen({ onNavigate }) {
@@ -163,11 +164,7 @@ export function MatchListScreen({ onNavigate }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LiveTypographyProvider>
-        <View style={styles.header}>
-          <View style={styles.headerSide} />
-          <LiveText style={styles.title}>Chats</LiveText>
-          <View style={styles.headerSide} />
-        </View>
+        <ScreenBackHeader title="Chats" onBack={() => onNavigate('home')} backLabel="Home" />
 
         <FlatList
           style={styles.list}
@@ -206,6 +203,7 @@ export function MatchListScreen({ onNavigate }) {
                 match={match}
                 canChat={canChat}
                 onPress={() => openChat(match, otherUid, status)}
+                onRemove={canChat ? () => handleUnmatch(match, other) : undefined}
               />
             );
 
@@ -235,7 +233,13 @@ export function MatchListScreen({ onNavigate }) {
           }}
         />
 
-        <MainBottomNav active="chats" onNavigate={onNavigate} onLayout={setBottomNavH} />
+        <MainBottomNav
+          active="chats"
+          onNavigate={onNavigate}
+          onLayout={setBottomNavH}
+          onProfilePress={() => onNavigate('myProfile')}
+          onSettingsPress={() => onNavigate('settings')}
+        />
       </LiveTypographyProvider>
     </SafeAreaView>
   );

@@ -22,7 +22,9 @@ import {
   LiveTextInput,
   LiveRetroButton,
 } from '../../ui/components/live/LiveTypography.native';
-import { MainBottomNav, mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
+import { ScreenBackHeader } from '../../ui/components/ScreenBackHeader.native';
+import { mainBottomNavClearance } from '../../ui/components/MainBottomNav.native';
+import { MainBottomNav } from '../../ui/components/MainBottomNav.native';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 
 const SESSION_MS = liveRandomService.SESSION_MS;
@@ -240,13 +242,7 @@ export function LiveRandomScreen({ onNavigate }) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <LiveTypographyProvider>
-        <View style={styles.header}>
-          <HuzzPressable style={styles.headerBtn} onPress={() => onNavigate('home')} haptic="light">
-            <LiveText style={styles.headerBtnText}>← Home</LiveText>
-          </HuzzPressable>
-          <LiveText style={styles.title}>Live</LiveText>
-          <View style={{ width: 70 }} />
-        </View>
+        <ScreenBackHeader title="Live" onBack={() => onNavigate('home')} backLabel="Home" light />
 
         <KeyboardAvoidingView
           style={styles.flex}
@@ -361,7 +357,13 @@ export function LiveRandomScreen({ onNavigate }) {
         </KeyboardAvoidingView>
 
         {phase !== 'session' ? (
-          <MainBottomNav active="live" onNavigate={onNavigate} onLayout={setBottomNavH} />
+          <MainBottomNav
+            active="live"
+            onNavigate={onNavigate}
+            onLayout={setBottomNavH}
+            onProfilePress={() => onNavigate('myProfile')}
+            onSettingsPress={() => onNavigate('settings')}
+          />
         ) : null}
       </LiveTypographyProvider>
     </SafeAreaView>

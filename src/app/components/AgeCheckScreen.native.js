@@ -168,7 +168,7 @@ export function AgeCheckScreen({ onNavigate }) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <HuzzPressable onPress={() => onNavigate?.('home')} haptic="light" style={styles.backBtn}>
+          <HuzzPressable onPress={() => onNavigate?.('home')} haptic="light" style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Back to home">
             <ArrowLeft size={22} color={tokens.colors.text} />
           </HuzzPressable>
           <Text style={styles.title}>18+ age check</Text>
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 8,
   },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: '#0f172a' },
   introScroll: { flexGrow: 1, padding: 24, justifyContent: 'center' },
   introIcon: {

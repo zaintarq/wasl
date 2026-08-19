@@ -7,7 +7,7 @@ import { tokens } from '../../tokens';
 import { HuzzPressable } from '../HuzzPressable.native';
 import { LiveText } from './LiveTypography.native';
 
-function ControlButton({ label, active, danger, onPress, disabled, children }) {
+function ControlButton({ label, active, danger, onPress, disabled, children, accessibilityLabel }) {
   return (
     <HuzzPressable
       style={[
@@ -19,6 +19,9 @@ function ControlButton({ label, active, danger, onPress, disabled, children }) {
       onPress={onPress}
       haptic="light"
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || label}
+      accessibilityState={{ disabled: !!disabled }}
     >
       {children}
       <LiveText style={[styles.btnLabel, danger ? styles.btnLabelDanger : null]} numberOfLines={1}>
@@ -171,7 +174,7 @@ const styles = StyleSheet.create({
     ...tokens.typography.caption,
     color: tokens.colors.textSecondary,
     marginTop: 6,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
   },

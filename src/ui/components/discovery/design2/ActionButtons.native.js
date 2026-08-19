@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { RotateCcw, X, BookHeart, Zap, MessageCircle } from 'lucide-react-native';
 import { tokens } from '../../../tokens';
+import { useReduceMotion, pickSpring } from '../../../../utils/reduceMotion.native';
 
 const INK = '#2B2420';
 const CREAM = '#F7F1E8';
@@ -30,30 +31,37 @@ function TileButton({
   accessibilityLabel,
   bounceOnSuccess,
   outerStyle,
+  reduceMotion,
 }) {
   const scale = useSharedValue(1);
+  const spring = pickSpring(SPRING, reduceMotion);
+  const springSnap = pickSpring(SPRING_SNAP, reduceMotion);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation}deg` }, { scale: scale.value }],
   }));
 
   const runBounce = useCallback(() => {
+    if (reduceMotion) {
+      scale.value = 1;
+      return;
+    }
     scale.value = withSequence(
-      withSpring(0.92, SPRING_SNAP),
-      withSpring(1.05, SPRING),
-      withSpring(1, SPRING)
+      withSpring(0.92, springSnap),
+      withSpring(1.05, spring),
+      withSpring(1, spring)
     );
-  }, [scale]);
+  }, [reduceMotion, scale, spring, springSnap]);
 
   const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.92, SPRING_SNAP);
-  }, [scale]);
+    scale.value = withSpring(0.92, springSnap);
+  }, [scale, springSnap]);
 
   const handlePressOut = useCallback(() => {
     if (!bounceOnSuccess) {
-      scale.value = withSpring(1, SPRING);
+      scale.value = withSpring(1, spring);
     }
-  }, [bounceOnSuccess, scale]);
+  }, [bounceOnSuccess, scale, spring]);
 
   const handlePress = useCallback(() => {
     if (disabled) return;
@@ -61,9 +69,9 @@ function TileButton({
     if (bounceOnSuccess) {
       runBounce();
     } else {
-      scale.value = withSpring(1, SPRING);
+      scale.value = withSpring(1, spring);
     }
-  }, [bounceOnSuccess, disabled, onPress, runBounce, scale]);
+  }, [bounceOnSuccess, disabled, onPress, runBounce, scale, spring]);
 
   const isSolid = variant === 'solid';
   const iconColor = isSolid ? CREAM : INK;
@@ -108,11 +116,13 @@ export function ActionButtons({
   likeBtnStyle,
   msgBtnStyle,
 }) {
+  const reduceMotion = useReduceMotion();
+
   return (
     <View style={styles.wrap}>
       <View style={styles.row}>
       <TileButton
-        size={46}
+        size={48}
         rotation={-6}
         variant="solid"
         icon={RotateCcw}
@@ -120,6 +130,7 @@ export function ActionButtons({
         onPress={onRewind}
         disabled={rewindDisabled}
         accessibilityLabel="Rewind last swipe"
+        reduceMotion={reduceMotion}
       />
 
       <TileButton
@@ -132,6 +143,7 @@ export function ActionButtons({
         onPress={onPass}
         accessibilityLabel="Pass"
         outerStyle={nopeBtnStyle}
+        reduceMotion={reduceMotion}
       />
 
       <TileButton
@@ -145,10 +157,11 @@ export function ActionButtons({
         accessibilityLabel="Like profile"
         bounceOnSuccess
         outerStyle={likeBtnStyle}
+        reduceMotion={reduceMotion}
       />
 
       <TileButton
-        size={46}
+        size={48}
         rotation={-2}
         variant="outline"
         icon={MessageCircle}
@@ -156,17 +169,21 @@ export function ActionButtons({
         onPress={onMessage}
         accessibilityLabel="Send direct message"
         outerStyle={msgBtnStyle}
+        reduceMotion={reduceMotion}
       />
 
+      {onBoost ? (
       <TileButton
-        size={46}
+        size={48}
         rotation={6}
         variant="outline"
         icon={Zap}
         iconSize={19}
         onPress={onBoost}
-        accessibilityLabel="Boost"
+        accessibilityLabel="Boost profile"
+        reduceMotion={reduceMotion}
       />
+      ) : null}
       </View>
       <Text style={styles.hint}>Swipe up or tap message to DM</Text>
     </View>

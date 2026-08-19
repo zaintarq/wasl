@@ -167,7 +167,13 @@ export function SocialScreen({ onNavigate }) {
           </ScrollView>
         )}
 
-        <MainBottomNav active="social" onNavigate={onNavigate} onLayout={setBottomNavH} />
+        <MainBottomNav
+          active="social"
+          onNavigate={onNavigate}
+          onLayout={setBottomNavH}
+          onProfilePress={() => onNavigate('myProfile')}
+          onSettingsPress={() => onNavigate('settings')}
+        />
       </LiveTypographyProvider>
     </SafeAreaView>
   );
