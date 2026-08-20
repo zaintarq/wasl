@@ -168,34 +168,33 @@ export function createWebApp(ctx) {
   // ─── Auth ───────────────────────────────────────────────────────────────
 
   function renderWelcome() {
-    clearListeners();
-    main.classList.add('no-nav');
-    bottomNav.classList.remove('on');
-    profileBtn.classList.add('hidden');
-    main.innerHTML = `
-      <div class="shell-card">
-        <h2>Welcome back</h2>
-        <p class="sub">Same account on web and Android.</p>
-        <button type="button" class="btn btn-primary" id="goSignup">Sign up with email</button>
-        <button type="button" class="btn btn-outline" id="goLogin">Log in</button>
-      </div>`;
-    document.getElementById('goSignup').onclick = () => renderSignup();
-    document.getElementById('goLogin').onclick = () => renderLogin();
+    renderLogin({ showBack: false, title: 'Welcome back', subtitle: 'Same account on web and Android.' });
   }
 
-  function renderLogin() {
+  function renderLogin({ showBack = false, title = 'Log in', subtitle = 'Same account as the Android app.' } = {}) {
     clearListeners();
     main.classList.add('no-nav');
     bottomNav.classList.remove('on');
     profileBtn.classList.add('hidden');
+    const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+    let emailPrefill = esc(params.get('email') || '');
+    let passPrefill = '';
+    try {
+      const draft = sessionStorage.getItem('huzzLoginDraft');
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        sessionStorage.removeItem('huzzLoginDraft');
+        if (parsed?.password) passPrefill = esc(parsed.password);
+      }
+    } catch (_) { /* ignore */ }
     main.innerHTML = `
-      <div class="shell-card">
-        <h2>Log in</h2>
-        <p class="sub">Same account as the Android app.</p>
+      <div class="shell-card auth-card">
+        <h2>${esc(title)}</h2>
+        <p class="sub">${esc(subtitle)}</p>
         <label for="loginEmail">Email</label>
-        <input id="loginEmail" type="email" autocomplete="email" inputmode="email" />
+        <input id="loginEmail" type="email" autocomplete="email" inputmode="email" value="${emailPrefill}" />
         <label for="loginPass">Password</label>
-        <input id="loginPass" type="password" autocomplete="current-password" />
+        <input id="loginPass" type="password" autocomplete="current-password" value="${passPrefill}" />
         <button type="button" class="btn btn-primary" id="loginSubmit">Log in</button>
         <button type="button" class="btn btn-outline" id="loginToSignup">Create account</button>
       </div>`;
@@ -215,6 +214,7 @@ export function createWebApp(ctx) {
         btn.disabled = false;
       }
     };
+    document.getElementById('loginEmail')?.focus();
   }
 
   function renderSignup() {
@@ -1130,12 +1130,13 @@ export function createWebApp(ctx) {
   }
 
   function start(startMode) {
+    // Paint auth UI immediately — don't leave #main blank while Firebase initializes.
+    if (startMode === 'signup') renderSignup();
+    else renderLogin();
+
     onAuthStateChanged(auth, (user) => {
       main.querySelector('.err')?.remove();
       if (user) enterApp(user);
-      else if (startMode === 'login') renderLogin();
-      else if (startMode === 'signup') renderSignup();
-      else renderWelcome();
     });
   }
 

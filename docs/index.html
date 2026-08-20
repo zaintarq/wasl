@@ -28,9 +28,21 @@
         <p class="hero-subtag">Open-source &amp; community-driven</p>
       </header>
 
+      <div class="shell-card auth-card">
+        <h2 class="font-kaushan">Log in</h2>
+        <p class="sub">Same account on web and Android.</p>
+        <form id="homeLoginForm" action="app.html" method="get">
+          <input type="hidden" name="mode" value="login" />
+          <label for="homeEmail">Email</label>
+          <input id="homeEmail" name="email" type="email" autocomplete="email" inputmode="email" required />
+          <label for="homePass">Password</label>
+          <input id="homePass" type="password" autocomplete="current-password" required />
+          <button type="submit" class="btn btn-primary" style="margin-top:4px">Log in</button>
+        </form>
+        <a class="btn btn-outline" href="app.html?mode=signup" style="margin-top:10px">Create account</a>
+      </div>
+
       <div class="cta-stack">
-        <a class="btn btn-primary" href="app.html?mode=signup">Sign up with email</a>
-        <a class="btn btn-outline" href="app.html?mode=login">Log in</a>
         <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
       </div>
 
@@ -69,5 +81,11 @@
       </nav>
     </div>
   </div>
+  <script>
+    document.getElementById('homeLoginForm')?.addEventListener('submit', (e) => {
+      const pass = document.getElementById('homePass')?.value;
+      if (pass) sessionStorage.setItem('huzzLoginDraft', JSON.stringify({ password: pass }));
+    });
+  </script>
 </body>
 </html>

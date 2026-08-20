@@ -24,7 +24,16 @@
       </div>
     </header>
 
-    <main class="app-main no-nav" id="main"></main>
+    <main class="app-main no-nav" id="main">
+      <div class="shell-card auth-card">
+        <h2>Log in</h2>
+        <p class="sub">Loading…</p>
+        <label for="loginEmail">Email</label>
+        <input id="loginEmail" type="email" autocomplete="email" inputmode="email" disabled />
+        <label for="loginPass">Password</label>
+        <input id="loginPass" type="password" autocomplete="current-password" disabled />
+      </div>
+    </main>
 
     <nav class="nav-dock" id="bottomNav" aria-label="Main">
       <div class="nav-row">
@@ -57,7 +66,7 @@
       doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction,
     } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
     import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
-    import { createWebApp } from './web-app.js?v=12';
+    import { createWebApp } from './web-app.js?v=13';
 
     const firebaseConfig = {
       apiKey: 'AIzaSyB_k9w2F0I591-8mUyuHr_5B-TVQea0Tfo',
