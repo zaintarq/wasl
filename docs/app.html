@@ -24,16 +24,37 @@
       </div>
     </header>
 
-    <main class="app-main no-nav" id="main">
-      <div class="shell-card auth-card">
-        <h2>Log in</h2>
-        <p class="sub">Loading…</p>
-        <label for="loginEmail">Email</label>
-        <input id="loginEmail" type="email" autocomplete="email" inputmode="email" disabled />
-        <label for="loginPass">Password</label>
-        <input id="loginPass" type="password" autocomplete="current-password" disabled />
-      </div>
-    </main>
+    <main class="app-main no-nav" id="main"></main>
+    <script>
+      (function () {
+        var mode = new URLSearchParams(location.search).get('mode');
+        var main = document.getElementById('main');
+        if (!main) return;
+        if (mode === 'signup') {
+          main.innerHTML =
+            '<div class="shell-card">' +
+            '<h2>Sign up</h2>' +
+            '<p class="step-hint">Step 1 of 4: verify your email</p>' +
+            '<label for="suEmail">Email</label>' +
+            '<input id="suEmail" type="email" autocomplete="email" />' +
+            '<button type="button" class="btn btn-primary" id="suSendOtp">Send code</button>' +
+            '<button type="button" class="btn btn-outline" id="suToLogin">Already have an account</button>' +
+            '</div>';
+        } else {
+          main.innerHTML =
+            '<div class="shell-card auth-card">' +
+            '<h2>Log in</h2>' +
+            '<p class="sub">Same account as the Android app.</p>' +
+            '<label for="loginEmail">Email</label>' +
+            '<input id="loginEmail" type="email" autocomplete="email" inputmode="email" />' +
+            '<label for="loginPass">Password</label>' +
+            '<input id="loginPass" type="password" autocomplete="current-password" />' +
+            '<button type="button" class="btn btn-primary" id="loginSubmit">Log in</button>' +
+            '<button type="button" class="btn btn-outline" id="loginToSignup">Create account</button>' +
+            '</div>';
+        }
+      })();
+    </script>
 
     <nav class="nav-dock" id="bottomNav" aria-label="Main">
       <div class="nav-row">
@@ -66,7 +87,7 @@
       doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction,
     } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
     import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
-    import { createWebApp } from './web-app.js?v=13';
+    import { createWebApp } from './web-app.js?v=14';
 
     const firebaseConfig = {
       apiKey: 'AIzaSyB_k9w2F0I591-8mUyuHr_5B-TVQea0Tfo',
