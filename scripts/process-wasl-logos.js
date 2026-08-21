@@ -1,5 +1,6 @@
 /**
- * Process both Wasl logos identically: edge flood-fill light BG → transparent PNG → tight crop.
+ * Process Wasl logos → transparent PNGs (edge flood-fill + trim).
+ * EN: corner BG sample (f92e918 pipeline). AR: top/left edge sample + grey-plate scrub.
  * Run: node scripts/process-wasl-logos.js
  */
 const sharp = require('sharp');
@@ -11,24 +12,6 @@ const ROOT = path.join(__dirname, '..');
 const imagesDir = path.join(ROOT, 'assets', 'images');
 const docsDir = path.join(ROOT, 'docs', 'assets');
 
-const TOL = 58;
-
-/** Remove plate fringe + blue JPEG artefacts; keep black/white ink. */
-function scrubFringe(data, br, bg, bb) {
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 16) continue;
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const sum = r + g + b;
-    const maxC = Math.max(r, g, b);
-    if (sum < 120 || maxC > 248) continue;
-    const d = dist(r, g, b, br, bg, bb);
-    const blueFringe = b > r + 6 && b > g + 4;
-    if (blueFringe || d <= 42) data[i + 3] = 0;
-  }
-}
-
 const LOGOS = [
   {
     src: path.join(imagesDir, 'wasl-logo-en-source.jpg'),
@@ -37,38 +20,18 @@ const LOGOS = [
     legacyOut: path.join(imagesDir, 'app-logo.png'),
     legacyDocs: path.join(docsDir, 'app-logo.png'),
     variant: 'en',
+    tol: 52,
   },
   {
     src: path.join(imagesDir, 'wasl-logo-ar-source.jpg'),
     out: path.join(imagesDir, 'wasl-logo-ar.png'),
     docsOut: path.join(docsDir, 'wasl-logo-ar.png'),
     variant: 'ar',
+    tol: 58,
   },
 ];
 
-function sampleBg(data, width, height, variant) {
-  if (variant === 'ar') {
-    // Grey plate + watermark top-right; sample top/left edges only.
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let n = 0;
-    for (let x = 8; x < width - 200; x += 32) {
-      const i = x * 4;
-      r += data[i];
-      g += data[i + 1];
-      b += data[i + 2];
-      n++;
-    }
-    for (let y = 8; y < height - 8; y += 32) {
-      const i = (y * width) * 4;
-      r += data[i];
-      g += data[i + 1];
-      b += data[i + 2];
-      n++;
-    }
-    return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
-  }
+function sampleCorners(data, width, height) {
   const corners = [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]];
   let r = 0;
   let g = 0;
@@ -82,11 +45,34 @@ function sampleBg(data, width, height, variant) {
   return [Math.round(r / 4), Math.round(g / 4), Math.round(b / 4)];
 }
 
+/** AR plate + watermark: sample only top/left edges (skip vignette corners). */
+function sampleEdgePlate(data, width, height) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let x = 12; x < width - 220; x += 24) {
+    const i = x * 4;
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+    n++;
+  }
+  for (let y = 12; y < height - 12; y += 24) {
+    const i = (y * width) * 4;
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+    n++;
+  }
+  return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+}
+
 function dist(r, g, b, br, bg, bb) {
   return Math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2);
 }
 
-function clearExteriorLight(data, width, height, br, bg, bb, tol) {
+function floodRemoveExterior(data, width, height, br, bg, bb, tol) {
   const isBg = (i) => dist(data[i], data[i + 1], data[i + 2], br, bg, bb) <= tol;
   const seen = new Uint8Array(width * height);
   const queue = [];
@@ -130,27 +116,44 @@ function clearExteriorLight(data, width, height, br, bg, bb, tol) {
   }
 }
 
-/** Drop enclosed grey plate leftovers; keep pure black/white ink. */
-function scrubPlateRemnants(data, width, height, br, bg, bb) {
+/** EN only: feather compression fringe without touching ink. */
+function defringeLight(data, br, bg, bb, tol, soft) {
+  for (let i = 0; i < data.length; i += 4) {
+    const d = dist(data[i], data[i + 1], data[i + 2], br, bg, bb);
+    if (d <= tol) {
+      data[i + 3] = 0;
+    } else if (d < tol + soft && data[i + 3] < 255) {
+      data[i + 3] = Math.min(data[i + 3], Math.round((255 * (d - tol)) / soft));
+    }
+  }
+}
+
+/** Drop enclosed grey plate; keep solid black calligraphy. */
+function scrubGreyPlate(data, br, bg, bb) {
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 16) continue;
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
-    const maxC = Math.max(r, g, b);
     const sum = r + g + b;
-    if (maxC > 248 || sum < 120) continue;
-    if (dist(r, g, b, br, bg, bb) <= 42) data[i + 3] = 0;
+    const maxC = Math.max(r, g, b);
+    const minC = Math.min(r, g, b);
+    if (sum < 200) continue;
+    if (maxC - minC < 40 && sum > 480) {
+      data[i + 3] = 0;
+      continue;
+    }
+    if (dist(r, g, b, br, bg, bb) <= 44) data[i + 3] = 0;
   }
 }
 
-function cutBackground(buffer, variant) {
+function cutBackground(buffer, variant, tol) {
   const png = PNG.sync.read(buffer);
   const { data, width, height } = png;
-  const bg = sampleBg(data, width, height, variant);
-  clearExteriorLight(data, width, height, ...bg, TOL);
-  scrubFringe(data, ...bg);
-  if (variant === 'ar') scrubPlateRemnants(data, width, height, ...bg);
+  const bg = variant === 'ar' ? sampleEdgePlate(data, width, height) : sampleCorners(data, width, height);
+  floodRemoveExterior(data, width, height, ...bg, tol);
+  if (variant === 'en') defringeLight(data, ...bg, tol, 28);
+  else scrubGreyPlate(data, ...bg);
   return PNG.sync.write(png);
 }
 
@@ -193,22 +196,32 @@ function tightCrop(pngBuffer) {
   return PNG.sync.write(out);
 }
 
-async function processLogo({ src, out, variant }) {
+async function prepareArRaster(src) {
+  const meta = await sharp(src).metadata();
+  const { data } = await sharp(src).extract({ left: 50, top: 10, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+  const [r, g, b] = data;
+  const svg = `<svg width="${meta.width}" height="${meta.height}"><rect x="${meta.width - 250}" y="0" width="250" height="110" fill="rgb(${r},${g},${b})"/></svg>`;
+  return sharp(src).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).ensureAlpha().png().toBuffer();
+}
+
+async function processLogo({ src, out, variant, tol }) {
   if (!fs.existsSync(src)) {
     console.warn('Skip (missing):', src);
     return false;
   }
-  const raw = await sharp(src).ensureAlpha().png().toBuffer();
-  const cut = tightCrop(cutBackground(raw, variant));
+  const raw = variant === 'ar' ? await prepareArRaster(src) : await sharp(src).ensureAlpha().png().toBuffer();
+  const cut = tightCrop(cutBackground(raw, variant, tol));
   await sharp(cut).png({ compressionLevel: 9 }).toFile(out);
   const meta = await sharp(out).metadata();
-  console.log(`Written ${meta.width}x${meta.height}:`, path.basename(out));
+  console.log(`Written ${variant} (${meta.width}x${meta.height}):`, path.basename(out));
   return meta;
 }
 
 async function main() {
   fs.mkdirSync(docsDir, { recursive: true });
+  const only = process.env.ONLY?.split(',') || null;
   for (const item of LOGOS) {
+    if (only && !only.includes(item.variant)) continue;
     const meta = await processLogo(item);
     if (!meta) continue;
     if (item.docsOut) fs.copyFileSync(item.out, item.docsOut);

@@ -91,6 +91,7 @@ a { color: var(--brand-pink-dark); }
   display: block;
   width: min(300px, 82vw);
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .logo-stack::before {
@@ -106,9 +107,9 @@ a { color: var(--brand-pink-dark); }
   height: 100%;
   object-fit: contain;
   object-position: center;
-  pointer-events: none;
+  will-change: opacity, transform;
   transition:
-    opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.38s cubic-bezier(0.4, 0, 0.2, 1),
     transform 0.55s cubic-bezier(0.22, 1.25, 0.45, 1);
 }
 
@@ -120,13 +121,14 @@ a { color: var(--brand-pink-dark); }
 
 .logo-layer.logo-ar {
   opacity: 0;
-  transform: scale(0.5) translateX(40px);
+  transform: scale(0.45) translateX(48px);
   z-index: 2;
+  pointer-events: none;
 }
 
 .logo-stack.is-revealing .logo-layer.logo-en {
   opacity: 0;
-  transform: scale(0.85);
+  transform: scale(0.82);
 }
 
 .logo-stack.is-revealing .logo-layer.logo-ar {
