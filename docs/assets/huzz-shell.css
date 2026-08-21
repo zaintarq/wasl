@@ -71,6 +71,64 @@ a { color: var(--brand-pink-dark); }
   filter: drop-shadow(0 10px 24px rgba(131, 24, 67, 0.12));
 }
 
+.logo-tap {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  display: block;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.logo-tap:focus-visible {
+  outline: 2px solid var(--brand-pink);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+.logo-stack {
+  position: relative;
+  width: min(320px, 82vw);
+  aspect-ratio: 1024 / 847;
+  display: block;
+  filter: drop-shadow(0 10px 24px rgba(131, 24, 67, 0.12));
+  transition: aspect-ratio 0.35s ease;
+}
+
+.logo-stack.show-arabic {
+  aspect-ratio: 1024 / 769;
+}
+
+.logo-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition:
+    opacity 0.22s ease,
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.logo-layer.logo-default {
+  opacity: 1;
+  transform: none;
+}
+
+.logo-stack.animating .logo-default {
+  opacity: 0;
+}
+
+.logo-layer.logo-arabic {
+  opacity: 0;
+  transform: scale(0.34) translateX(28px);
+}
+
+.logo-stack.animating .logo-arabic {
+  opacity: 1;
+  transform: scale(1) translateX(0);
+}
+
 .brand-mark {
   font-family: "Kaushan Script", cursive;
   font-size: clamp(3rem, 12vw, 4rem);

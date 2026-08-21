@@ -33,18 +33,17 @@ async function featureGraphic(outPath) {
   const w = Math.round(meta.width * scale);
   const h = Math.round(meta.height * scale);
   const mascot = await sharp(SRC).resize(w, h, { fit: 'inside' }).png().toBuffer();
-  const titleSvg = Buffer.from(`
-    <svg width="560" height="120" xmlns="http://www.w3.org/2000/svg">
-      <text x="0" y="78" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800" fill="#ffffff">Huzz</text>
-      <text x="4" y="112" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" fill="#fbbf24">Meet. Match. Go live.</text>
+  const taglineSvg = Buffer.from(`
+    <svg width="560" height="80" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="52" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" fill="#fbbf24">Meet. Match. Go live.</text>
     </svg>
   `);
   await sharp({
     create: { width, height, channels: 4, background: BG },
   })
     .composite([
-      { input: mascot, left: Math.round(width * 0.04), top: Math.round((height - h) / 2) },
-      { input: titleSvg, left: Math.round(width * 0.46), top: Math.round((height - 120) / 2) },
+      { input: mascot, left: Math.round((width - w) / 2), top: Math.round((height - h) / 2 - 24) },
+      { input: taglineSvg, left: Math.round((width - 560) / 2), top: Math.round((height + h) / 2 - 16) },
     ])
     .png({ compressionLevel: 9 })
     .toFile(outPath);

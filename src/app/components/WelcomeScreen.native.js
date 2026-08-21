@@ -4,7 +4,7 @@ import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwa
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
-import { tokens, brandShellGradient, brandUnderlineGradient } from '../../ui/tokens';
+import { tokens, brandShellGradient } from '../../ui/tokens';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
@@ -17,7 +17,6 @@ const PRIVACY_URL = 'https://zaintarq.github.io/huzz/privacy.html';
 const WELCOME_BG = brandShellGradient;
 const WELCOME_BG_LOCATIONS = [0, 1];
 const WELCOME_BG_FALLBACK = tokens.colors.bg;
-const BRAND_UNDERLINE = brandUnderlineGradient;
 
 export function WelcomeScreen({ onNavigate }) {
   const insets = useSafeAreaInsets();
@@ -90,25 +89,6 @@ export function WelcomeScreen({ onNavigate }) {
         <View style={styles.hero}>
           <View style={styles.mascotWrap}>
             <WelcomeMascotBlock maxWidth={300} />
-          </View>
-          <View style={styles.brandBlock}>
-            <Text
-              style={[
-                styles.brandMark,
-                fontsLoaded ? styles.brandMarkFont : styles.brandMarkFallback,
-              ]}
-              accessibilityRole="header"
-            >
-              Huzz
-            </Text>
-            <View style={styles.brandUnderlineTrack}>
-              <LinearGradient
-                colors={BRAND_UNDERLINE}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.brandUnderline}
-              />
-            </View>
           </View>
           <Text
             style={[

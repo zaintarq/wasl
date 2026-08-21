@@ -18,11 +18,12 @@
     <div class="shell shell-compact">
       <header class="welcome-hero">
         <div class="mascot-wrap">
-          <img src="assets/app-logo.png" alt="" width="300" height="300" />
-        </div>
-        <div>
-          <h1 class="brand-mark">Huzz</h1>
-          <div class="brand-underline" aria-hidden="true"></div>
+          <button type="button" class="logo-tap" data-logo-tap aria-label="Wasl logo — tap for Arabic animation">
+            <span class="logo-stack">
+              <img class="logo-layer logo-default" src="assets/app-logo.png" alt="Wasl" width="320" height="265" />
+              <img class="logo-layer logo-arabic" src="assets/wasl-arabic-logo.png" alt="" aria-hidden="true" width="320" height="240" />
+            </span>
+          </button>
         </div>
         <p class="hero-tagline">Connect authentically. Connect freely.</p>
         <p class="hero-subtag">Open-source &amp; community-driven</p>
@@ -81,6 +82,7 @@
       </nav>
     </div>
   </div>
+  <script src="assets/logo-tap.js"></script>
   <script>
     document.getElementById('homeLoginForm')?.addEventListener('submit', (e) => {
       const pass = document.getElementById('homePass')?.value;

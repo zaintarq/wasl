@@ -659,20 +659,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
                   </HuzzPressable>
                 </View>
 
-                <View style={styles.step2BrandBlock}>
-                  <Text style={[styles.step2Huzz, fontsLoaded && { fontFamily: 'KaushanScript_400Regular' }]}>
-                    Huzz
-                  </Text>
-                  <View style={styles.step2UnderlineTrack}>
-                    <LinearGradient
-                      colors={BRAND_UNDERLINE}
-                      start={{ x: 0, y: 0.5 }}
-                      end={{ x: 1, y: 0.5 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </View>
-                </View>
-
                 <Text style={[styles.step2ScreenTitle, kFont, { fontSize: 28, marginBottom: 6 }]}>
                   Wrong password
                 </Text>
@@ -751,20 +737,6 @@ export function OnboardingFlow({ onNavigate, mode = 'signup', initialStep: initi
               </View>
 
               <WelcomeMascotBlock maxWidth={220} />
-
-              <View style={styles.step2BrandBlock}>
-                <Text style={[styles.step2Huzz, fontsLoaded && { fontFamily: 'KaushanScript_400Regular' }]}>
-                  Huzz
-                </Text>
-                <View style={styles.step2UnderlineTrack}>
-                  <LinearGradient
-                    colors={BRAND_UNDERLINE}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </View>
-              </View>
 
               <Text style={[styles.step2ScreenTitle, kFont, { fontSize: 28, marginBottom: 6 }]}>
                 {forgotPasswordActive && authSubStep === 'email' && 'Reset password'}

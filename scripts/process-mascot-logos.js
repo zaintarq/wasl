@@ -16,11 +16,12 @@ const SOFT = 36;
 
 const SOURCES = [
   {
-    src: path.join(
-      '/Users/muhammad-zain/.cursor/projects/Users-muhammad-zain-Desktop-huzz/assets',
-      'Copilot_20260730_184135-6e7fe2b9-08de-406d-97fc-85e683f74ca5.png'
-    ),
+    src: path.join(imagesDir, 'wasl-logo-source.jpg'),
     out: path.join(imagesDir, 'app-logo.png'),
+  },
+  {
+    src: path.join(imagesDir, 'wasl-arabic-logo-source.jpg'),
+    out: path.join(imagesDir, 'wasl-arabic-logo.png'),
   },
   {
     src: path.join(
