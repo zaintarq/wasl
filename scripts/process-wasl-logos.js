@@ -1,6 +1,5 @@
 /**
  * Process Wasl logos → transparent PNGs (edge flood-fill + trim).
- * EN: corner BG sample (f92e918 pipeline). AR: top/left edge sample + grey-plate scrub.
  * Run: node scripts/process-wasl-logos.js
  */
 const sharp = require('sharp');
@@ -11,6 +10,11 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const imagesDir = path.join(ROOT, 'assets', 'images');
 const docsDir = path.join(ROOT, 'docs', 'assets');
+
+/** Enclosed vignette column in source (x 909–1018) — paint before flood-fill. */
+const AR_VIGNETTE_X = 909;
+const AR_VIGNETTE_W = 110;
+const AR_TOP_PAD = 24;
 
 const LOGOS = [
   {
@@ -45,7 +49,6 @@ function sampleCorners(data, width, height) {
   return [Math.round(r / 4), Math.round(g / 4), Math.round(b / 4)];
 }
 
-/** AR plate + watermark: sample only top/left edges (skip vignette corners). */
 function sampleEdgePlate(data, width, height) {
   let r = 0;
   let g = 0;
@@ -116,7 +119,6 @@ function floodRemoveExterior(data, width, height, br, bg, bb, tol) {
   }
 }
 
-/** EN only: feather compression fringe without touching ink. */
 function defringeLight(data, br, bg, bb, tol, soft) {
   for (let i = 0; i < data.length; i += 4) {
     const d = dist(data[i], data[i + 1], data[i + 2], br, bg, bb);
@@ -128,8 +130,7 @@ function defringeLight(data, br, bg, bb, tol, soft) {
   }
 }
 
-/** Drop enclosed grey plate, vignette strips, and watermark leftovers; keep black ink. */
-function scrubGreyPlate(data, width, height, br, bg, bb) {
+function scrubGreyPlate(data, br, bg, bb) {
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 16) continue;
     const r = data[i];
@@ -137,10 +138,9 @@ function scrubGreyPlate(data, width, height, br, bg, bb) {
     const b = data[i + 2];
     const sum = r + g + b;
     const maxC = Math.max(r, g, b);
-    const minC = Math.min(r, g, b);
-    const chroma = maxC - minC;
+    const chroma = maxC - Math.min(r, g, b);
     if (sum < 180 && maxC < 90) continue;
-    if (chroma < 48 && sum > 240) {
+    if (chroma < 50 && sum > 220) {
       data[i + 3] = 0;
       continue;
     }
@@ -148,122 +148,25 @@ function scrubGreyPlate(data, width, height, br, bg, bb) {
   }
 }
 
-/** Watermark grey text only — keep black calligraphy (horns/head). */
-function scrubTopWatermark(data, width, height) {
-  const topH = 78;
-  const leftX = Math.round(width * 0.64);
-  for (let y = 0; y < topH; y++) {
-    for (let x = leftX; x < width; x++) {
-      const i = (y * width + x) * 4;
-      if (data[i + 3] < 16) continue;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const sum = r + g + b;
-      const maxC = Math.max(r, g, b);
-      if (sum > 140 && sum < 580 && maxC < 210) data[i + 3] = 0;
-    }
-  }
-}
-
-/** JPEG blue fringe on plate / vignette edges. */
 function scrubBlueFringe(data) {
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 16) continue;
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
-    const sum = r + g + b;
-    if (sum < 130) continue;
-    if (b > r + 6 && b > g + 4) data[i + 3] = 0;
+    if (r + g + b < 130) continue;
+    if (b > r + 5 && b > g + 3) data[i + 3] = 0;
   }
 }
 
-/** Vertical grey plate seam inward from the right — per-pixel, keeps solid ink. */
-function scrubRightPlateLine(data, width, height) {
-  const startX = Math.round(width * 0.68);
-  for (let y = 0; y < height; y++) {
-    for (let x = startX; x < width; x++) {
+function scrubWatermarkText(data, width, height) {
+  for (let y = 20; y < 78; y++) {
+    for (let x = 760; x < width; x++) {
       const i = (y * width + x) * 4;
       if (data[i + 3] < 16) continue;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const sum = r + g + b;
-      const maxC = Math.max(r, g, b);
-      const chroma = maxC - Math.min(r, g, b);
-      if (sum < 108 || maxC < 92) continue;
-      if (chroma < 68 && sum < 735) {
-        data[i + 3] = 0;
-        continue;
-      }
-      if (b > r + 5 && b > g + 3 && sum < 650) data[i + 3] = 0;
-    }
-  }
-  // Second pass: delete short vertical plate runs (the inward grey line).
-  for (let x = startX; x < width; x++) {
-    let run = 0;
-    let runStart = 0;
-    const flush = (start, len) => {
-      if (len < 12) return;
-      let plate = 0;
-      for (let y = start; y < start + len; y++) {
-        const i = (y * width + x) * 4;
-        if (data[i + 3] < 16) continue;
-        const sum = data[i] + data[i + 1] + data[i + 2];
-        const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
-        if (sum > 115 && maxC > 95) plate++;
-      }
-      if (plate >= len * 0.65) {
-        for (let y = start; y < start + len; y++) {
-          const i = (y * width + x) * 4;
-          const sum = data[i] + data[i + 1] + data[i + 2];
-          const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
-          if (data[i + 3] > 16 && sum > 105 && maxC > 90) data[i + 3] = 0;
-        }
-      }
-    };
-    for (let y = 0; y < height; y++) {
-      const i = (y * width + x) * 4;
-      const hit = data[i + 3] > 16;
-      if (hit) {
-        if (!run) runStart = y;
-        run++;
-      } else {
-        flush(runStart, run);
-        run = 0;
-      }
-    }
-    flush(runStart, run);
-  }
-}
-
-/** Remove mostly-grey side columns (vignette leftovers). */
-function stripSideGreyBands(data, width, height) {
-  const band = Math.max(12, Math.round(width * 0.04));
-  for (let pass = 0; pass < 2; pass++) {
-    for (const side of ['left', 'right']) {
-      for (let x = 0; x < band; x++) {
-        const col = side === 'left' ? x : width - 1 - x;
-        let grey = 0;
-        let total = 0;
-        for (let y = 0; y < height; y++) {
-          const i = (y * width + col) * 4;
-          if (data[i + 3] < 16) continue;
-          total++;
-          const sum = data[i] + data[i + 1] + data[i + 2];
-          const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
-          if (sum > 400 && maxC > 100) grey++;
-        }
-        if (total > 0 && grey / total > 0.55) {
-          for (let y = 0; y < height; y++) {
-            const i = (y * width + col) * 4;
-            const sum = data[i] + data[i + 1] + data[i + 2];
-            const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
-            if (data[i + 3] > 16 && sum > 350 && maxC > 90) data[i + 3] = 0;
-          }
-        }
-      }
+      const sum = data[i] + data[i + 1] + data[i + 2];
+      const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
+      if (sum > 130 && sum < 600 && maxC < 220) data[i + 3] = 0;
     }
   }
 }
@@ -276,81 +179,34 @@ function cutBackground(buffer, variant, tol) {
   if (variant === 'en') {
     defringeLight(data, ...bg, tol, 28);
   } else {
-    scrubGreyPlate(data, width, height, ...bg);
-    scrubTopWatermark(data, width, height);
-    scrubGreyPlate(data, width, height, ...bg);
+    scrubGreyPlate(data, ...bg);
+    scrubWatermarkText(data, width, height);
     scrubBlueFringe(data);
-    stripSideGreyBands(data, width, height);
-    scrubRightPlateLine(data, width, height);
+    scrubGreyPlate(data, ...bg);
   }
   return PNG.sync.write(png);
 }
 
-/** Final pass on cropped AR asset — watermark corner + side vignette. */
-function postCropArCleanup(pngBuffer) {
-  const png = PNG.sync.read(pngBuffer);
-  const { data, width, height } = png;
-  const wmLeft = Math.round(width * 0.82);
-  const wmTop = 72;
-  for (let y = 0; y < wmTop; y++) {
-    for (let x = wmLeft; x < width; x++) {
-      const i = (y * width + x) * 4;
-      if (data[i + 3] < 16) continue;
-      const sum = data[i] + data[i + 1] + data[i + 2];
-      const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
-      if (sum > 140 && sum < 520 && maxC < 210) data[i + 3] = 0;
-    }
-  }
-  scrubBlueFringe(data);
-  scrubRightPlateLine(data, width, height);
-  scrubBlueFringe(data);
-  scrubRightPlateLine(data, width, height);
-  stripSideGreyBands(data, width, height);
-  const band = Math.max(10, Math.round(width * 0.035));
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < band; x++) {
-      for (const col of [x, width - 1 - x]) {
-        const i = (y * width + col) * 4;
-        if (data[i + 3] < 16) continue;
-        const sum = data[i] + data[i + 1] + data[i + 2];
-        const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
-        const chroma = maxC - Math.min(data[i], data[i + 1], data[i + 2]);
-        if (sum > 380 && maxC > 95 && chroma < 45) data[i + 3] = 0;
-      }
-    }
-  }
-  scrubBlueFringe(data);
-  return PNG.sync.write(png);
-}
-
-function tightCrop(pngBuffer, { inkTop = false, padTop = 2 } = {}) {
+function looseCrop(pngBuffer, pad = 8) {
   const png = PNG.sync.read(pngBuffer);
   const { data, width, height } = png;
   let minX = width;
   let maxX = 0;
   let minY = height;
-  let minYInk = height;
   let maxY = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const i = (width * y + x) * 4;
-      if (data[i + 3] <= 16) continue;
-      const sum = data[i] + data[i + 1] + data[i + 2];
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      if (sum < 180) minYInk = Math.min(minYInk, y);
+      if (data[(width * y + x) * 4 + 3] > 16) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
     }
   }
   if (maxX < minX || maxY < minY) return pngBuffer;
-  if (inkTop && minYInk < height) {
-    minY = Math.min(minY, minYInk);
-    padTop = Math.max(padTop, 16);
-  }
-  const pad = 2;
   minX = Math.max(0, minX - pad);
-  minY = Math.max(0, minY - padTop);
+  minY = Math.max(0, minY - pad);
   maxX = Math.min(width - 1, maxX + pad);
   maxY = Math.min(height - 1, maxY + pad);
   const cw = maxX - minX + 1;
@@ -374,12 +230,39 @@ async function prepareArRaster(src) {
   const w = meta.width;
   const h = meta.height;
   const { data } = await sharp(src).extract({ left: 50, top: 10, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
-  const [r, g, b] = data;
-  const fill = `rgb(${r},${g},${b})`;
+  const fill = `rgb(${data[0]},${data[1]},${data[2]})`;
   const svg = `<svg width="${w}" height="${h}">
-    <rect x="655" y="24" width="360" height="58" fill="${fill}"/>
+    <rect x="${AR_VIGNETTE_X}" y="0" width="${AR_VIGNETTE_W}" height="${h}" fill="${fill}"/>
   </svg>`;
   return sharp(src).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).ensureAlpha().png().toBuffer();
+}
+
+/** Drop isolated ink island on the far right (horn spike separated by vignette gap). */
+function removeFarRightIsland(pngBuffer, splitX = 878) {
+  const png = PNG.sync.read(pngBuffer);
+  const { data, width, height } = png;
+  for (let y = 0; y < height; y++) {
+    for (let x = splitX; x < width; x++) {
+      const i = (y * width + x) * 4;
+      data[i + 3] = 0;
+    }
+  }
+  return PNG.sync.write(png);
+}
+
+async function addTopPadding(pngBuffer, topPad) {
+  const meta = await sharp(pngBuffer).metadata();
+  return sharp({
+    create: {
+      width: meta.width,
+      height: meta.height + topPad,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{ input: pngBuffer, top: topPad, left: 0 }])
+    .png()
+    .toBuffer();
 }
 
 async function processLogo({ src, out, variant, tol }) {
@@ -388,8 +271,12 @@ async function processLogo({ src, out, variant, tol }) {
     return false;
   }
   const raw = variant === 'ar' ? await prepareArRaster(src) : await sharp(src).ensureAlpha().png().toBuffer();
-  let cut = tightCrop(cutBackground(raw, variant, tol), variant === 'ar' ? { inkTop: true, padTop: 22 } : {});
-  if (variant === 'ar') cut = postCropArCleanup(cut);
+  let cut = looseCrop(cutBackground(raw, variant, tol), variant === 'ar' ? 10 : 2);
+  if (variant === 'ar') {
+    cut = removeFarRightIsland(cut);
+    cut = looseCrop(cut, 8);
+    cut = await addTopPadding(cut, AR_TOP_PAD);
+  }
   await sharp(cut).png({ compressionLevel: 9 }).toFile(out);
   const meta = await sharp(out).metadata();
   console.log(`Written ${variant} (${meta.width}x${meta.height}):`, path.basename(out));

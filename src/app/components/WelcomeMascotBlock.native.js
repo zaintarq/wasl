@@ -5,6 +5,8 @@ import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 const LOGO_EN = require('../../../assets/images/wasl-logo-en.png');
 const LOGO_AR = require('../../../assets/images/wasl-logo-ar.png');
 const EN_ASPECT = 712 / 939;
+const AR_ASPECT = 684 / 774;
+const BOX_ASPECT = Math.max(EN_ASPECT, AR_ASPECT);
 const ALT_MS = 1500;
 const EMERGE = 0.42;
 
@@ -101,8 +103,8 @@ const styles = StyleSheet.create({
   wrapCompact: { alignSelf: 'center', width: undefined, marginBottom: 0 },
   box: {
     width: '100%',
-    aspectRatio: 1 / EN_ASPECT,
-    overflow: 'hidden',
+    aspectRatio: 1 / BOX_ASPECT,
+    overflow: 'visible',
     alignItems: 'center',
     justifyContent: 'center',
   },

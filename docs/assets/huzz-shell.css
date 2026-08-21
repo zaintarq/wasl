@@ -91,13 +91,13 @@ a { color: var(--brand-pink-dark); }
   display: block;
   width: min(300px, 82vw);
   margin: 0 auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .logo-stack::before {
   content: "";
   display: block;
-  padding-top: 75.825%;
+  padding-top: 88.37%;
 }
 
 .logo-layer {
