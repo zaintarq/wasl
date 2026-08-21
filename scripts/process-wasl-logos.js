@@ -140,7 +140,7 @@ function scrubGreyPlate(data, width, height, br, bg, bb) {
     const minC = Math.min(r, g, b);
     const chroma = maxC - minC;
     if (sum < 180 && maxC < 90) continue;
-    if (chroma < 48 && sum > 400) {
+    if (chroma < 48 && sum > 240) {
       data[i + 3] = 0;
       continue;
     }
@@ -179,31 +179,62 @@ function scrubBlueFringe(data) {
   }
 }
 
-/** Vertical grey/blue plate column on the right (vignette seam). */
+/** Vertical grey plate seam inward from the right — per-pixel, keeps solid ink. */
 function scrubRightPlateLine(data, width, height) {
-  const startX = Math.round(width * 0.78);
-  for (let x = startX; x < width; x++) {
-    let plate = 0;
-    let ink = 0;
-    for (let y = 0; y < height; y++) {
+  const startX = Math.round(width * 0.68);
+  for (let y = 0; y < height; y++) {
+    for (let x = startX; x < width; x++) {
       const i = (y * width + x) * 4;
       if (data[i + 3] < 16) continue;
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
       const sum = r + g + b;
-      const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-      if (sum < 150) ink++;
-      else if (chroma < 52 && sum > 280) plate++;
+      const maxC = Math.max(r, g, b);
+      const chroma = maxC - Math.min(r, g, b);
+      if (sum < 108 || maxC < 92) continue;
+      if (chroma < 68 && sum < 735) {
+        data[i + 3] = 0;
+        continue;
+      }
+      if (b > r + 5 && b > g + 3 && sum < 650) data[i + 3] = 0;
     }
-    if (plate > 8 && plate >= ink) {
-      for (let y = 0; y < height; y++) {
+  }
+  // Second pass: delete short vertical plate runs (the inward grey line).
+  for (let x = startX; x < width; x++) {
+    let run = 0;
+    let runStart = 0;
+    const flush = (start, len) => {
+      if (len < 12) return;
+      let plate = 0;
+      for (let y = start; y < start + len; y++) {
         const i = (y * width + x) * 4;
         if (data[i + 3] < 16) continue;
         const sum = data[i] + data[i + 1] + data[i + 2];
-        if (sum > 130) data[i + 3] = 0;
+        const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
+        if (sum > 115 && maxC > 95) plate++;
+      }
+      if (plate >= len * 0.65) {
+        for (let y = start; y < start + len; y++) {
+          const i = (y * width + x) * 4;
+          const sum = data[i] + data[i + 1] + data[i + 2];
+          const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
+          if (data[i + 3] > 16 && sum > 105 && maxC > 90) data[i + 3] = 0;
+        }
+      }
+    };
+    for (let y = 0; y < height; y++) {
+      const i = (y * width + x) * 4;
+      const hit = data[i + 3] > 16;
+      if (hit) {
+        if (!run) runStart = y;
+        run++;
+      } else {
+        flush(runStart, run);
+        run = 0;
       }
     }
+    flush(runStart, run);
   }
 }
 
@@ -272,6 +303,8 @@ function postCropArCleanup(pngBuffer) {
   }
   scrubBlueFringe(data);
   scrubRightPlateLine(data, width, height);
+  scrubBlueFringe(data);
+  scrubRightPlateLine(data, width, height);
   stripSideGreyBands(data, width, height);
   const band = Math.max(10, Math.round(width * 0.035));
   for (let y = 0; y < height; y++) {
@@ -311,7 +344,10 @@ function tightCrop(pngBuffer, { inkTop = false, padTop = 2 } = {}) {
     }
   }
   if (maxX < minX || maxY < minY) return pngBuffer;
-  if (inkTop && minYInk < height) minY = Math.min(minY, minYInk);
+  if (inkTop && minYInk < height) {
+    minY = Math.min(minY, minYInk);
+    padTop = Math.max(padTop, 16);
+  }
   const pad = 2;
   minX = Math.max(0, minX - pad);
   minY = Math.max(0, minY - padTop);
@@ -341,7 +377,7 @@ async function prepareArRaster(src) {
   const [r, g, b] = data;
   const fill = `rgb(${r},${g},${b})`;
   const svg = `<svg width="${w}" height="${h}">
-    <rect x="660" y="0" width="${w - 660}" height="78" fill="${fill}"/>
+    <rect x="655" y="24" width="360" height="58" fill="${fill}"/>
   </svg>`;
   return sharp(src).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).ensureAlpha().png().toBuffer();
 }
@@ -352,7 +388,7 @@ async function processLogo({ src, out, variant, tol }) {
     return false;
   }
   const raw = variant === 'ar' ? await prepareArRaster(src) : await sharp(src).ensureAlpha().png().toBuffer();
-  let cut = tightCrop(cutBackground(raw, variant, tol), variant === 'ar' ? { inkTop: true, padTop: 8 } : {});
+  let cut = tightCrop(cutBackground(raw, variant, tol), variant === 'ar' ? { inkTop: true, padTop: 22 } : {});
   if (variant === 'ar') cut = postCropArCleanup(cut);
   await sharp(cut).png({ compressionLevel: 9 }).toFile(out);
   const meta = await sharp(out).metadata();
