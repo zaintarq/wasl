@@ -2,20 +2,19 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Image, StyleSheet, Animated, Easing } from 'react-native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 
-/** English Wasl — default. Arabic وصل — tap reveal only. */
 const LOGO_EN = require('../../../assets/images/wasl-logo-en.png');
 const LOGO_AR = require('../../../assets/images/wasl-logo-ar.png');
-const EN_ASPECT = 1024 / 847;
-const AR_ASPECT = 1024 / 871;
-const ALT_DISPLAY_MS = 1400;
-const EMERGE_FROM_SCALE = 0.34;
+const EN_ASPECT = 712 / 939;
+const ALT_MS = 1500;
+const EMERGE = 0.42;
 
 export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
-  const [showArabic, setShowArabic] = useState(false);
   const enOpacity = useRef(new Animated.Value(1)).current;
+  const enScale = useRef(new Animated.Value(1)).current;
   const arOpacity = useRef(new Animated.Value(0)).current;
-  const arScale = useRef(new Animated.Value(EMERGE_FROM_SCALE)).current;
-  const arSlide = useRef(new Animated.Value(28)).current;
+  const arScale = useRef(new Animated.Value(EMERGE)).current;
+  const arSlide = useRef(new Animated.Value(48)).current;
+  const [revealing, setRevealing] = useState(false);
   const resetRef = useRef(null);
 
   const clearTimer = useCallback(() => {
@@ -27,37 +26,38 @@ export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
 
   useEffect(() => () => clearTimer(), [clearTimer]);
 
-  const returnToEnglish = useCallback(() => {
+  const reset = useCallback(() => {
     Animated.parallel([
-      Animated.timing(arOpacity, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(enOpacity, { toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(arScale, { toValue: EMERGE_FROM_SCALE, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(arSlide, { toValue: 28, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(arOpacity, { toValue: 0, duration: 320, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(enOpacity, { toValue: 1, duration: 360, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(enScale, { toValue: 1, duration: 360, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(arScale, { toValue: EMERGE, duration: 280, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(arSlide, { toValue: 48, duration: 280, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
     ]).start(({ finished }) => {
-      if (finished) setShowArabic(false);
+      if (finished) setRevealing(false);
     });
-  }, [arOpacity, arScale, arSlide, enOpacity]);
+  }, [arOpacity, arScale, arSlide, enOpacity, enScale]);
 
   const handlePress = useCallback(() => {
-    if (showArabic) return;
+    if (revealing) return;
     clearTimer();
-    setShowArabic(true);
-    arScale.setValue(EMERGE_FROM_SCALE);
-    arSlide.setValue(28);
+    setRevealing(true);
     enOpacity.setValue(1);
+    enScale.setValue(1);
     arOpacity.setValue(0);
+    arScale.setValue(EMERGE);
+    arSlide.setValue(48);
 
     Animated.parallel([
-      Animated.timing(enOpacity, { toValue: 0, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(arOpacity, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.spring(arScale, { toValue: 1.04, friction: 7, tension: 180, useNativeDriver: true }),
-      Animated.timing(arSlide, { toValue: 0, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-    ]).start(() => {
-      Animated.timing(arScale, { toValue: 1, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-    });
+      Animated.timing(enOpacity, { toValue: 0, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(enScale, { toValue: 0.82, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(arOpacity, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.spring(arScale, { toValue: 1, friction: 6, tension: 160, useNativeDriver: true }),
+      Animated.timing(arSlide, { toValue: 0, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
 
-    resetRef.current = setTimeout(returnToEnglish, ALT_DISPLAY_MS);
-  }, [arOpacity, arScale, arSlide, clearTimer, enOpacity, returnToEnglish, showArabic]);
+    resetRef.current = setTimeout(reset, ALT_MS);
+  }, [arOpacity, arScale, arSlide, clearTimer, enOpacity, enScale, reset, revealing]);
 
   return (
     <HuzzPressable
@@ -70,23 +70,27 @@ export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
     >
       <View
         style={[
-          compact ? styles.boxCompact : styles.box,
+          styles.box,
           !compact && { maxWidth },
           compact && { width: maxWidth },
-          { aspectRatio: showArabic ? AR_ASPECT : EN_ASPECT },
         ]}
       >
-        <Animated.View pointerEvents="none" style={[styles.layer, { opacity: enOpacity }]}>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.layer, { opacity: enOpacity, transform: [{ scale: enScale }], zIndex: 1 }]}
+        >
           <Image source={LOGO_EN} style={styles.img} resizeMode="contain" accessibilityIgnoresInvertColors />
         </Animated.View>
-        {showArabic ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.layer, { opacity: arOpacity, transform: [{ scale: arScale }, { translateX: arSlide }] }]}
-          >
-            <Image source={LOGO_AR} style={styles.img} resizeMode="contain" accessibilityIgnoresInvertColors />
-          </Animated.View>
-        ) : null}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.layer,
+            styles.layerAr,
+            { opacity: arOpacity, transform: [{ scale: arScale }, { translateX: arSlide }], zIndex: 2 },
+          ]}
+        >
+          <Image source={LOGO_AR} style={styles.img} resizeMode="contain" accessibilityIgnoresInvertColors />
+        </Animated.View>
       </View>
     </HuzzPressable>
   );
@@ -95,8 +99,14 @@ export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
 const styles = StyleSheet.create({
   wrap: { alignSelf: 'stretch', width: '100%', alignItems: 'center', marginBottom: 8 },
   wrapCompact: { alignSelf: 'center', width: undefined, marginBottom: 0 },
-  box: { width: '100%', alignItems: 'center', justifyContent: 'center' },
-  boxCompact: { alignItems: 'center', justifyContent: 'center' },
+  box: {
+    width: '100%',
+    aspectRatio: 1 / EN_ASPECT,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   layer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  layerAr: { zIndex: 2 },
   img: { width: '100%', height: '100%' },
 });
