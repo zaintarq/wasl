@@ -110,21 +110,21 @@ a { color: var(--brand-pink-dark); }
     transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.logo-layer.logo-default {
+.logo-layer.logo-en {
   opacity: 1;
   transform: none;
 }
 
-.logo-stack.animating .logo-default {
+.logo-stack.animating .logo-en {
   opacity: 0;
 }
 
-.logo-layer.logo-arabic {
+.logo-layer.logo-ar {
   opacity: 0;
   transform: scale(0.34) translateX(28px);
 }
 
-.logo-stack.animating .logo-arabic {
+.logo-stack.animating .logo-ar {
   opacity: 1;
   transform: scale(1) translateX(0);
 }

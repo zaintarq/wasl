@@ -6,7 +6,7 @@ const sharp = require('sharp');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'assets/images/icon-1024.png');
-const FALLBACK = path.join(ROOT, 'assets/images/app-logo.png');
+const FALLBACK = path.join(ROOT, 'assets/images/wasl-logo-en.png');
 const OUT = path.join(ROOT, 'docs/assets');
 const BG = { r: 251, g: 207, b: 232, alpha: 1 }; // #FBCFE8
 

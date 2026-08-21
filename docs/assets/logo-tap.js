@@ -1,15 +1,16 @@
-/** Tap default Wasl logo → Arabic وصل slide-in, then auto-return. */
+/** Tap English Wasl logo → Arabic وصل slides in, then auto-return. */
 (function () {
   const ALT_MS = 1400;
+  const AR_SRC = 'assets/wasl-logo-ar.png?v=2';
 
   function bindLogoTap(root) {
     const stack = root.querySelector('.logo-stack');
-    const defaultImg = root.querySelector('.logo-default');
-    const arabicImg = root.querySelector('.logo-arabic');
-    if (!stack || !defaultImg || !arabicImg) return;
+    const enImg = root.querySelector('.logo-en');
+    if (!stack || !enImg) return;
 
     let busy = false;
     let timer = null;
+    let arImg = null;
 
     const clearTimer = () => {
       if (timer) {
@@ -18,8 +19,12 @@
       }
     };
 
-    const returnDefault = () => {
+    const returnEnglish = () => {
       stack.classList.remove('animating', 'show-arabic');
+      if (arImg) {
+        arImg.remove();
+        arImg = null;
+      }
       busy = false;
     };
 
@@ -27,8 +32,23 @@
       if (busy) return;
       busy = true;
       clearTimer();
-      stack.classList.add('animating', 'show-arabic');
-      timer = setTimeout(returnDefault, ALT_MS);
+
+      if (!arImg) {
+        arImg = document.createElement('img');
+        arImg.className = 'logo-layer logo-ar';
+        arImg.src = AR_SRC;
+        arImg.alt = '';
+        arImg.setAttribute('aria-hidden', 'true');
+        arImg.width = 320;
+        arImg.height = 240;
+        stack.appendChild(arImg);
+      }
+
+      requestAnimationFrame(() => {
+        stack.classList.add('animating', 'show-arabic');
+      });
+
+      timer = setTimeout(returnEnglish, ALT_MS);
     });
   }
 

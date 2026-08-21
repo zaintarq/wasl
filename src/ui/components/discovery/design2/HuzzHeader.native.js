@@ -4,7 +4,7 @@ import { Menu, Bell } from 'lucide-react-native';
 import { tokens } from '../../../tokens';
 import { HuzzPressable } from '../../HuzzPressable.native';
 
-const LOGO = require('../../../../../assets/images/app-logo.png');
+const LOGO = require('../../../../../assets/images/wasl-logo-en.png');
 const LOGO_ASPECT = 1024 / 847;
 const LOGO_HEIGHT = 36;
 

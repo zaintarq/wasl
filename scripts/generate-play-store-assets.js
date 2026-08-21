@@ -7,7 +7,7 @@ const path = require('path');
 const sharp = require('sharp');
 
 const ROOT = path.join(__dirname, '..');
-const SRC = path.join(ROOT, 'assets/images/app-logo.png');
+const SRC = path.join(ROOT, 'assets/images/wasl-logo-en.png');
 const OUT_DIR = path.join(ROOT, 'assets/play-store');
 const BG = { r: 10, g: 10, b: 10, alpha: 1 };
 

@@ -2,22 +2,20 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Image, StyleSheet, Animated, Easing } from 'react-native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 
-const LOGO_DEFAULT = require('../../../assets/images/app-logo.png');
-const LOGO_ARABIC = require('../../../assets/images/wasl-arabic-logo.png');
-const LOGO_ASPECT = 1024 / 847;
-const ARABIC_ASPECT = 1024 / 769;
+/** English Wasl — default. Arabic وصل — tap reveal only. */
+const LOGO_EN = require('../../../assets/images/wasl-logo-en.png');
+const LOGO_AR = require('../../../assets/images/wasl-logo-ar.png');
+const EN_ASPECT = 1024 / 847;
+const AR_ASPECT = 1024 / 769;
 const ALT_DISPLAY_MS = 1400;
 const EMERGE_FROM_SCALE = 0.34;
 
-/**
- * Tap default Wasl wordmark → animated Arabic وصل reveal, then auto-return.
- */
 export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
   const [showArabic, setShowArabic] = useState(false);
-  const defaultOpacity = useRef(new Animated.Value(1)).current;
-  const arabicOpacity = useRef(new Animated.Value(0)).current;
-  const arabicScale = useRef(new Animated.Value(EMERGE_FROM_SCALE)).current;
-  const arabicSlide = useRef(new Animated.Value(28)).current;
+  const enOpacity = useRef(new Animated.Value(1)).current;
+  const arOpacity = useRef(new Animated.Value(0)).current;
+  const arScale = useRef(new Animated.Value(EMERGE_FROM_SCALE)).current;
+  const arSlide = useRef(new Animated.Value(28)).current;
   const resetRef = useRef(null);
 
   const clearTimer = useCallback(() => {
@@ -29,98 +27,37 @@ export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
 
   useEffect(() => () => clearTimer(), [clearTimer]);
 
-  const returnToDefault = useCallback(() => {
+  const returnToEnglish = useCallback(() => {
     Animated.parallel([
-      Animated.timing(arabicOpacity, {
-        toValue: 0,
-        duration: 220,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(defaultOpacity, {
-        toValue: 1,
-        duration: 280,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(arabicScale, {
-        toValue: EMERGE_FROM_SCALE,
-        duration: 220,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(arabicSlide, {
-        toValue: 28,
-        duration: 220,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
+      Animated.timing(arOpacity, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(enOpacity, { toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(arScale, { toValue: EMERGE_FROM_SCALE, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(arSlide, { toValue: 28, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
     ]).start(({ finished }) => {
-      if (!finished) return;
-      setShowArabic(false);
+      if (finished) setShowArabic(false);
     });
-  }, [arabicOpacity, arabicScale, arabicSlide, defaultOpacity]);
+  }, [arOpacity, arScale, arSlide, enOpacity]);
 
   const handlePress = useCallback(() => {
     if (showArabic) return;
     clearTimer();
-    defaultOpacity.stopAnimation();
-    arabicOpacity.stopAnimation();
-    arabicScale.stopAnimation();
-    arabicSlide.stopAnimation();
-
     setShowArabic(true);
-    arabicScale.setValue(EMERGE_FROM_SCALE);
-    arabicSlide.setValue(28);
-    defaultOpacity.setValue(1);
-    arabicOpacity.setValue(0);
+    arScale.setValue(EMERGE_FROM_SCALE);
+    arSlide.setValue(28);
+    enOpacity.setValue(1);
+    arOpacity.setValue(0);
 
     Animated.parallel([
-      Animated.timing(defaultOpacity, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(arabicOpacity, {
-        toValue: 1,
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.spring(arabicScale, {
-        toValue: 1.04,
-        friction: 7,
-        tension: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(arabicSlide, {
-        toValue: 0,
-        duration: 340,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
+      Animated.timing(enOpacity, { toValue: 0, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(arOpacity, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.spring(arScale, { toValue: 1.04, friction: 7, tension: 180, useNativeDriver: true }),
+      Animated.timing(arSlide, { toValue: 0, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start(() => {
-      Animated.timing(arabicScale, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
+      Animated.timing(arScale, { toValue: 1, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     });
 
-    resetRef.current = setTimeout(returnToDefault, ALT_DISPLAY_MS);
-  }, [
-    arabicOpacity,
-    arabicScale,
-    arabicSlide,
-    clearTimer,
-    defaultOpacity,
-    returnToDefault,
-    showArabic,
-  ]);
-
-  const boxAspect = showArabic ? ARABIC_ASPECT : LOGO_ASPECT;
+    resetRef.current = setTimeout(returnToEnglish, ALT_DISPLAY_MS);
+  }, [arOpacity, arScale, arSlide, clearTimer, enOpacity, returnToEnglish, showArabic]);
 
   return (
     <HuzzPressable
@@ -128,35 +65,26 @@ export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
       haptic="light"
       accessibilityRole="imagebutton"
       accessibilityLabel="Wasl logo"
-      accessibilityHint="Tap to see the Arabic Wasl animation"
+      accessibilityHint="Tap to reveal the Arabic Wasl logo"
       style={[styles.wrap, compact && styles.wrapCompact]}
     >
       <View
         style={[
-          compact ? styles.iconContainerCompact : styles.iconContainer,
+          compact ? styles.boxCompact : styles.box,
           !compact && { maxWidth },
           compact && { width: maxWidth },
-          { aspectRatio: boxAspect },
+          { aspectRatio: showArabic ? AR_ASPECT : EN_ASPECT },
         ]}
       >
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.layer, { opacity: defaultOpacity }]}
-        >
-          <Image source={LOGO_DEFAULT} style={styles.logo} resizeMode="contain" />
+        <Animated.View pointerEvents="none" style={[styles.layer, { opacity: enOpacity }]}>
+          <Image source={LOGO_EN} style={styles.img} resizeMode="contain" accessibilityIgnoresInvertColors />
         </Animated.View>
         {showArabic ? (
           <Animated.View
             pointerEvents="none"
-            style={[
-              styles.layer,
-              {
-                opacity: arabicOpacity,
-                transform: [{ scale: arabicScale }, { translateX: arabicSlide }],
-              },
-            ]}
+            style={[styles.layer, { opacity: arOpacity, transform: [{ scale: arScale }, { translateX: arSlide }] }]}
           >
-            <Image source={LOGO_ARABIC} style={styles.logo} resizeMode="contain" />
+            <Image source={LOGO_AR} style={styles.img} resizeMode="contain" accessibilityIgnoresInvertColors />
           </Animated.View>
         ) : null}
       </View>
@@ -165,35 +93,10 @@ export function WelcomeMascotBlock({ maxWidth = 300, compact = false }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    alignSelf: 'stretch',
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  wrapCompact: {
-    alignSelf: 'center',
-    width: undefined,
-    marginBottom: 0,
-  },
-  iconContainer: {
-    width: '100%',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconContainerCompact: {
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  layer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logo: {
-    width: '100%',
-    height: '100%',
-  },
+  wrap: { alignSelf: 'stretch', width: '100%', alignItems: 'center', marginBottom: 8 },
+  wrapCompact: { alignSelf: 'center', width: undefined, marginBottom: 0 },
+  box: { width: '100%', alignItems: 'center', justifyContent: 'center' },
+  boxCompact: { alignItems: 'center', justifyContent: 'center' },
+  layer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  img: { width: '100%', height: '100%' },
 });
