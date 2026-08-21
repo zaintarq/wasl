@@ -6,7 +6,7 @@ import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 const LOGO_EN = require('../../../assets/images/wasl-logo-en.png');
 const LOGO_AR = require('../../../assets/images/wasl-logo-ar.png');
 const EN_ASPECT = 1024 / 847;
-const AR_ASPECT = 1024 / 769;
+const AR_ASPECT = 1024 / 871;
 const ALT_DISPLAY_MS = 1400;
 const EMERGE_FROM_SCALE = 0.34;
 

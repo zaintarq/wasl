@@ -1,7 +1,7 @@
 /** Tap English Wasl logo → Arabic وصل slides in, then auto-return. */
 (function () {
   const ALT_MS = 1400;
-  const AR_SRC = 'assets/wasl-logo-ar.png?v=3';
+  const AR_SRC = 'assets/wasl-logo-ar.png?v=4';
 
   function bindLogoTap(root) {
     const stack = root.querySelector('.logo-stack');
@@ -40,7 +40,7 @@
         arImg.alt = '';
         arImg.setAttribute('aria-hidden', 'true');
         arImg.width = 320;
-        arImg.height = 240;
+        arImg.height = 248;
         stack.appendChild(arImg);
       }
 
