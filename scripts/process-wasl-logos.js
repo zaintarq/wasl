@@ -118,6 +118,17 @@ function scrubEnclosedChecker(data) {
   }
 }
 
+function scrubBlueFringe(data) {
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 16) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if (r + g + b < 130) continue;
+    if (b > r + 6 && b > g + 4) data[i + 3] = 0;
+  }
+}
+
 function defringeLight(data, br, bg, bb, tol, soft) {
   for (let i = 0; i < data.length; i += 4) {
     const d = dist(data[i], data[i + 1], data[i + 2], br, bg, bb);
@@ -136,6 +147,7 @@ function cutBackground(buffer, tol) {
   floodRemoveExterior(data, width, height, ...bg, tol);
   scrubEnclosedChecker(data);
   defringeLight(data, ...bg, tol, 20);
+  scrubBlueFringe(data);
   return PNG.sync.write(png);
 }
 
