@@ -27,7 +27,7 @@ const LOGOS = [
     out: path.join(imagesDir, 'wasl-logo-ar.png'),
     docsOut: path.join(docsDir, 'wasl-logo-ar.png'),
     variant: 'ar',
-    tol: 58,
+    tol: 62,
   },
 ];
 
@@ -128,8 +128,8 @@ function defringeLight(data, br, bg, bb, tol, soft) {
   }
 }
 
-/** Drop enclosed grey plate; keep solid black calligraphy. */
-function scrubGreyPlate(data, br, bg, bb) {
+/** Drop enclosed grey plate, vignette strips, and watermark leftovers; keep black ink. */
+function scrubGreyPlate(data, width, height, br, bg, bb) {
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 16) continue;
     const r = data[i];
@@ -138,12 +138,57 @@ function scrubGreyPlate(data, br, bg, bb) {
     const sum = r + g + b;
     const maxC = Math.max(r, g, b);
     const minC = Math.min(r, g, b);
-    if (sum < 200) continue;
-    if (maxC - minC < 40 && sum > 480) {
+    const chroma = maxC - minC;
+    if (sum < 180 && maxC < 90) continue;
+    if (chroma < 48 && sum > 400) {
       data[i + 3] = 0;
       continue;
     }
-    if (dist(r, g, b, br, bg, bb) <= 44) data[i + 3] = 0;
+    if (dist(r, g, b, br, bg, bb) <= 58) data[i + 3] = 0;
+  }
+}
+
+/** Watermark sits top-right (~x 670+); strip dark pixels there after plate removal. */
+function scrubTopWatermark(data, width, height) {
+  const topH = Math.min(96, Math.round(height * 0.16));
+  const leftX = Math.round(width * 0.58);
+  for (let y = 0; y < topH; y++) {
+    for (let x = leftX; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (data[i + 3] < 16) continue;
+      const sum = data[i] + data[i + 1] + data[i + 2];
+      if (sum < 640) data[i + 3] = 0;
+    }
+  }
+}
+
+/** Remove mostly-grey side columns (vignette leftovers). */
+function stripSideGreyBands(data, width, height) {
+  const band = Math.max(12, Math.round(width * 0.04));
+  for (let pass = 0; pass < 2; pass++) {
+    for (const side of ['left', 'right']) {
+      for (let x = 0; x < band; x++) {
+        const col = side === 'left' ? x : width - 1 - x;
+        let grey = 0;
+        let total = 0;
+        for (let y = 0; y < height; y++) {
+          const i = (y * width + col) * 4;
+          if (data[i + 3] < 16) continue;
+          total++;
+          const sum = data[i] + data[i + 1] + data[i + 2];
+          const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
+          if (sum > 400 && maxC > 100) grey++;
+        }
+        if (total > 0 && grey / total > 0.55) {
+          for (let y = 0; y < height; y++) {
+            const i = (y * width + col) * 4;
+            const sum = data[i] + data[i + 1] + data[i + 2];
+            const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
+            if (data[i + 3] > 16 && sum > 350 && maxC > 90) data[i + 3] = 0;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -152,8 +197,44 @@ function cutBackground(buffer, variant, tol) {
   const { data, width, height } = png;
   const bg = variant === 'ar' ? sampleEdgePlate(data, width, height) : sampleCorners(data, width, height);
   floodRemoveExterior(data, width, height, ...bg, tol);
-  if (variant === 'en') defringeLight(data, ...bg, tol, 28);
-  else scrubGreyPlate(data, ...bg);
+  if (variant === 'en') {
+    defringeLight(data, ...bg, tol, 28);
+  } else {
+    scrubGreyPlate(data, width, height, ...bg);
+    scrubTopWatermark(data, width, height);
+    scrubGreyPlate(data, width, height, ...bg);
+    stripSideGreyBands(data, width, height);
+  }
+  return PNG.sync.write(png);
+}
+
+/** Final pass on cropped AR asset — watermark corner + side vignette. */
+function postCropArCleanup(pngBuffer) {
+  const png = PNG.sync.read(pngBuffer);
+  const { data, width, height } = png;
+  const wmLeft = Math.round(width * 0.72);
+  const wmTop = Math.min(88, Math.round(height * 0.15));
+  for (let y = 0; y < wmTop; y++) {
+    for (let x = wmLeft; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (data[i + 3] < 16) continue;
+      const sum = data[i] + data[i + 1] + data[i + 2];
+      if (sum < 520) data[i + 3] = 0;
+    }
+  }
+  stripSideGreyBands(data, width, height);
+  const band = Math.max(18, Math.round(width * 0.06));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < band; x++) {
+      for (const col of [x, width - 1 - x]) {
+        const i = (y * width + col) * 4;
+        if (data[i + 3] < 16) continue;
+        const sum = data[i] + data[i + 1] + data[i + 2];
+        const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
+        if (sum > 380 && maxC > 95) data[i + 3] = 0;
+      }
+    }
+  }
   return PNG.sync.write(png);
 }
 
@@ -198,9 +279,16 @@ function tightCrop(pngBuffer) {
 
 async function prepareArRaster(src) {
   const meta = await sharp(src).metadata();
+  const w = meta.width;
+  const h = meta.height;
   const { data } = await sharp(src).extract({ left: 50, top: 10, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
   const [r, g, b] = data;
-  const svg = `<svg width="${meta.width}" height="${meta.height}"><rect x="${meta.width - 250}" y="0" width="250" height="110" fill="rgb(${r},${g},${b})"/></svg>`;
+  const fill = `rgb(${r},${g},${b})`;
+  const svg = `<svg width="${w}" height="${h}">
+    <rect x="580" y="0" width="${w - 580}" height="120" fill="${fill}"/>
+    <rect x="0" y="0" width="80" height="${h}" fill="${fill}"/>
+    <rect x="${w - 80}" y="0" width="80" height="${h}" fill="${fill}"/>
+  </svg>`;
   return sharp(src).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).ensureAlpha().png().toBuffer();
 }
 
@@ -210,7 +298,8 @@ async function processLogo({ src, out, variant, tol }) {
     return false;
   }
   const raw = variant === 'ar' ? await prepareArRaster(src) : await sharp(src).ensureAlpha().png().toBuffer();
-  const cut = tightCrop(cutBackground(raw, variant, tol));
+  let cut = tightCrop(cutBackground(raw, variant, tol));
+  if (variant === 'ar') cut = postCropArCleanup(cut);
   await sharp(cut).png({ compressionLevel: 9 }).toFile(out);
   const meta = await sharp(out).metadata();
   console.log(`Written ${variant} (${meta.width}x${meta.height}):`, path.basename(out));
