@@ -97,7 +97,7 @@ a { color: var(--brand-pink-dark); }
 .logo-stack::before {
   content: "";
   display: block;
-  padding-top: 88.37%;
+  padding-top: 95.52%;
 }
 
 .logo-layer {

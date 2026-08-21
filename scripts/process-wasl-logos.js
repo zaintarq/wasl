@@ -1,5 +1,5 @@
 /**
- * Process Wasl logos → transparent PNGs (edge flood-fill + trim).
+ * Process Wasl logos → transparent PNGs.
  * Run: node scripts/process-wasl-logos.js
  */
 const sharp = require('sharp');
@@ -10,11 +10,6 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const imagesDir = path.join(ROOT, 'assets', 'images');
 const docsDir = path.join(ROOT, 'docs', 'assets');
-
-/** Enclosed vignette column in source (x 909–1018) — paint before flood-fill. */
-const AR_VIGNETTE_X = 909;
-const AR_VIGNETTE_W = 110;
-const AR_TOP_PAD = 24;
 
 const LOGOS = [
   {
@@ -27,11 +22,10 @@ const LOGOS = [
     tol: 52,
   },
   {
-    src: path.join(imagesDir, 'wasl-logo-ar-source.jpg'),
+    src: path.join(imagesDir, 'wasl-logo-ar-source.png'),
     out: path.join(imagesDir, 'wasl-logo-ar.png'),
     docsOut: path.join(docsDir, 'wasl-logo-ar.png'),
-    variant: 'ar',
-    tol: 62,
+    variant: 'ar-clean',
   },
 ];
 
@@ -49,34 +43,28 @@ function sampleCorners(data, width, height) {
   return [Math.round(r / 4), Math.round(g / 4), Math.round(b / 4)];
 }
 
-function sampleEdgePlate(data, width, height) {
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let n = 0;
-  for (let x = 12; x < width - 220; x += 24) {
-    const i = x * 4;
-    r += data[i];
-    g += data[i + 1];
-    b += data[i + 2];
-    n++;
-  }
-  for (let y = 12; y < height - 12; y += 24) {
-    const i = (y * width) * 4;
-    r += data[i];
-    g += data[i + 1];
-    b += data[i + 2];
-    n++;
-  }
-  return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
-}
-
 function dist(r, g, b, br, bg, bb) {
   return Math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2);
 }
 
+function isInk(r, g, b) {
+  const sum = r + g + b;
+  return sum < 120 || Math.max(r, g, b) < 55;
+}
+
+function isCheckerBg(r, g, b) {
+  const sum = r + g + b;
+  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+  return sum > 500 && chroma < 24;
+}
+
 function floodRemoveExterior(data, width, height, br, bg, bb, tol) {
-  const isBg = (i) => dist(data[i], data[i + 1], data[i + 2], br, bg, bb) <= tol;
+  const isBg = (i) => {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    return isCheckerBg(r, g, b) || dist(r, g, b, br, bg, bb) <= tol;
+  };
   const seen = new Uint8Array(width * height);
   const queue = [];
 
@@ -119,6 +107,17 @@ function floodRemoveExterior(data, width, height, br, bg, bb, tol) {
   }
 }
 
+function scrubEnclosedChecker(data) {
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 16) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if (isInk(r, g, b)) continue;
+    if (isCheckerBg(r, g, b)) data[i + 3] = 0;
+  }
+}
+
 function defringeLight(data, br, bg, bb, tol, soft) {
   for (let i = 0; i < data.length; i += 4) {
     const d = dist(data[i], data[i + 1], data[i + 2], br, bg, bb);
@@ -130,64 +129,29 @@ function defringeLight(data, br, bg, bb, tol, soft) {
   }
 }
 
-function scrubGreyPlate(data, br, bg, bb) {
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 16) continue;
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const sum = r + g + b;
-    const maxC = Math.max(r, g, b);
-    const chroma = maxC - Math.min(r, g, b);
-    if (sum < 180 && maxC < 90) continue;
-    if (chroma < 50 && sum > 220) {
-      data[i + 3] = 0;
-      continue;
-    }
-    if (dist(r, g, b, br, bg, bb) <= 58) data[i + 3] = 0;
-  }
-}
-
-function scrubBlueFringe(data) {
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 16) continue;
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    if (r + g + b < 130) continue;
-    if (b > r + 5 && b > g + 3) data[i + 3] = 0;
-  }
-}
-
-function scrubWatermarkText(data, width, height) {
-  for (let y = 20; y < 78; y++) {
-    for (let x = 760; x < width; x++) {
-      const i = (y * width + x) * 4;
-      if (data[i + 3] < 16) continue;
-      const sum = data[i] + data[i + 1] + data[i + 2];
-      const maxC = Math.max(data[i], data[i + 1], data[i + 2]);
-      if (sum > 130 && sum < 600 && maxC < 220) data[i + 3] = 0;
-    }
-  }
-}
-
-function cutBackground(buffer, variant, tol) {
+function cutBackground(buffer, tol) {
   const png = PNG.sync.read(buffer);
   const { data, width, height } = png;
-  const bg = variant === 'ar' ? sampleEdgePlate(data, width, height) : sampleCorners(data, width, height);
+  const bg = sampleCorners(data, width, height);
   floodRemoveExterior(data, width, height, ...bg, tol);
-  if (variant === 'en') {
-    defringeLight(data, ...bg, tol, 28);
-  } else {
-    scrubGreyPlate(data, ...bg);
-    scrubWatermarkText(data, width, height);
-    scrubBlueFringe(data);
-    scrubGreyPlate(data, ...bg);
-  }
+  scrubEnclosedChecker(data);
+  defringeLight(data, ...bg, tol, 20);
   return PNG.sync.write(png);
 }
 
-function looseCrop(pngBuffer, pad = 8) {
+function cutCleanAr(buffer) {
+  const png = PNG.sync.read(buffer);
+  const { data, width, height } = png;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i + 3] = 255;
+  }
+  const bg = sampleCorners(data, width, height);
+  floodRemoveExterior(data, width, height, ...bg, 36);
+  scrubEnclosedChecker(data);
+  return PNG.sync.write(png);
+}
+
+function tightCrop(pngBuffer, pad = 4) {
   const png = PNG.sync.read(pngBuffer);
   const { data, width, height } = png;
   let minX = width;
@@ -225,58 +189,16 @@ function looseCrop(pngBuffer, pad = 8) {
   return PNG.sync.write(out);
 }
 
-async function prepareArRaster(src) {
-  const meta = await sharp(src).metadata();
-  const w = meta.width;
-  const h = meta.height;
-  const { data } = await sharp(src).extract({ left: 50, top: 10, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
-  const fill = `rgb(${data[0]},${data[1]},${data[2]})`;
-  const svg = `<svg width="${w}" height="${h}">
-    <rect x="${AR_VIGNETTE_X}" y="0" width="${AR_VIGNETTE_W}" height="${h}" fill="${fill}"/>
-  </svg>`;
-  return sharp(src).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).ensureAlpha().png().toBuffer();
-}
-
-/** Drop isolated ink island on the far right (horn spike separated by vignette gap). */
-function removeFarRightIsland(pngBuffer, splitX = 878) {
-  const png = PNG.sync.read(pngBuffer);
-  const { data, width, height } = png;
-  for (let y = 0; y < height; y++) {
-    for (let x = splitX; x < width; x++) {
-      const i = (y * width + x) * 4;
-      data[i + 3] = 0;
-    }
-  }
-  return PNG.sync.write(png);
-}
-
-async function addTopPadding(pngBuffer, topPad) {
-  const meta = await sharp(pngBuffer).metadata();
-  return sharp({
-    create: {
-      width: meta.width,
-      height: meta.height + topPad,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  })
-    .composite([{ input: pngBuffer, top: topPad, left: 0 }])
-    .png()
-    .toBuffer();
-}
-
 async function processLogo({ src, out, variant, tol }) {
   if (!fs.existsSync(src)) {
     console.warn('Skip (missing):', src);
     return false;
   }
-  const raw = variant === 'ar' ? await prepareArRaster(src) : await sharp(src).ensureAlpha().png().toBuffer();
-  let cut = looseCrop(cutBackground(raw, variant, tol), variant === 'ar' ? 10 : 2);
-  if (variant === 'ar') {
-    cut = removeFarRightIsland(cut);
-    cut = looseCrop(cut, 8);
-    cut = await addTopPadding(cut, AR_TOP_PAD);
-  }
+  const raw = await sharp(src).ensureAlpha().png().toBuffer();
+  const cut =
+    variant === 'ar-clean'
+      ? tightCrop(cutCleanAr(raw), 6)
+      : tightCrop(cutBackground(raw, tol), 2);
   await sharp(cut).png({ compressionLevel: 9 }).toFile(out);
   const meta = await sharp(out).metadata();
   console.log(`Written ${variant} (${meta.width}x${meta.height}):`, path.basename(out));
@@ -287,7 +209,7 @@ async function main() {
   fs.mkdirSync(docsDir, { recursive: true });
   const only = process.env.ONLY?.split(',') || null;
   for (const item of LOGOS) {
-    if (only && !only.includes(item.variant)) continue;
+    if (only && !only.includes(item.variant.replace('-clean', '')) && !only.includes(item.variant)) continue;
     const meta = await processLogo(item);
     if (!meta) continue;
     if (item.docsOut) fs.copyFileSync(item.out, item.docsOut);

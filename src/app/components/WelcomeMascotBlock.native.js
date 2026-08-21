@@ -5,7 +5,7 @@ import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 const LOGO_EN = require('../../../assets/images/wasl-logo-en.png');
 const LOGO_AR = require('../../../assets/images/wasl-logo-ar.png');
 const EN_ASPECT = 712 / 939;
-const AR_ASPECT = 684 / 774;
+const AR_ASPECT = 405 / 424;
 const BOX_ASPECT = Math.max(EN_ASPECT, AR_ASPECT);
 const ALT_MS = 1500;
 const EMERGE = 0.42;
