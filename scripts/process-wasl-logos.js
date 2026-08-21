@@ -1,5 +1,7 @@
 /**
- * Process Wasl logos → transparent PNGs (edge flood-fill + trim).
+ * Process Wasl logos → transparent PNGs with solid ink (same bold look).
+ * - English: light BG, edge flood
+ * - Arabic (black plate): keep ink neighborhood around white/black artwork, drop outer black
  * Run: node scripts/process-wasl-logos.js
  */
 const sharp = require('sharp');
@@ -11,6 +13,10 @@ const ROOT = path.join(__dirname, '..');
 const imagesDir = path.join(ROOT, 'assets', 'images');
 const docsDir = path.join(ROOT, 'docs', 'assets');
 
+const TOL = 52;
+const INK_LUM = 118;
+const INK_DILATE = 28;
+
 const LOGOS = [
   {
     src: path.join(imagesDir, 'wasl-logo-en-source.jpg'),
@@ -18,15 +24,13 @@ const LOGOS = [
     docsOut: path.join(docsDir, 'wasl-logo-en.png'),
     legacyOut: path.join(imagesDir, 'app-logo.png'),
     legacyDocs: path.join(docsDir, 'app-logo.png'),
-    mode: 'light',
-    tol: 52,
+    darkBg: false,
   },
   {
     src: path.join(imagesDir, 'wasl-logo-ar-source.jpg'),
     out: path.join(imagesDir, 'wasl-logo-ar.png'),
     docsOut: path.join(docsDir, 'wasl-logo-ar.png'),
-    mode: 'dark',
-    tol: 48,
+    darkBg: true,
   },
 ];
 
@@ -48,8 +52,35 @@ function dist(r, g, b, br, bg, bb) {
   return Math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2);
 }
 
-/** Remove only exterior BG connected to image edges — keeps letter counters / ink. */
-function floodRemoveExterior(data, width, height, br, bg, bb, tol) {
+function isInkPixel(i, data) {
+  const r = data[i];
+  const g = data[i + 1];
+  const b = data[i + 2];
+  return Math.max(r, g, b) >= INK_LUM || r + g + b >= 90;
+}
+
+function dilateMask(mask, width, height, radius) {
+  const out = new Uint8Array(mask.length);
+  const r2 = radius * radius;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (!mask[idx]) continue;
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (dx * dx + dy * dy > r2) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          out[ny * width + nx] = 1;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function clearExteriorLight(data, width, height, br, bg, bb, tol) {
   const isBg = (i) => dist(data[i], data[i + 1], data[i + 2], br, bg, bb) <= tol;
   const seen = new Uint8Array(width * height);
   const queue = [];
@@ -93,24 +124,35 @@ function floodRemoveExterior(data, width, height, br, bg, bb, tol) {
   }
 }
 
-/** Feather leftover BG fringe (compression artefacts). */
-function defringe(data, br, bg, bb, tol, soft) {
-  for (let i = 0; i < data.length; i += 4) {
-    const d = dist(data[i], data[i + 1], data[i + 2], br, bg, bb);
-    if (d <= tol) {
+/** Black plate: keep dilated artwork ink; drop outer black void. */
+function cutDarkArtwork(data, width, height) {
+  const seed = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (isInkPixel(idx * 4, data)) seed[idx] = 1;
+    }
+  }
+  const keep = dilateMask(seed, width, height, INK_DILATE);
+  for (let idx = 0; idx < width * height; idx++) {
+    const i = idx * 4;
+    if (keep[idx]) {
+      data[i + 3] = 255;
+    } else {
       data[i + 3] = 0;
-    } else if (d < tol + soft && data[i + 3] < 255) {
-      data[i + 3] = Math.min(data[i + 3], Math.round((255 * (d - tol)) / soft));
     }
   }
 }
 
-function cutBackground(buffer, mode, tol) {
+function cutBackground(buffer, darkBg) {
   const png = PNG.sync.read(buffer);
   const { data, width, height } = png;
-  const [br, bg, bb] = sampleCorners(data, width, height);
-  floodRemoveExterior(data, width, height, br, bg, bb, tol);
-  defringe(data, br, bg, bb, tol, 28);
+  if (darkBg) {
+    cutDarkArtwork(data, width, height);
+  } else {
+    const bg = sampleCorners(data, width, height);
+    clearExteriorLight(data, width, height, ...bg, TOL);
+  }
   return PNG.sync.write(png);
 }
 
@@ -153,16 +195,16 @@ function tightCrop(pngBuffer) {
   return PNG.sync.write(out);
 }
 
-async function processLogo({ src, out, mode, tol }) {
+async function processLogo({ src, out, darkBg }) {
   if (!fs.existsSync(src)) {
     console.warn('Skip (missing):', src);
     return false;
   }
   const raw = await sharp(src).ensureAlpha().png().toBuffer();
-  const cut = tightCrop(cutBackground(raw, mode, tol));
+  const cut = tightCrop(cutBackground(raw, darkBg));
   await sharp(cut).png({ compressionLevel: 9 }).toFile(out);
   const meta = await sharp(out).metadata();
-  console.log(`Written (${mode}, ${meta.width}x${meta.height}):`, path.basename(out));
+  console.log(`Written (${meta.width}x${meta.height}):`, path.basename(out));
   return true;
 }
 

@@ -1,7 +1,7 @@
 /** Tap English Wasl → crossfade + slide to Arabic reveal, then return. */
 (function () {
   const HOLD_MS = 1500;
-  const AR_SRC = 'assets/wasl-logo-ar.png?v=5';
+  const AR_SRC = 'assets/wasl-logo-ar.png?v=6';
 
   function bindLogoTap(root) {
     const stack = root.querySelector('.logo-stack');
