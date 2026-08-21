@@ -1,7 +1,5 @@
 /**
- * Process Wasl logos → transparent PNGs with solid ink (same bold look).
- * - English: light BG, edge flood
- * - Arabic (black plate): keep ink neighborhood around white/black artwork, drop outer black
+ * Process both Wasl logos identically: edge flood-fill light BG → transparent PNG → tight crop.
  * Run: node scripts/process-wasl-logos.js
  */
 const sharp = require('sharp');
@@ -13,9 +11,23 @@ const ROOT = path.join(__dirname, '..');
 const imagesDir = path.join(ROOT, 'assets', 'images');
 const docsDir = path.join(ROOT, 'docs', 'assets');
 
-const TOL = 52;
-const INK_LUM = 118;
-const INK_DILATE = 28;
+const TOL = 58;
+
+/** Remove plate fringe + blue JPEG artefacts; keep black/white ink. */
+function scrubFringe(data, br, bg, bb) {
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 16) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const sum = r + g + b;
+    const maxC = Math.max(r, g, b);
+    if (sum < 120 || maxC > 248) continue;
+    const d = dist(r, g, b, br, bg, bb);
+    const blueFringe = b > r + 6 && b > g + 4;
+    if (blueFringe || d <= 42) data[i + 3] = 0;
+  }
+}
 
 const LOGOS = [
   {
@@ -24,17 +36,39 @@ const LOGOS = [
     docsOut: path.join(docsDir, 'wasl-logo-en.png'),
     legacyOut: path.join(imagesDir, 'app-logo.png'),
     legacyDocs: path.join(docsDir, 'app-logo.png'),
-    darkBg: false,
+    variant: 'en',
   },
   {
     src: path.join(imagesDir, 'wasl-logo-ar-source.jpg'),
     out: path.join(imagesDir, 'wasl-logo-ar.png'),
     docsOut: path.join(docsDir, 'wasl-logo-ar.png'),
-    darkBg: true,
+    variant: 'ar',
   },
 ];
 
-function sampleCorners(data, width, height) {
+function sampleBg(data, width, height, variant) {
+  if (variant === 'ar') {
+    // Grey plate + watermark top-right; sample top/left edges only.
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let n = 0;
+    for (let x = 8; x < width - 200; x += 32) {
+      const i = x * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      n++;
+    }
+    for (let y = 8; y < height - 8; y += 32) {
+      const i = (y * width) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      n++;
+    }
+    return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  }
   const corners = [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]];
   let r = 0;
   let g = 0;
@@ -50,34 +84,6 @@ function sampleCorners(data, width, height) {
 
 function dist(r, g, b, br, bg, bb) {
   return Math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2);
-}
-
-function isInkPixel(i, data) {
-  const r = data[i];
-  const g = data[i + 1];
-  const b = data[i + 2];
-  return Math.max(r, g, b) >= INK_LUM || r + g + b >= 90;
-}
-
-function dilateMask(mask, width, height, radius) {
-  const out = new Uint8Array(mask.length);
-  const r2 = radius * radius;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      if (!mask[idx]) continue;
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          if (dx * dx + dy * dy > r2) continue;
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-          out[ny * width + nx] = 1;
-        }
-      }
-    }
-  }
-  return out;
 }
 
 function clearExteriorLight(data, width, height, br, bg, bb, tol) {
@@ -124,35 +130,27 @@ function clearExteriorLight(data, width, height, br, bg, bb, tol) {
   }
 }
 
-/** Black plate: keep dilated artwork ink; drop outer black void. */
-function cutDarkArtwork(data, width, height) {
-  const seed = new Uint8Array(width * height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      if (isInkPixel(idx * 4, data)) seed[idx] = 1;
-    }
-  }
-  const keep = dilateMask(seed, width, height, INK_DILATE);
-  for (let idx = 0; idx < width * height; idx++) {
-    const i = idx * 4;
-    if (keep[idx]) {
-      data[i + 3] = 255;
-    } else {
-      data[i + 3] = 0;
-    }
+/** Drop enclosed grey plate leftovers; keep pure black/white ink. */
+function scrubPlateRemnants(data, width, height, br, bg, bb) {
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 16) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const maxC = Math.max(r, g, b);
+    const sum = r + g + b;
+    if (maxC > 248 || sum < 120) continue;
+    if (dist(r, g, b, br, bg, bb) <= 42) data[i + 3] = 0;
   }
 }
 
-function cutBackground(buffer, darkBg) {
+function cutBackground(buffer, variant) {
   const png = PNG.sync.read(buffer);
   const { data, width, height } = png;
-  if (darkBg) {
-    cutDarkArtwork(data, width, height);
-  } else {
-    const bg = sampleCorners(data, width, height);
-    clearExteriorLight(data, width, height, ...bg, TOL);
-  }
+  const bg = sampleBg(data, width, height, variant);
+  clearExteriorLight(data, width, height, ...bg, TOL);
+  scrubFringe(data, ...bg);
+  if (variant === 'ar') scrubPlateRemnants(data, width, height, ...bg);
   return PNG.sync.write(png);
 }
 
@@ -195,24 +193,24 @@ function tightCrop(pngBuffer) {
   return PNG.sync.write(out);
 }
 
-async function processLogo({ src, out, darkBg }) {
+async function processLogo({ src, out, variant }) {
   if (!fs.existsSync(src)) {
     console.warn('Skip (missing):', src);
     return false;
   }
   const raw = await sharp(src).ensureAlpha().png().toBuffer();
-  const cut = tightCrop(cutBackground(raw, darkBg));
+  const cut = tightCrop(cutBackground(raw, variant));
   await sharp(cut).png({ compressionLevel: 9 }).toFile(out);
   const meta = await sharp(out).metadata();
-  console.log(`Written (${meta.width}x${meta.height}):`, path.basename(out));
-  return true;
+  console.log(`Written ${meta.width}x${meta.height}:`, path.basename(out));
+  return meta;
 }
 
 async function main() {
   fs.mkdirSync(docsDir, { recursive: true });
   for (const item of LOGOS) {
-    const ok = await processLogo(item);
-    if (!ok) continue;
+    const meta = await processLogo(item);
+    if (!meta) continue;
     if (item.docsOut) fs.copyFileSync(item.out, item.docsOut);
     if (item.legacyOut) {
       fs.copyFileSync(item.out, item.legacyOut);
