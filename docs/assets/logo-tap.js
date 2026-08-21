@@ -1,7 +1,7 @@
 /** Tap English Wasl logo → Arabic وصل slides in, then auto-return. */
 (function () {
   const ALT_MS = 1400;
-  const AR_SRC = 'assets/wasl-logo-ar.png?v=2';
+  const AR_SRC = 'assets/wasl-logo-ar.png?v=3';
 
   function bindLogoTap(root) {
     const stack = root.querySelector('.logo-stack');
