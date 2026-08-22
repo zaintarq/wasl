@@ -226,18 +226,6 @@ export const datePlanService = {
   },
 };
 
-function normalizeUsername(raw) {
-  return String(raw || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^@+/, '');
-}
-
-function isValidUsername(raw) {
-  const u = normalizeUsername(raw);
-  return /^[a-z0-9_]{3,20}$/.test(u);
-}
-
 function randomInviteCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';

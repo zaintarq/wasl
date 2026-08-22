@@ -34,9 +34,12 @@ export function toStoryMillis(value) {
 
 export async function uploadStoryImage(uid, imageUri) {
   try {
+    const { normalizeImageUriForUpload } = require('../utils/normalizeImageUri.native');
+    const jpegUri = await normalizeImageUriForUpload(imageUri);
+
     try {
       const { gateImageBeforeUpload } = require('../utils/nsfwImageGate.native');
-      const gate = await gateImageBeforeUpload(imageUri);
+      const gate = await gateImageBeforeUpload(jpegUri);
       if (gate.blocked) {
         return { url: null, error: gate.message || 'This photo is not allowed.' };
       }
@@ -44,7 +47,7 @@ export async function uploadStoryImage(uid, imageUri) {
       // Scanner unavailable — server moderation still applies.
     }
 
-    const response = await fetch(imageUri);
+    const response = await fetch(jpegUri);
     const blob = await response.blob();
     const path = `stories/${uid}/${Date.now()}.jpg`;
     const storageRef = ref(storage, path);
@@ -137,6 +140,79 @@ export async function markAuthorStoriesSeen(viewerUid, authorUid, latestStoryId)
   } catch (error) {
     return { error: error?.message || String(error) };
   }
+}
+
+function storyViewsCol(storyId) {
+  return collection(db, 'stories', String(storyId), 'views');
+}
+
+/** Record that the signed-in user viewed a story (for author insights). */
+export async function recordStoryView(storyId, viewerUid, viewerName = 'User') {
+  try {
+    const sid = String(storyId || '').trim();
+    const vid = String(viewerUid || '').trim();
+    if (!sid || !vid) return { error: 'Missing ids.' };
+    await setDoc(
+      doc(db, 'stories', sid, 'views', vid),
+      {
+        viewerUid: vid,
+        viewerName: String(viewerName || 'User').trim().slice(0, 80),
+        viewedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { error: null };
+  } catch (error) {
+    return { error: error?.message || String(error) };
+  }
+}
+
+/** Live list of viewers for one story (author only per rules). */
+export function listenStoryViewers(storyId, callback) {
+  const sid = String(storyId || '').trim();
+  if (!sid) {
+    callback({ data: [], error: null });
+    return () => {};
+  }
+  const qRef = storyViewsCol(sid);
+  return onSnapshot(
+    qRef,
+    (snap) => {
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => toStoryMillis(b.viewedAt) - toStoryMillis(a.viewedAt));
+      callback({ data: list, error: null });
+    },
+    (error) => callback({ data: [], error: error.message })
+  );
+}
+
+/** Human-readable age + time-left for story header UI. */
+export function formatStoryTiming(story, nowMs = Date.now()) {
+  const created = toStoryMillis(story?.createdAt);
+  const expires = toStoryMillis(story?.expiresAt) || created + STORY_TTL_MS;
+  if (!created) {
+    return { ageLabel: 'Just posted', leftLabel: '24h left', expired: false };
+  }
+
+  const ageMs = Math.max(0, nowMs - created);
+  const leftMs = Math.max(0, expires - nowMs);
+  const expired = leftMs <= 0;
+
+  const fmt = (ms) => {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    if (h <= 0 && m <= 0) return 'Just now';
+    if (h <= 0) return `${m}m`;
+    if (m <= 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  };
+
+  const ageLabel =
+    ageMs < 60000 ? 'Just posted' : `${fmt(ageMs)} ago`;
+  const leftLabel = expired ? 'Expired' : `${fmt(leftMs)} left`;
+
+  return { ageLabel, leftLabel, expired, leftMs, ageMs };
 }
 
 /**

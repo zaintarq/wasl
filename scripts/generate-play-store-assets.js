@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Generate Play Store + Expo icon presets from assets/images/app-logo.png
+ * Generate Expo app icon, splash, adaptive icon, and Play Store assets
+ * from assets/images/wasl-logo-en.png (transparent Wasl wordmark).
  */
 const fs = require('fs');
 const path = require('path');
@@ -9,18 +10,39 @@ const sharp = require('sharp');
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'assets/images/wasl-logo-en.png');
 const OUT_DIR = path.join(ROOT, 'assets/play-store');
-const BG = { r: 10, g: 10, b: 10, alpha: 1 };
+const PINK = { r: 251, g: 207, b: 232, alpha: 1 };
 
-async function squareIcon(size, outPath) {
+async function compositeLogo(size, background, outPath) {
   const meta = await sharp(SRC).metadata();
-  const scale = Math.min(size / meta.width, size / meta.height) * 0.92;
+  const scale = Math.min(size / meta.width, size / meta.height) * 0.88;
   const w = Math.round(meta.width * scale);
   const h = Math.round(meta.height * scale);
   const resized = await sharp(SRC).resize(w, h, { fit: 'inside' }).png().toBuffer();
+  const layers = [{ input: resized, gravity: 'centre' }];
+  if (background) {
+    await sharp({
+      create: { width: size, height: size, channels: 4, background },
+    })
+      .composite(layers)
+      .png({ compressionLevel: 9 })
+      .toFile(outPath);
+    return;
+  }
   await sharp({
-    create: { width: size, height: size, channels: 4, background: BG },
+    create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
   })
-    .composite([{ input: resized, gravity: 'centre' }])
+    .composite(layers)
+    .png({ compressionLevel: 9 })
+    .toFile(outPath);
+}
+
+async function splashLogo(size, outPath) {
+  const meta = await sharp(SRC).metadata();
+  const scale = Math.min((size * 0.72) / meta.width, (size * 0.72) / meta.height);
+  const w = Math.round(meta.width * scale);
+  const h = Math.round(meta.height * scale);
+  await sharp(SRC)
+    .resize(w, h, { fit: 'inside' })
     .png({ compressionLevel: 9 })
     .toFile(outPath);
 }
@@ -35,11 +57,11 @@ async function featureGraphic(outPath) {
   const mascot = await sharp(SRC).resize(w, h, { fit: 'inside' }).png().toBuffer();
   const taglineSvg = Buffer.from(`
     <svg width="560" height="80" xmlns="http://www.w3.org/2000/svg">
-      <text x="0" y="52" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" fill="#fbbf24">Meet. Match. Go live.</text>
+      <text x="0" y="52" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" fill="#be185d">Meet. Match. Go live.</text>
     </svg>
   `);
   await sharp({
-    create: { width, height, channels: 4, background: BG },
+    create: { width, height, channels: 4, background: PINK },
   })
     .composite([
       { input: mascot, left: Math.round((width - w) / 2), top: Math.round((height - h) / 2 - 24) },
@@ -58,10 +80,11 @@ async function main() {
   fs.mkdirSync(path.join(ROOT, 'assets/images'), { recursive: true });
 
   const outputs = [
-    ['icon-1024.png', () => squareIcon(1024, path.join(ROOT, 'assets/images/icon-1024.png'))],
-    ['icon-512.png', () => squareIcon(512, path.join(OUT_DIR, 'icon-512.png'))],
+    ['icon-1024.png (pink app icon)', () => compositeLogo(1024, PINK, path.join(ROOT, 'assets/images/icon-1024.png'))],
+    ['splash-logo.png (transparent splash)', () => splashLogo(512, path.join(ROOT, 'assets/images/splash-logo.png'))],
+    ['adaptive-icon-1024.png (transparent foreground)', () => compositeLogo(1024, null, path.join(ROOT, 'assets/images/adaptive-icon-1024.png'))],
+    ['icon-512.png', () => compositeLogo(512, PINK, path.join(OUT_DIR, 'icon-512.png'))],
     ['feature-graphic-1024x500.png', () => featureGraphic(path.join(OUT_DIR, 'feature-graphic-1024x500.png'))],
-    ['adaptive-icon-1024.png', () => squareIcon(1024, path.join(ROOT, 'assets/images/adaptive-icon-1024.png'))],
   ];
 
   for (const [name, fn] of outputs) {

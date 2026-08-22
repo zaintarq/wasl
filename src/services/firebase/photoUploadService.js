@@ -118,7 +118,7 @@ export const photoUploadService = {
  */
 async function gateStorageImage(imageUri) {
   try {
-    const { gateImageBeforeUpload } = require('../utils/nsfwImageGate.native');
+    const { gateImageBeforeUpload } = require('../../utils/nsfwImageGate.native');
     return await gateImageBeforeUpload(imageUri);
   } catch {
     return { allowed: true, blocked: false, message: null };

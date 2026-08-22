@@ -51,7 +51,6 @@ import {
   _sendModerationNoticeCallable,
 } from './callables';
 
-import { matchService } from './matchService';
 import { notificationService } from './notificationService';
 
 export const likeService = {
@@ -205,6 +204,7 @@ export const likeService = {
           isMutual = true;
 
           try {
+            const { matchService } = await import('./matchService');
             const matchResult = await matchService.createActiveMatch(from, to, {
               source: 'mutual_like',
               initiatedBy: from,

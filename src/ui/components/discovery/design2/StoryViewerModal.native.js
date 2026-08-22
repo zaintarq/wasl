@@ -6,19 +6,27 @@ import {
   StyleSheet,
   Pressable,
   useWindowDimensions,
+  ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X } from 'lucide-react-native';
-import { tokens } from '../../../tokens';
+import { X, Eye } from 'lucide-react-native';
 import { PhotoProgressBars } from './PhotoProgressBars.native';
 import { HuzzPressable } from '../../HuzzPressable.native';
+import {
+  formatStoryTiming,
+  listenStoryViewers,
+  recordStoryView,
+} from '../../../../services/storyService';
 
 export function StoryViewerModal({
   visible,
   stories = [],
   userName = 'User',
   initialIndex = 0,
+  isOwnStory = false,
+  viewerUid = null,
+  viewerName = 'User',
   onClose,
   onFinished,
 }) {
@@ -26,11 +34,42 @@ export function StoryViewerModal({
   const { width: winW, height: winH } = useWindowDimensions();
   const list = Array.isArray(stories) ? stories.filter((s) => s?.mediaUrl) : [];
   const [index, setIndex] = useState(0);
+  const [timing, setTiming] = useState({ ageLabel: '', leftLabel: '' });
+  const [viewers, setViewers] = useState([]);
+  const [showViewers, setShowViewers] = useState(false);
+
+  const active = list[index];
 
   useEffect(() => {
     if (!visible) return;
     setIndex(Math.min(Math.max(0, initialIndex), Math.max(0, list.length - 1)));
+    setShowViewers(false);
   }, [visible, initialIndex, list.length]);
+
+  useEffect(() => {
+    if (!visible || !active) return undefined;
+    const tick = () => setTiming(formatStoryTiming(active));
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, [visible, active?.id, active?.createdAt, active?.expiresAt]);
+
+  useEffect(() => {
+    if (!visible || !active?.id || !viewerUid || isOwnStory) return undefined;
+    recordStoryView(active.id, viewerUid, viewerName).catch(() => {});
+    return undefined;
+  }, [visible, active?.id, viewerUid, viewerName, isOwnStory]);
+
+  useEffect(() => {
+    if (!visible || !isOwnStory || !active?.id) {
+      setViewers([]);
+      return undefined;
+    }
+    const unsub = listenStoryViewers(active.id, ({ data }) => {
+      setViewers(Array.isArray(data) ? data : []);
+    });
+    return () => unsub && unsub();
+  }, [visible, isOwnStory, active?.id]);
 
   const goNext = useCallback(() => {
     if (index < list.length - 1) {
@@ -47,14 +86,19 @@ export function StoryViewerModal({
 
   if (!visible || list.length === 0) return null;
 
-  const active = list[index];
-  const imgH = Math.max(240, winH - insets.top - insets.bottom - 72);
+  const imgH = Math.max(240, winH - insets.top - insets.bottom - (isOwnStory ? 120 : 88));
 
   return (
     <Modal visible={visible} animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.topBar}>
           <PhotoProgressBars total={list.length} activeIndex={index} />
+          <View style={styles.timerPill}>
+            <Text style={styles.timerText}>
+              {timing.ageLabel} · {timing.leftLabel}
+            </Text>
+            <Text style={styles.timerSub}>Stories disappear after 24 hours</Text>
+          </View>
           <View style={styles.topMeta}>
             <Text style={styles.userName} numberOfLines={1}>
               {userName}
@@ -75,6 +119,35 @@ export function StoryViewerModal({
           <Pressable style={styles.tapLeft} onPress={goPrev} accessibilityLabel="Previous story" />
           <Pressable style={styles.tapRight} onPress={goNext} accessibilityLabel="Next story" />
         </View>
+
+        {isOwnStory ? (
+          <View style={styles.viewersDock}>
+            <HuzzPressable
+              style={styles.viewersToggle}
+              onPress={() => setShowViewers((v) => !v)}
+              haptic="light"
+              accessibilityLabel="Toggle story viewers"
+            >
+              <Eye size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <Text style={styles.viewersToggleText}>
+                {viewers.length} viewer{viewers.length === 1 ? '' : 's'}
+              </Text>
+            </HuzzPressable>
+            {showViewers ? (
+              <ScrollView style={styles.viewersList} nestedScrollEnabled>
+                {viewers.length === 0 ? (
+                  <Text style={styles.viewersEmpty}>No views yet</Text>
+                ) : (
+                  viewers.map((v) => (
+                    <Text key={v.id || v.viewerUid} style={styles.viewerRow}>
+                      {v.viewerName || 'User'}
+                    </Text>
+                  ))
+                )}
+              </ScrollView>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </Modal>
   );
@@ -88,6 +161,25 @@ const styles = StyleSheet.create({
   topBar: {
     paddingHorizontal: 10,
     paddingBottom: 8,
+  },
+  timerPill: {
+    marginTop: 6,
+    marginHorizontal: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  timerText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  timerSub: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '500',
   },
   topMeta: {
     flexDirection: 'row',
@@ -124,5 +216,42 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '62%',
     zIndex: 2,
+  },
+  viewersDock: {
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  viewersToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  viewersToggleText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  viewersList: {
+    maxHeight: 120,
+    marginTop: 8,
+  },
+  viewersEmpty: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 13,
+    paddingVertical: 4,
+  },
+  viewerRow: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
   },
 });

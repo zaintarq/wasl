@@ -51,14 +51,12 @@ import {
   _sendModerationNoticeCallable,
 } from './callables';
 
-import { authService } from './authService';
-
 export const userService = {
   // Get user by ID
   async getUserById(userId) {
     try {
       // Check if user is logged in first
-      const currentUser = authService.getCurrentUser();
+      const currentUser = auth.currentUser;
       if (!currentUser?.uid) {
         // User not logged in - return gracefully without logging error
         return { data: null, error: 'Not logged in' };

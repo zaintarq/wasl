@@ -63,8 +63,9 @@ export function MyProfileScreen({ onNavigate }) {
   const [aboutVoiceDurationMs, setAboutVoiceDurationMs] = useState(0);
 
   const uid = authService.getCurrentUser()?.uid || null;
-  const email = authService.getCurrentUser()?.email || '';
-  const emailVerified = !!authService.getCurrentUser()?.emailVerified;
+  const [authEmail, setAuthEmail] = useState(authService.getCurrentUser()?.email || '');
+  const [emailVerified, setEmailVerified] = useState(!!authService.getCurrentUser()?.emailVerified);
+  const displayEmail = authEmail || profile?.email || '';
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -77,10 +78,17 @@ export function MyProfileScreen({ onNavigate }) {
           onNavigate('onboarding', { mode: 'login' });
           return;
         }
+        const refresh = await authService.refreshCurrentUser();
+        const fresh = refresh?.user || authService.getCurrentUser();
+        if (!cancelled && fresh) {
+          setAuthEmail(fresh.email || '');
+          setEmailVerified(!!fresh.emailVerified);
+        }
         const res = await userService.getUserById(u.uid);
         const p = res?.data || null;
         if (!cancelled) {
           setProfile(p);
+          setAuthEmail((prev) => fresh?.email || p?.email || prev || '');
           setName(p?.name || u.displayName || '');
           setPhone(p?.phoneLast4 ? String(p.phoneLast4) : '');
           setCountryOfResidence(p?.country || p?.countryOfResidence || '');
@@ -187,6 +195,16 @@ export function MyProfileScreen({ onNavigate }) {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: tokens.spacing.xl + insets.bottom }]}
           showsVerticalScrollIndicator={false}
         >
+        <View style={[styles.card, styles.emailCard, cardShadow]}>
+          <Text style={styles.emailLabel}>Your email</Text>
+          <Text style={styles.emailValue} selectable>
+            {displayEmail || 'No email linked — check Settings or log in with email'}
+          </Text>
+          <Text style={styles.emailMeta}>
+            {emailVerified ? 'Verified' : 'Not verified yet'}
+          </Text>
+        </View>
+
         <View style={[styles.card, styles.sectionViolet, cardShadow]}>
           <View style={styles.sectionHead}>
             <View style={[styles.sectionIconWrap, styles.iconWrapViolet]}>
@@ -334,7 +352,10 @@ export function MyProfileScreen({ onNavigate }) {
               <Text style={styles.sectionHint}>Email, verification, HUZZ badge</Text>
             </View>
           </View>
-          <Text style={styles.mutedLine}>Email: {email || '—'}</Text>
+          <Text style={styles.fieldLabel}>Email</Text>
+          <Text style={styles.emailField} selectable>
+            {displayEmail || '—'}
+          </Text>
           <Text style={styles.mutedLine}>Email verified: {emailVerified ? 'Yes' : 'No'}</Text>
           <Text style={styles.mutedLine}>HUZZ badge: {profile?.isVerified ? 'Verified' : 'Not verified'}</Text>
           <View style={styles.btnStack}>
@@ -682,6 +703,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: tokens.colors.textSecondary,
     marginBottom: 6,
+  },
+  emailCard: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    marginBottom: 12,
+  },
+  emailLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  emailValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: tokens.colors.text,
+    marginBottom: 4,
+  },
+  emailMeta: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.colors.brandPinkDeep,
+  },
+  emailField: {
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    color: tokens.colors.text,
+    marginBottom: 8,
   },
   fieldLabel: {
     fontSize: 13,

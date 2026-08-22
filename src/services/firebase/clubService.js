@@ -55,6 +55,7 @@ import { reportService } from './reportService';
 import { safetyService } from './safetyService';
 import { messageService } from './messageService';
 import { authService } from './authService';
+import { normalizeUsername, isValidUsername } from './usernameUtils';
 
 export const clubService = {
   normalizeUsername,

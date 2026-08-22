@@ -253,6 +253,19 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid;
 
       allow update: if false;
+
+      // Who viewed this story (viewer writes own doc; author can read list).
+      match /views/{viewerUid} {
+        allow read: if isSignedIn()
+          && !isDisabled()
+          && get(/databases/$(database)/documents/stories/$(storyId)).data.userId == request.auth.uid;
+
+        allow create, update: if isSignedIn()
+          && !isDisabled()
+          && request.auth.uid == viewerUid
+          && request.resource.data.viewerUid == request.auth.uid
+          && request.resource.data.viewerName is string;
+      }
     }
 
     // Multiplayer game rooms (Phase 2 glue — created by getGameLaunchSession).

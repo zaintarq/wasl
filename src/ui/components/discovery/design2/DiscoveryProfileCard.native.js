@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { GestureDetector } from 'react-native-gesture-handler';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MapPin, Maximize2 } from 'lucide-react-native';
 import { FadeInImage } from '../../FadeInImage.native';
@@ -12,6 +13,7 @@ import { isUserOnline } from '../../../../utils/presence';
 const ONLINE_DOT = '#3FAE7F';
 
 const DiscoveryProfileCardInner = ({ user, panGesture, isTop, onPhotoPress }) => {
+  const { width: winW } = useWindowDimensions();
   const images = useMemo(() => getProfileImageUrls(user), [user]);
   const [photoIndex, setPhotoIndex] = useState(0);
 
@@ -36,17 +38,38 @@ const DiscoveryProfileCardInner = ({ user, panGesture, isTop, onPhotoPress }) =>
   }, [onPhotoPress, photoIndex, user]);
 
   const goNext = useCallback(() => {
-    if (images.length <= 1) {
-      openExpanded();
-      return;
-    }
+    if (images.length <= 1) return;
     setPhotoIndex((i) => Math.min(i + 1, images.length - 1));
-  }, [images.length, openExpanded]);
+  }, [images.length]);
 
   const goPrev = useCallback(() => {
     if (images.length <= 1) return;
     setPhotoIndex((i) => Math.max(i - 1, 0));
   }, [images.length]);
+
+  const handlePhotoTap = useCallback(
+    (x) => {
+      if (images.length <= 1) return;
+      const cardW = Math.min(winW - 32, 440);
+      if (x < cardW / 2) goPrev();
+      else goNext();
+    },
+    [goNext, goPrev, images.length, winW]
+  );
+
+  const photoTap = useMemo(() => {
+    return Gesture.Tap()
+      .maxDuration(260)
+      .maxDistance(14)
+      .onEnd((e) => {
+        runOnJS(handlePhotoTap)(e.x);
+      });
+  }, [handlePhotoTap]);
+
+  const cardGesture = useMemo(() => {
+    if (!panGesture || !isTop) return photoTap;
+    return Gesture.Simultaneous(panGesture, photoTap);
+  }, [isTop, panGesture, photoTap]);
 
   const photoArea = (
     <View style={styles.photoWrap}>
@@ -60,7 +83,7 @@ const DiscoveryProfileCardInner = ({ user, panGesture, isTop, onPhotoPress }) =>
       />
 
       <View style={styles.topChrome} pointerEvents="box-none">
-        <PhotoProgressBars total={total} activeIndex={photoIndex} />
+        {total > 1 ? <PhotoProgressBars total={total} activeIndex={photoIndex} /> : null}
         <HuzzPressable
           style={styles.expandBtn}
           onPress={openExpanded}
@@ -96,34 +119,13 @@ const DiscoveryProfileCardInner = ({ user, panGesture, isTop, onPhotoPress }) =>
           </Text>
         ) : null}
       </View>
-
-      <HuzzPressable
-        style={styles.tapLeft}
-        onPress={goPrev}
-        onLongPress={openExpanded}
-        delayLongPress={320}
-        haptic="light"
-        accessibilityLabel="Previous photo"
-      />
-      <HuzzPressable
-        style={styles.tapRight}
-        onPress={goNext}
-        onLongPress={openExpanded}
-        delayLongPress={320}
-        haptic="light"
-        accessibilityLabel="Next photo"
-      />
     </View>
   );
 
   return (
     <View style={styles.root}>
       <View style={styles.card}>
-        {panGesture && isTop ? (
-          <GestureDetector gesture={panGesture}>{photoArea}</GestureDetector>
-        ) : (
-          photoArea
-        )}
+        <GestureDetector gesture={cardGesture}>{photoArea}</GestureDetector>
       </View>
     </View>
   );
@@ -227,21 +229,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: 'rgba(255,255,255,0.95)',
-  },
-  tapLeft: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: '50%',
-    zIndex: 2,
-  },
-  tapRight: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: '50%',
-    zIndex: 2,
   },
 });

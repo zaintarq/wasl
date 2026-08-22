@@ -106,6 +106,7 @@ function TileButton({
 }
 
 export function ActionButtons({
+  compact = false,
   onRewind,
   onPass,
   onLike,
@@ -119,8 +120,8 @@ export function ActionButtons({
   const reduceMotion = useReduceMotion();
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.row}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
+      <View style={[styles.row, compact && styles.rowCompact]}>
       <TileButton
         size={48}
         rotation={-6}
@@ -185,7 +186,7 @@ export function ActionButtons({
       />
       ) : null}
       </View>
-      <Text style={styles.hint}>Swipe up or tap message to DM</Text>
+      {!compact ? <Text style={styles.hint}>Swipe up or tap message to DM</Text> : null}
     </View>
   );
 }
@@ -193,6 +194,9 @@ export function ActionButtons({
 const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
+  },
+  wrapCompact: {
+    paddingHorizontal: 8,
   },
   row: {
     flexDirection: 'row',
@@ -202,6 +206,17 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 8,
     paddingHorizontal: 16,
+  },
+  rowCompact: {
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(43, 36, 32, 0.12)',
   },
   tile: {
     alignItems: 'center',

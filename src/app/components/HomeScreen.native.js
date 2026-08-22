@@ -17,7 +17,7 @@ import { tokens } from '../../ui/tokens';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
-import { hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
+import { getProfileImageUrls, hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
 import { getEffectiveGenderPreferences } from '../../utils/profilePreferences';
 import { hasPassedAgeCheck, blockIfAgeNotVerified, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
 import { sortDiscoveryByTab } from '../../utils/discoverySort';
@@ -32,9 +32,7 @@ import {
   markAuthorStoriesSeen,
 } from '../../services/storyService';
 import { SwipeDeck } from './SwipeDeck.native';
-import { DiscoveryProfileGrid } from './DiscoveryProfileGrid.native';
 import { HuzzHeader } from '../../ui/components/discovery/design2/HuzzHeader.native';
-import { DiscoveryTabs } from '../../ui/components/discovery/design2/DiscoveryTabs.native';
 import { StoriesRow } from '../../ui/components/discovery/design2/StoriesRow.native';
 import { StoryViewerModal } from '../../ui/components/discovery/design2/StoryViewerModal.native';
 import { DiscoveryProfileCard } from '../../ui/components/discovery/design2/DiscoveryProfileCard.native';
@@ -46,7 +44,6 @@ import { MainBottomNav, MAIN_BOTTOM_NAV_FALLBACK_H, mainBottomNavClearance } fro
 import { LiveTypographyProvider, LiveText, LiveRetroButton } from '../../ui/components/live/LiveTypography.native';
 import { LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
 import { HomeLobbyHero } from '../../ui/components/home/HomeLobbyHero.native';
-import { HomeFeatureGrid } from '../../ui/components/home/HomeFeatureGrid.native';
 import { HomeSafetyNote } from '../../ui/components/home/HomeSafetyNote.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
@@ -153,20 +150,11 @@ export function HomeScreen({ onNavigate }) {
   const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
   const kaushan = fontsLoaded ? { fontFamily: 'KaushanScript_400Regular' } : undefined;
 
-  // Tall states (loading / empty) — active discovery uses flex:1 stage instead.
-  const cardHeight = useMemo(() => {
-    const header = headerH || HEADER_FALLBACK_H;
-    const nav = bottomNavH || MAIN_BOTTOM_NAV_FALLBACK_H + bottomNavPad;
-    const avail = SCREEN_H - insets.top - header - nav - FLOAT_NAV_GAP;
-    return Math.round(Math.min(860, Math.max(420, avail)));
-  }, [bottomNavH, bottomNavPad, headerH, insets.top]);
-
   const navClearance = mainBottomNavClearance(bottomNavH, 12);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [indexHistory, setIndexHistory] = useState([]);
   const swipeDeckRef = useRef(null);
-  const [discoveryTab, setDiscoveryTab] = useState('forYou');
   const [verifySheetOpen, setVerifySheetOpen] = useState(false);
   const [verifySheetStep, setVerifySheetStep] = useState(0);
   const [rawStories, setRawStories] = useState([]);
@@ -180,13 +168,12 @@ export function HomeScreen({ onNavigate }) {
     stories: [],
     startIndex: 0,
   });
-  const [viewMode, setViewMode] = useState('card'); // 'card' | 'grid'
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
   const [baseCandidates, setBaseCandidates] = useState([]);
   const candidates = useMemo(
-    () => sortDiscoveryByTab(baseCandidates, discoveryTab, me),
-    [baseCandidates, discoveryTab, me]
+    () => sortDiscoveryByTab(baseCandidates, 'forYou', me),
+    [baseCandidates, me]
   );
   const [matchCountry, setMatchCountry] = useState('');
   
@@ -238,8 +225,7 @@ export function HomeScreen({ onNavigate }) {
   /** Tap card photo → full-screen gallery (swipe between uploads). */
   const [photoGallery, setPhotoGallery] = useState({ open: false, uris: [], start: 0 });
   const openPhotoGallery = useCallback((u, startIndex = 0) => {
-    const raw = Array.isArray(u?.images) ? u.images : [];
-    const uris = raw.filter((x) => typeof x === 'string' && String(x).trim().length > 0);
+    const uris = getProfileImageUrls(u);
     if (!uris.length) return;
     const start = Math.min(Math.max(0, startIndex), uris.length - 1);
     setPhotoGallery({ open: true, uris, start });
@@ -323,20 +309,16 @@ export function HomeScreen({ onNavigate }) {
 
   // Defensive check for currentUser - validate array bounds
   const currentUser = useMemo(() => {
-    if (!Array.isArray(candidates) || candidates.length === 0) {
-      if (__DEV__) {
-        console.warn('[HomeScreen] candidates empty:', { length: candidates?.length || 0, currentIndex });
-      }
-      return null;
-    }
-    if (currentIndex < 0 || currentIndex >= candidates.length) {
-      if (__DEV__) {
-        console.warn('[HomeScreen] currentIndex out of bounds:', { currentIndex, arrayLength: candidates.length });
-      }
-      return null;
-    }
+    if (!Array.isArray(candidates) || candidates.length === 0) return null;
+    if (currentIndex < 0 || currentIndex >= candidates.length) return null;
     return candidates[currentIndex] || null;
   }, [candidates, currentIndex]);
+
+  useEffect(() => {
+    if (__DEV__ && !loading && candidates.length === 0) {
+      console.warn('[HomeScreen] No discovery candidates — widen filters or wait for more users.');
+    }
+  }, [loading, candidates.length]);
 
   /** Full lobby only when discovery returned nobody — not while swiping. */
   const showDiscoveryLobby = !loading && candidates.length === 0;
@@ -478,10 +460,6 @@ export function HomeScreen({ onNavigate }) {
   );
 
   useEffect(() => {
-    setCurrentIndex(0);
-  }, [discoveryTab]);
-
-  useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -605,42 +583,22 @@ export function HomeScreen({ onNavigate }) {
     }, [])
   );
 
-  const openFilters = () => {
+  const openFilters = useCallback(() => {
     navigation.navigate(Routes.Filters, {
       initial: {
         matchCountry,
       },
     });
-  };
+  }, [matchCountry, navigation]);
 
-  const handleFeatureAction = useCallback(
-    (key) => {
-      if (key === 'filters') {
-        openFilters();
-        return;
-      }
-      if (key === 'nearby') {
-        setDiscoveryTab('nearby');
-        setDeckRefreshKey((k) => k + 1);
-        return;
-      }
-      if (key === 'grid') {
-        setViewMode('grid');
-        setDeckRefreshKey((k) => k + 1);
-        return;
-      }
-      if (key === 'swipe') {
-        setViewMode('card');
-      }
-    },
-    [matchCountry, navigation]
-  );
-
-  const openProfileFromGrid = (index) => {
-    if (index < 0) return;
-    setCurrentIndex(index);
-    setViewMode('card');
-  };
+  const openHeaderMenu = useCallback(() => {
+    Alert.alert('Menu', undefined, [
+      { text: 'Profile', onPress: () => onNavigate('myProfile') },
+      { text: 'Filters', onPress: openFilters },
+      { text: 'Settings', onPress: () => onNavigate('settings') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [onNavigate, openFilters]);
 
   const handleDirectMessage = async (target) => {
     const authUser = authService.getCurrentUser();
@@ -922,11 +880,10 @@ export function HomeScreen({ onNavigate }) {
         <View onLayout={(e) => setHeaderH(e?.nativeEvent?.layout?.height || 0)}>
           <HuzzHeader
             fontsLoaded={fontsLoaded}
-            onMenuPress={() => onNavigate('settings')}
+            onMenuPress={openHeaderMenu}
             onBellPress={() => onNavigate('notifications')}
             onLogoPress={onHeaderHuzzPress}
           />
-          <DiscoveryTabs active={discoveryTab} onChange={setDiscoveryTab} />
           {ageBlocked && !loading ? (
             <HuzzPressable
               onPress={openVerificationSheet}
@@ -938,30 +895,6 @@ export function HomeScreen({ onNavigate }) {
               <Text style={styles.ageBannerText}>Verify you&apos;re 18+ to like, chat, and go live</Text>
               <Text style={styles.ageBannerCta}>Verify now →</Text>
             </HuzzPressable>
-          ) : null}
-          {candidates.length > 0 && !loading ? (
-            <View style={styles.viewModeRow}>
-              <HuzzPressable
-                onPress={() => setViewMode('card')}
-                haptic="light"
-                style={[styles.viewModeBtn, viewMode === 'card' && styles.viewModeBtnActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: viewMode === 'card' }}
-                accessibilityLabel="Swipe deck view"
-              >
-                <Text style={[styles.viewModeLabel, viewMode === 'card' && styles.viewModeLabelActive]}>Swipe</Text>
-              </HuzzPressable>
-              <HuzzPressable
-                onPress={() => setViewMode('grid')}
-                haptic="light"
-                style={[styles.viewModeBtn, viewMode === 'grid' && styles.viewModeBtnActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: viewMode === 'grid' }}
-                accessibilityLabel="Grid browse view"
-              >
-                <Text style={[styles.viewModeLabel, viewMode === 'grid' && styles.viewModeLabelActive]}>Grid</Text>
-              </HuzzPressable>
-            </View>
           ) : null}
           <StoriesRow
             stories={storyRow.items}
@@ -988,7 +921,6 @@ export function HomeScreen({ onNavigate }) {
                 showsVerticalScrollIndicator={false}
               >
                 <HomeLobbyHero />
-                <HomeFeatureGrid onAction={handleFeatureAction} />
                 <HomeSafetyNote />
                 <LiveContentWidth style={styles.lobbyCta}>
                   <LiveRetroButton
@@ -1018,14 +950,6 @@ export function HomeScreen({ onNavigate }) {
               </View>
             ) : (
               <View style={styles.discoveryStage}>
-                {viewMode === 'grid' ? (
-                  <DiscoveryProfileGrid
-                    profiles={candidates}
-                    onSelectProfile={openProfileFromGrid}
-                    contentPaddingBottom={navClearance}
-                  />
-                ) : (
-                  <>
                 <View style={styles.deckFrame}>
                   {cuteAlert && (
                     <RNAnimated.View pointerEvents="none" style={[styles.cuteAlertOverlay, { opacity: cuteAlertAnim }]}>
@@ -1066,8 +990,6 @@ export function HomeScreen({ onNavigate }) {
                   likeBtnStyle={likeBtnStyle}
                   msgBtnStyle={msgBtnStyle}
                 />
-                  </>
-                )}
               </View>
             )}
           </View>
@@ -1076,8 +998,6 @@ export function HomeScreen({ onNavigate }) {
             active="home"
             onNavigate={onNavigate}
             onLayout={setBottomNavH}
-            onProfilePress={() => onNavigate('myProfile')}
-            onSettingsPress={() => onNavigate('settings')}
           />
         </View>
 
@@ -1086,6 +1006,9 @@ export function HomeScreen({ onNavigate }) {
           stories={storyViewer.stories}
           userName={storyViewer.userName}
           initialIndex={storyViewer.startIndex}
+          isOwnStory={!!meUid && storyViewer.userId === meUid}
+          viewerUid={meUid}
+          viewerName={me?.name || authService.getCurrentUser()?.displayName || 'User'}
           onClose={() => setStoryViewer((s) => ({ ...s, open: false }))}
           onFinished={(latestId) => handleStoryFinished(latestId)}
         />
@@ -1311,6 +1234,8 @@ const styles = StyleSheet.create({
   deckFrame: {
     flex: 1,
     width: '100%',
+    maxWidth: CARD_MAX_W,
+    alignSelf: 'center',
     minHeight: 0,
     position: 'relative',
     overflow: 'hidden',

@@ -51,21 +51,21 @@ import {
   _sendModerationNoticeCallable,
 } from './callables';
 
+import { gateImageBeforeUpload } from '../../utils/nsfwImageGate.native';
+import { normalizeImageUriForUpload } from '../../utils/normalizeImageUri.native';
+
 export const storageService = {
   // Upload image
   async uploadImage(userId, imageUri) {
     try {
-      const gate = await gateStorageImage(imageUri);
+      const jpegUri = await normalizeImageUriForUpload(imageUri);
+      const gate = await gateImageBeforeUpload(jpegUri);
       if (gate.blocked) {
         return { url: null, error: gate.message || 'This photo is not allowed.' };
       }
 
-      // For React Native, we need to convert URI to blob
-      const response = await fetch(imageUri);
+      const response = await fetch(jpegUri);
       const blob = await response.blob();
-      
-      // Explicitly set content type to image/jpeg for Storage rules
-      // Storage rules require contentType.matches('image/.*')
       const contentType = 'image/jpeg';
       
       const filename = `images/${userId}/${Date.now()}.jpg`;

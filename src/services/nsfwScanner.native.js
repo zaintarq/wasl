@@ -1,12 +1,12 @@
 /**
- * On-device NSFWJS scanner (TensorFlow.js CPU + jpeg decode).
+ * On-device NSFWJS scanner (TensorFlow.js CPU + jpeg/png decode).
  * Used for live video frame sampling and pre-upload image checks.
  */
 import '@tensorflow/tfjs-backend-cpu';
 import * as tf from '@tensorflow/tfjs';
 import * as nsfwjs from 'nsfwjs';
 import jpeg from 'jpeg-js';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { NSFW_THRESHOLD } from '../config/nsfwConfig';
 
 let initPromise = null;
@@ -41,11 +41,16 @@ function rgbaToRgbTensor(rgba, width, height) {
   return tf.tensor3d(pixels, [height, width, 3]);
 }
 
-async function bytesToTensor(bytes) {
+function decodeImageBytes(bytes) {
   const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true });
   if (!decoded?.data || !decoded.width || !decoded.height) {
     throw new Error('Could not decode JPEG');
   }
+  return decoded;
+}
+
+async function bytesToTensor(bytes) {
+  const decoded = decodeImageBytes(bytes);
   return rgbaToRgbTensor(decoded.data, decoded.width, decoded.height);
 }
 
