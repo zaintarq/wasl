@@ -2,15 +2,26 @@ import { classifyImageUri, topPredictionLabel } from '../services/nsfwScanner.na
 
 /**
  * Client-side gate before uploading profile/story images.
- * Server still runs moderateProfileImage as a second layer.
- * If the on-device scan fails, allow upload (soft fail) rather than blocking the user.
+ * @param {string} uri
+ * @param {{ strict?: boolean }} [opts] — strict=true blocks when scan fails (stories).
  */
-export async function gateImageBeforeUpload(uri) {
+export async function gateImageBeforeUpload(uri, opts = {}) {
+  const strict = opts.strict === true;
   const { predictions, nsfw, error } = await classifyImageUri(uri);
 
   if (error) {
     if (__DEV__) {
       console.warn('[NSFW gate] Scan skipped:', error);
+    }
+    if (strict) {
+      return {
+        allowed: false,
+        blocked: true,
+        predictions,
+        message: "We couldn't verify this photo. Try again or choose a different image.",
+        scanError: error,
+        scanSkipped: true,
+      };
     }
     return {
       allowed: true,

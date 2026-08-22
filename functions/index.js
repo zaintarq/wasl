@@ -148,6 +148,14 @@ async function generateOpenAiSuggestions({systemPrompt, userPrompt}) {
 
 // NSFW threshold for profile image moderation (Gen1 storage trigger)
 const NSFW_THRESHOLD = 0.6;
+const NSFW_SEXY_THRESHOLD = 0.45;
+
+function isNsfwScores(scores) {
+  const porn = scores.Porn || 0;
+  const hentai = scores.Hentai || 0;
+  const sexy = scores.Sexy || 0;
+  return porn >= NSFW_THRESHOLD || hentai >= NSFW_THRESHOLD || sexy >= NSFW_SEXY_THRESHOLD;
+}
 const MODERATION_WARNING_TEMPLATES = {
   sexual: {
     subject: 'Warning: inappropriate sexual messages on HUZZ',
@@ -515,7 +523,7 @@ exports.moderateProfileImage = functions
       const porn = scores.Porn || 0;
       const hentai = scores.Hentai || 0;
       const sexy = scores.Sexy || 0;
-      const isNsfw = porn >= NSFW_THRESHOLD || hentai >= NSFW_THRESHOLD || sexy >= NSFW_THRESHOLD;
+      const isNsfw = isNsfwScores(scores);
 
       if (isNsfw) {
         console.log(
@@ -538,6 +546,90 @@ exports.moderateProfileImage = functions
       }
     } catch (err) {
       console.error('[moderateProfileImage] Error:', err.message);
+    } finally {
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    }
+
+    return null;
+  });
+
+/**
+ * Story image NSFW moderation — deletes storage file and Firestore story doc.
+ */
+exports.moderateStoryImage = functions
+  .region('us-central1')
+  .runWith({ memory: '1GB', timeoutSeconds: 60 })
+  .storage.object()
+  .onFinalize(async (object) => {
+    const filePath = object.name;
+    const bucketName = object.bucket;
+
+    if (!filePath || !filePath.startsWith('stories/')) {
+      return null;
+    }
+
+    const pathParts = filePath.split('/');
+    if (pathParts.length < 3) {
+      return null;
+    }
+
+    const userId = pathParts[1];
+    const bucket = admin.storage().bucket(bucketName);
+    const file = bucket.file(filePath);
+    const tempPath = path.join(os.tmpdir(), path.basename(filePath));
+
+    try {
+      await file.download({ destination: tempPath });
+      const imageBuffer = fs.readFileSync(tempPath);
+
+      const tf = require('@tensorflow/tfjs-node');
+      const nsfwjs = require('nsfwjs');
+
+      const model = await nsfwjs.load();
+      const decoded = tf.node.decodeImage(imageBuffer);
+      const resized = tf.image.resizeBilinear(decoded, [224, 224]);
+      decoded.dispose();
+
+      const predictions = await model.classify(resized);
+      resized.dispose();
+
+      const scores = {};
+      for (const p of predictions) {
+        scores[p.className] = p.probability;
+      }
+
+      const porn = scores.Porn || 0;
+      const hentai = scores.Hentai || 0;
+      const sexy = scores.Sexy || 0;
+      const isNsfw = isNsfwScores(scores);
+
+      if (isNsfw) {
+        console.log(
+          `[moderateStoryImage] NSFW detected: path=${filePath} Porn=${porn.toFixed(2)} Hentai=${hentai.toFixed(2)} Sexy=${sexy.toFixed(2)}`
+        );
+        await file.delete();
+
+        const pathEncoded = filePath.replace(/\//g, '%2F');
+        const fileName = path.basename(filePath);
+        const storiesSnap = await db.collection('stories').where('userId', '==', userId).get();
+        const deletes = [];
+        storiesSnap.forEach((docSnap) => {
+          const url = String(docSnap.data()?.mediaUrl || '');
+          if (url.includes(pathEncoded) || url.includes(fileName)) {
+            deletes.push(docSnap.ref.delete());
+          }
+        });
+        await Promise.all(deletes);
+        console.log(`[moderateStoryImage] Removed ${deletes.length} story doc(s) for user ${userId}.`);
+      }
+    } catch (err) {
+      console.error('[moderateStoryImage] Error:', err.message);
     } finally {
       try {
         if (fs.existsSync(tempPath)) {

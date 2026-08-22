@@ -37,14 +37,10 @@ export async function uploadStoryImage(uid, imageUri) {
     const { normalizeImageUriForUpload } = require('../utils/normalizeImageUri.native');
     const jpegUri = await normalizeImageUriForUpload(imageUri);
 
-    try {
-      const { gateImageBeforeUpload } = require('../utils/nsfwImageGate.native');
-      const gate = await gateImageBeforeUpload(jpegUri);
-      if (gate.blocked) {
-        return { url: null, error: gate.message || 'This photo is not allowed.' };
-      }
-    } catch {
-      // Scanner unavailable — server moderation still applies.
+    const { gateImageBeforeUpload } = require('../utils/nsfwImageGate.native');
+    const gate = await gateImageBeforeUpload(jpegUri, { strict: true });
+    if (gate.blocked) {
+      return { url: null, error: gate.message || 'This photo is not allowed.' };
     }
 
     const response = await fetch(jpegUri);
@@ -208,11 +204,104 @@ export function formatStoryTiming(story, nowMs = Date.now()) {
     return `${h}h ${m}m`;
   };
 
-  const ageLabel =
-    ageMs < 60000 ? 'Just posted' : `${fmt(ageMs)} ago`;
+  const ageLabel = ageMs < 60000 ? 'Just posted' : `${fmt(ageMs)} ago`;
   const leftLabel = expired ? 'Expired' : `${fmt(leftMs)} left`;
 
   return { ageLabel, leftLabel, expired, leftMs, ageMs };
+}
+
+function normalizeHiddenFrom(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      if (typeof entry === 'string') return { uid: entry, label: entry };
+      return {
+        uid: String(entry?.uid || ''),
+        label: String(entry?.label || entry?.name || entry?.uid || ''),
+      };
+    })
+    .filter((e) => e.uid);
+}
+
+function viewerIsHiddenFromAuthor(viewerUid, authorUser) {
+  const hidden = normalizeHiddenFrom(authorUser?.storyHiddenFrom);
+  return hidden.some((e) => String(e.uid) === String(viewerUid));
+}
+
+/** Live story privacy (hide list) for the signed-in author. */
+export function listenStoryPrivacy(ownerUid, callback) {
+  const uid = String(ownerUid || '').trim();
+  if (!uid) {
+    callback({ data: { hiddenFrom: [] }, error: null });
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, 'users', uid),
+    (snap) => {
+      const data = snap.exists() ? snap.data() : {};
+      callback({
+        data: { hiddenFrom: normalizeHiddenFrom(data.storyHiddenFrom) },
+        error: null,
+      });
+    },
+    (error) => callback({ data: { hiddenFrom: [] }, error: error.message })
+  );
+}
+
+export async function addStoryHiddenFrom(ownerUid, targetUid, label = '') {
+  try {
+    const owner = String(ownerUid || '').trim();
+    const target = String(targetUid || '').trim();
+    if (!owner || !target) return { error: 'Missing user.' };
+    if (owner === target) return { error: 'Cannot hide from yourself.' };
+
+    const snap = await getDoc(doc(db, 'users', owner));
+    const current = normalizeHiddenFrom(snap.exists() ? snap.data()?.storyHiddenFrom : []);
+    if (current.some((e) => e.uid === target)) return { error: null };
+
+    await setDoc(
+      doc(db, 'users', owner),
+      {
+        storyHiddenFrom: [...current, { uid: target, label: String(label || target).slice(0, 40) }],
+      },
+      { merge: true }
+    );
+    return { error: null };
+  } catch (error) {
+    return { error: error?.message || String(error) };
+  }
+}
+
+export async function removeStoryHiddenFrom(ownerUid, targetUid) {
+  try {
+    const owner = String(ownerUid || '').trim();
+    const target = String(targetUid || '').trim();
+    if (!owner || !target) return { error: 'Missing user.' };
+
+    const snap = await getDoc(doc(db, 'users', owner));
+    const current = normalizeHiddenFrom(snap.exists() ? snap.data()?.storyHiddenFrom : []);
+    const next = current.filter((e) => String(e.uid) !== target);
+
+    await setDoc(doc(db, 'users', owner), { storyHiddenFrom: next }, { merge: true });
+    return { error: null };
+  } catch (error) {
+    return { error: error?.message || String(error) };
+  }
+}
+
+export async function deleteAllMyStories(uid, stories = []) {
+  try {
+    const owner = String(uid || '').trim();
+    if (!owner) return { error: 'Not signed in.' };
+    for (const story of stories || []) {
+      if (!story?.id) continue;
+      const { error } = await deleteStory(story.id, owner);
+      if (error) return { error };
+    }
+    return { error: null };
+  } catch (error) {
+    return { error: error?.message || String(error) };
+  }
 }
 
 /**
@@ -242,7 +331,11 @@ export function groupStoriesByUser(stories) {
 export function buildStoryRowItems({ storyGroups, usersById, viewerUid, seenMap, me }) {
   const myUid = String(viewerUid || '');
   const items = (storyGroups || [])
-    .filter((g) => g.userId !== myUid)
+    .filter((g) => {
+      if (g.userId === myUid) return false;
+      const author = usersById[g.userId] || {};
+      return !viewerIsHiddenFromAuthor(myUid, author);
+    })
     .map((group) => {
       const user = usersById[group.userId] || {};
       const name = user?.name || user?.displayName || 'User';

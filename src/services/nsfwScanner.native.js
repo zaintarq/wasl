@@ -7,7 +7,7 @@ import * as tf from '@tensorflow/tfjs';
 import * as nsfwjs from 'nsfwjs';
 import jpeg from 'jpeg-js';
 import * as FileSystem from 'expo-file-system/legacy';
-import { NSFW_THRESHOLD } from '../config/nsfwConfig';
+import { NSFW_CAPTURE_HEIGHT, NSFW_CAPTURE_WIDTH, NSFW_SEXY_THRESHOLD, NSFW_THRESHOLD } from '../config/nsfwConfig';
 
 let initPromise = null;
 let modelPromise = null;
@@ -51,7 +51,10 @@ function decodeImageBytes(bytes) {
 
 async function bytesToTensor(bytes) {
   const decoded = decodeImageBytes(bytes);
-  return rgbaToRgbTensor(decoded.data, decoded.width, decoded.height);
+  const rgb = rgbaToRgbTensor(decoded.data, decoded.width, decoded.height);
+  const resized = tf.image.resizeBilinear(rgb, [NSFW_CAPTURE_HEIGHT, NSFW_CAPTURE_WIDTH]);
+  rgb.dispose();
+  return resized;
 }
 
 export function scoresFromPredictions(predictions) {
@@ -62,12 +65,16 @@ export function scoresFromPredictions(predictions) {
   return map;
 }
 
-export function isNsfwPredictions(predictions, threshold = NSFW_THRESHOLD) {
+export function isNsfwPredictions(
+  predictions,
+  threshold = NSFW_THRESHOLD,
+  sexyThreshold = NSFW_SEXY_THRESHOLD
+) {
   const s = scoresFromPredictions(predictions);
   return (
     (s.porn ?? 0) >= threshold ||
     (s.hentai ?? 0) >= threshold ||
-    (s.sexy ?? 0) >= threshold
+    (s.sexy ?? 0) >= sexyThreshold
   );
 }
 

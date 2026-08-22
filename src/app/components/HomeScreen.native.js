@@ -176,6 +176,7 @@ export function HomeScreen({ onNavigate }) {
     [baseCandidates, me]
   );
   const [matchCountry, setMatchCountry] = useState('');
+  const [discoveryError, setDiscoveryError] = useState('');
   
   // Pending match requests (real-time)
   const [roleCheck, setRoleCheck] = useState(null);
@@ -361,7 +362,7 @@ export function HomeScreen({ onNavigate }) {
       setStoryUsersById((prev) => {
         const next = { ...prev };
         pairs.forEach(([uid, user]) => {
-          if (user && !next[uid]) next[uid] = user;
+          if (user) next[uid] = user;
         });
         return next;
       });
@@ -420,7 +421,14 @@ export function HomeScreen({ onNavigate }) {
     try {
       const { error } = await createStory(uid, result.assets[0].uri);
       if (error) {
-        Alert.alert('Story failed', error.includes('not allowed') ? error : error);
+        const blocked =
+          error.includes('not allowed') ||
+          error.includes('inappropriate') ||
+          error.includes("couldn't verify");
+        Alert.alert(
+          blocked ? 'Photo not allowed' : 'Story failed',
+          error
+        );
       }
     } finally {
       setPostingStory(false);
@@ -450,6 +458,23 @@ export function HomeScreen({ onNavigate }) {
     openStoryViewer(meUid, 'Your story', myStoryGroup.stories, 0);
   }, [meUid, myStoryGroup, openStoryViewer]);
 
+  // Keep own-story viewer in sync when stories are deleted or added.
+  useEffect(() => {
+    if (!storyViewer.open || !meUid) return;
+    if (String(storyViewer.userId) !== String(meUid)) return;
+    const liveStories = myStoryGroup?.stories || [];
+    if (!liveStories.length) {
+      setStoryViewer((s) => (s.open ? { ...s, open: false, stories: [] } : s));
+      return;
+    }
+    setStoryViewer((s) => {
+      const prevIds = (s.stories || []).map((x) => x.id).join(',');
+      const nextIds = liveStories.map((x) => x.id).join(',');
+      if (prevIds === nextIds) return s;
+      return { ...s, stories: liveStories };
+    });
+  }, [storyViewer.open, storyViewer.userId, meUid, myStoryGroup?.stories]);
+
   const handleStoryFinished = useCallback(
     async (latestStoryId) => {
       const uid = authService.getCurrentUser()?.uid;
@@ -463,6 +488,7 @@ export function HomeScreen({ onNavigate }) {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
+      setDiscoveryError('');
       try {
         if (USE_MOCK_DATA) {
           if (!cancelled) {
@@ -479,7 +505,7 @@ export function HomeScreen({ onNavigate }) {
           return;
         }
 
-        const authUser = authService.getCurrentUser();
+        const authUser = await authService.ensureAuthReady();
         if (!authUser) {
           onNavigate('onboarding', { mode: 'login' });
           return;
@@ -499,22 +525,36 @@ export function HomeScreen({ onNavigate }) {
         
         const [
           meSnap,
-          { data: blockedSet },
-          { data: contactHashes },
-          { data: likesSent },
-          { data: myMatches },
-          { data: allUsers },
-        ] = await Promise.all([
+          blockedRes,
+          contactRes,
+          likesRes,
+          matchesRes,
+          usersRes,
+        ] = await Promise.allSettled([
           userService.getUserById(authUser.uid),
           blockService.listBlockedUids(authUser.uid),
           contactBlockService.listHashes(authUser.uid),
           likeService.listLikesSent(authUser.uid),
           matchService.listMyMatches(authUser.uid),
-          userService.getUsers({ limit: 80 }),
+          userService.getUsers({ limit: 200 }),
         ]);
-        const meProfile = meSnap?.data || null;
+
+        const meProfile = meSnap.status === 'fulfilled' ? meSnap.value?.data || null : null;
+        const blockedSet = blockedRes.status === 'fulfilled' ? blockedRes.value?.data : new Set();
+        const contactHashes = contactRes.status === 'fulfilled' ? contactRes.value?.data : new Set();
+        const likesSent = likesRes.status === 'fulfilled' ? likesRes.value?.data : [];
+        const myMatches = matchesRes.status === 'fulfilled' ? matchesRes.value?.data : [];
+        const allUsers = usersRes.status === 'fulfilled' ? usersRes.value?.data : [];
+
+        if (usersRes.status === 'rejected' || usersRes.value?.error) {
+          const msg = usersRes.value?.error || usersRes.reason?.message || 'Could not load profiles.';
+          if (!cancelled) setDiscoveryError(msg);
+          console.error('[HomeScreen] getUsers failed:', msg);
+        }
 
         if (!cancelled) setMe(meProfile);
+
+        const effectiveMatchCountry = String(matchCountry || meProfile?.matchCountry || '').trim();
 
         const alreadySwipedUids = new Set(
           (likesSent || []).map((like) => String(like?.toUid || like?.id || '')).filter(Boolean)
@@ -535,13 +575,18 @@ export function HomeScreen({ onNavigate }) {
           blockedSet,
           contactHashes,
           alreadySwipedUids,
-          matchCountry,
+          matchCountry: effectiveMatchCountry,
           meProfile,
         });
 
         if (!cancelled) {
           setBaseCandidates(filtered);
           setCurrentIndex(0);
+          if (__DEV__ && filtered.length === 0 && (allUsers || []).length > 0) {
+            console.warn(
+              `[HomeScreen] ${allUsers.length} users fetched, 0 after filters (country=${matchCountry || 'any'}, gender=${meProfile?.gender || '?'})`
+            );
+          }
         }
       } catch (e) {
         console.error('Discovery load error:', e);
@@ -921,6 +966,11 @@ export function HomeScreen({ onNavigate }) {
                 showsVerticalScrollIndicator={false}
               >
                 <HomeLobbyHero />
+                {discoveryError ? (
+                  <LiveText style={[styles.stateText, { textAlign: 'center', marginBottom: 8 }]}>
+                    {discoveryError}
+                  </LiveText>
+                ) : null}
                 <HomeSafetyNote />
                 <LiveContentWidth style={styles.lobbyCta}>
                   <LiveRetroButton
@@ -943,6 +993,7 @@ export function HomeScreen({ onNavigate }) {
                 <LiveText style={styles.stateTitle}>You&apos;re all caught up</LiveText>
                 <LiveText style={styles.stateText}>
                   No more profiles in this batch. Tap Huzz above to refresh, or widen your filters.
+                  {discoveryError ? `\n\n${discoveryError}` : ''}
                 </LiveText>
                 <LiveRetroButton variant="outline" onPress={openFilters} style={welcomeButtonStyles.welcomeBtnShape}>
                   Open filters
@@ -1006,11 +1057,13 @@ export function HomeScreen({ onNavigate }) {
           stories={storyViewer.stories}
           userName={storyViewer.userName}
           initialIndex={storyViewer.startIndex}
-          isOwnStory={!!meUid && storyViewer.userId === meUid}
-          viewerUid={meUid}
+          isOwnStory={!!meUid && String(storyViewer.userId) === String(meUid)}
+          authorUid={meUid}
+          viewerUid={authService.getCurrentUser()?.uid || meUid}
           viewerName={me?.name || authService.getCurrentUser()?.displayName || 'User'}
           onClose={() => setStoryViewer((s) => ({ ...s, open: false }))}
           onFinished={(latestId) => handleStoryFinished(latestId)}
+          onStoriesChanged={() => setDeckRefreshKey((k) => k + 1)}
         />
 
         <VerificationBottomSheet

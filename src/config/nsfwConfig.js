@@ -1,5 +1,7 @@
-/** NSFWJS thresholds — keep in sync with functions/index.js moderateProfileImage */
+/** NSFWJS thresholds — keep in sync with functions/index.js */
 export const NSFW_THRESHOLD = 0.6;
+/** Bikini/suggestive content often scores 0.4–0.55 on Sexy — block below full NSFW bar. */
+export const NSFW_SEXY_THRESHOLD = 0.45;
 
 /** Live video: scan remote tile every N ms (CPU inference is ~200–800ms). */
 export const NSFW_VIDEO_SCAN_MS = 2800;

@@ -15,9 +15,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Settings, Images, Sparkles, ShieldCheck, SlidersHorizontal } from 'lucide-react-native';
+import { ArrowLeft, Settings, Images, Sparkles, ShieldCheck, SlidersHorizontal, CircleDot } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authService, userService, storageService } from '../../services/firebaseService';
+import { groupStoriesByUser, listenActiveStories } from '../../services/storyService';
+import { StoryManageSheet } from '../../ui/components/discovery/design2/StoryManageSheet.native';
 import { COUNTRIES } from '../../utils/countries';
 import { sha256 } from '../../utils/hash';
 import { FadeInImage } from '../../ui/components/FadeInImage.native';
@@ -61,6 +63,8 @@ export function MyProfileScreen({ onNavigate }) {
   const [addMe, setAddMe] = useState('');
   const [aboutVoiceUrl, setAboutVoiceUrl] = useState('');
   const [aboutVoiceDurationMs, setAboutVoiceDurationMs] = useState(0);
+  const [myStories, setMyStories] = useState([]);
+  const [storyManageOpen, setStoryManageOpen] = useState(false);
 
   const uid = authService.getCurrentUser()?.uid || null;
   const [authEmail, setAuthEmail] = useState(authService.getCurrentUser()?.email || '');
@@ -115,6 +119,16 @@ export function MyProfileScreen({ onNavigate }) {
       cancelled = true;
     };
   }, [onNavigate]);
+
+  useEffect(() => {
+    if (!uid) return undefined;
+    const unsub = listenActiveStories(({ data }) => {
+      const groups = groupStoriesByUser(data || []);
+      const mine = groups.find((g) => String(g.userId) === String(uid));
+      setMyStories(mine?.stories || []);
+    });
+    return () => unsub && unsub();
+  }, [uid]);
 
   const save = async () => {
     if (!uid) {
@@ -312,6 +326,29 @@ export function MyProfileScreen({ onNavigate }) {
             )}
           </View>
           <Text style={styles.photoHint}>{images.length}/6 photos</Text>
+        </View>
+
+        <View style={[styles.card, styles.sectionAmber, cardShadow]}>
+          <View style={styles.sectionHead}>
+            <View style={[styles.sectionIconWrap, styles.iconWrapAmber]}>
+              <CircleDot size={20} color="#B45309" strokeWidth={2.2} />
+            </View>
+            <View style={styles.sectionHeadText}>
+              <Text style={styles.sectionTitle}>Stories</Text>
+              <Text style={styles.sectionHint}>
+                24h posts · see viewers, hide from people, or delete
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.mutedLine}>
+            Active stories: {myStories.length}
+          </Text>
+          <RetroButton
+            variant="outline"
+            title="Manage story privacy"
+            onPress={() => setStoryManageOpen(true)}
+            style={styles.fullBtn}
+          />
         </View>
 
         <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
@@ -564,6 +601,17 @@ export function MyProfileScreen({ onNavigate }) {
           </View>
         </SafeAreaView>
       </Modal>
+
+      <StoryManageSheet
+        visible={storyManageOpen}
+        onClose={() => setStoryManageOpen(false)}
+        authorUid={uid}
+        activeStoryId={myStories[myStories.length - 1]?.id || null}
+        myStories={myStories}
+        onStoriesChanged={() => {
+          /* stories list updates via live listener */
+        }}
+      />
       </View>
     </View>
   );
@@ -643,6 +691,12 @@ const styles = StyleSheet.create({
   iconWrapEmerald: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },
   iconWrapRose: { backgroundColor: 'rgba(225, 29, 72, 0.18)' },
   iconWrapSky: { backgroundColor: 'rgba(14, 165, 233, 0.2)' },
+  iconWrapAmber: { backgroundColor: 'rgba(245, 158, 11, 0.22)' },
+  sectionAmber: {
+    backgroundColor: 'rgba(255, 251, 235, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+  },
   sectionHeadText: {
     flex: 1,
     justifyContent: 'center',
