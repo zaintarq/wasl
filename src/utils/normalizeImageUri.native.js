@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 
 /**
- * Convert camera-roll URIs (HEIC/PNG/etc.) to JPEG for upload + NSFW scan.
+ * Convert camera-roll URIs (HEIC/PNG/etc.) to JPEG for upload.
  */
 export async function normalizeImageUriForUpload(uri) {
   const src = String(uri || '').trim();

@@ -305,7 +305,13 @@ export function MyProfileScreen({ onNavigate }) {
                           setImages([...images, url]);
                           Alert.alert('Success', 'Photo added!');
                         } else {
-                          Alert.alert('Error', error || 'Failed to upload. No URL returned.');
+                          const blocked =
+                            String(error || '').includes('not allowed') ||
+                            String(error || '').includes('modest');
+                          Alert.alert(
+                            blocked ? 'Photo not allowed' : 'Error',
+                            error || 'Failed to upload. No URL returned.'
+                          );
                         }
                       } catch (e) {
                         console.error('[MyProfile] Upload error:', e);

@@ -131,19 +131,22 @@ export function StoryViewerModal({
               <Text style={styles.manageHintText}>Viewers · Hide from · Delete — tap ⚙</Text>
             </HuzzPressable>
           ) : null}
+
+          {manageOpen && isOwnStory ? (
+            <StoryManageSheet
+              visible
+              embedded
+              onClose={() => setManageOpen(false)}
+              authorUid={authorUid || viewerUid}
+              activeStoryId={active?.id}
+              myStories={list}
+              onStoriesChanged={() => {
+                onStoriesChanged?.();
+              }}
+            />
+          ) : null}
         </View>
       </Modal>
-
-      <StoryManageSheet
-        visible={manageOpen && isOwnStory}
-        onClose={() => setManageOpen(false)}
-        authorUid={authorUid}
-        activeStoryId={active?.id}
-        myStories={list}
-        onStoriesChanged={() => {
-          onStoriesChanged?.();
-        }}
-      />
     </>
   );
 }

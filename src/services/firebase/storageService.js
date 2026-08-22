@@ -51,18 +51,14 @@ import {
   _sendModerationNoticeCallable,
 } from './callables';
 
-import { gateImageBeforeUpload } from '../../utils/nsfwImageGate.native';
 import { normalizeImageUriForUpload } from '../../utils/normalizeImageUri.native';
+import { verifyUploadedImage } from '../imageModerationService';
 
 export const storageService = {
-  // Upload image
+  // Upload image — Vision Safe Search runs before the URL is returned.
   async uploadImage(userId, imageUri) {
     try {
       const jpegUri = await normalizeImageUriForUpload(imageUri);
-      const gate = await gateImageBeforeUpload(jpegUri);
-      if (gate.blocked) {
-        return { url: null, error: gate.message || 'This photo is not allowed.' };
-      }
 
       const response = await fetch(jpegUri);
       const blob = await response.blob();
@@ -71,10 +67,14 @@ export const storageService = {
       const filename = `images/${userId}/${Date.now()}.jpg`;
       const storageRef = ref(storage, filename);
       
-      // Upload with explicit content type (required for Storage rules)
       await uploadBytes(storageRef, blob, {
         contentType: contentType,
       });
+
+      const moderation = await verifyUploadedImage(filename);
+      if (!moderation.allowed) {
+        return { url: null, error: moderation.message || 'This photo is not allowed.' };
+      }
       
       const downloadURL = await getDownloadURL(storageRef);
       return { url: downloadURL, error: null };

@@ -13,6 +13,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { verifyUploadedImage } from './imageModerationService';
 
 export const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -37,19 +38,19 @@ export async function uploadStoryImage(uid, imageUri) {
     const { normalizeImageUriForUpload } = require('../utils/normalizeImageUri.native');
     const jpegUri = await normalizeImageUriForUpload(imageUri);
 
-    const { gateImageBeforeUpload } = require('../utils/nsfwImageGate.native');
-    const gate = await gateImageBeforeUpload(jpegUri, { strict: true });
-    if (gate.blocked) {
-      return { url: null, error: gate.message || 'This photo is not allowed.' };
-    }
-
     const response = await fetch(jpegUri);
     const blob = await response.blob();
     const path = `stories/${uid}/${Date.now()}.jpg`;
     const storageRef = ref(storage, path);
     await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+
+    const moderation = await verifyUploadedImage(path);
+    if (!moderation.allowed) {
+      return { url: null, path, error: moderation.message || 'This photo is not allowed.' };
+    }
+
     const url = await getDownloadURL(storageRef);
-    return { url, error: null };
+    return { url, path, error: null };
   } catch (error) {
     return { url: null, error: error?.message || String(error) };
   }
@@ -61,7 +62,9 @@ export async function createStory(uid, imageUri) {
     if (!userId) return { error: 'Not signed in.' };
 
     const { url, error: uploadError } = await uploadStoryImage(userId, imageUri);
-    if (uploadError || !url) return { error: uploadError || 'Upload failed.' };
+    if (uploadError || !url) {
+      return { error: uploadError || 'Upload failed.' };
+    }
 
     const expiresAt = Timestamp.fromMillis(Date.now() + STORY_TTL_MS);
     const storyRef = await addDoc(storiesCol(), {

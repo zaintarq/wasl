@@ -9,6 +9,14 @@ try {
 }
 const { AccessToken } = require('livekit-server-sdk');
 const { isMessageToxicLocal } = require('./messageModeration');
+const {
+  safeSearchFromBuffer,
+  isBlockedSafeSearch,
+  formatSafeSearchLog,
+  isModeratedStoragePath,
+  userIdFromModeratedPath,
+  BLOCKED_USER_MESSAGE,
+} = require('./visionModeration');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
@@ -64,6 +72,19 @@ function truncateAiText(text, maxLen = 600) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return '';
   return trimmed.length > maxLen ? `${trimmed.slice(0, maxLen - 1)}…` : trimmed;
+}
+
+/** RN clients sometimes omit the automatic callable auth header — accept a verified ID token. */
+async function resolveCallableUid(context, data) {
+  if (context.auth?.uid) return String(context.auth.uid);
+  const rawToken = data?.idToken;
+  if (!rawToken) return null;
+  try {
+    const decoded = await admin.auth().verifyIdToken(String(rawToken));
+    return decoded?.uid ? String(decoded.uid) : null;
+  } catch {
+    return null;
+  }
 }
 
 function buildUserProfileSummary(user) {
@@ -146,16 +167,6 @@ async function generateOpenAiSuggestions({systemPrompt, userPrompt}) {
   return suggestions;
 }
 
-// NSFW threshold for profile image moderation (Gen1 storage trigger)
-const NSFW_THRESHOLD = 0.6;
-const NSFW_SEXY_THRESHOLD = 0.45;
-
-function isNsfwScores(scores) {
-  const porn = scores.Porn || 0;
-  const hentai = scores.Hentai || 0;
-  const sexy = scores.Sexy || 0;
-  return porn >= NSFW_THRESHOLD || hentai >= NSFW_THRESHOLD || sexy >= NSFW_SEXY_THRESHOLD;
-}
 const MODERATION_WARNING_TEMPLATES = {
   sexual: {
     subject: 'Warning: inappropriate sexual messages on HUZZ',
@@ -476,95 +487,208 @@ const getEmailTransporter = () => {
 };
 
 /**
- * Profile image NSFW moderation (NSFWJS) — Cloud Functions Gen1 storage trigger.
+ * Shared Storage finalize cleanup after Vision Safe Search.
+ */
+async function applyStorageModerationResult({ filePath, bucketName, userId, safeSearch, blocked }) {
+  const bucket = admin.storage().bucket(bucketName);
+  const file = bucket.file(filePath);
+
+  if (!blocked) {
+    console.log(`[storageModeration] allowed path=${filePath} ${formatSafeSearchLog(safeSearch)}`);
+    return;
+  }
+
+  console.log(
+    `[storageModeration] blocked path=${filePath} ${formatSafeSearchLog(safeSearch)}`
+  );
+  await file.delete().catch(() => {});
+
+  const pathEncoded = filePath.replace(/\//g, '%2F');
+  const fileName = path.basename(filePath);
+
+  if (filePath.startsWith('stories/')) {
+    const storiesSnap = await db.collection('stories').where('userId', '==', userId).get();
+    const deletes = [];
+    storiesSnap.forEach((docSnap) => {
+      const url = String(docSnap.data()?.mediaUrl || '');
+      if (url.includes(pathEncoded) || url.includes(fileName)) {
+        deletes.push(docSnap.ref.delete());
+      }
+    });
+    await Promise.all(deletes);
+    console.log(`[storageModeration] removed ${deletes.length} story doc(s) for user ${userId}.`);
+    return;
+  }
+
+  if (filePath.startsWith('images/')) {
+    const userRef = db.collection(COL.users).doc(userId);
+    const userSnap = await userRef.get();
+    if (userSnap.exists) {
+      const data = userSnap.data();
+      const images = Array.isArray(data.images) ? data.images : [];
+      const filtered = images.filter((url) => typeof url === 'string' && !url.includes(pathEncoded));
+      if (filtered.length !== images.length) {
+        await userRef.update({ images: filtered });
+        console.log(`[storageModeration] removed profile image for user ${userId}.`);
+      }
+    }
+    return;
+  }
+
+  if (filePath.startsWith('gallery/')) {
+    const manifestRef = db.collection('photo-upload').doc(userId);
+    const manifestSnap = await manifestRef.get();
+    if (manifestSnap.exists) {
+      const data = manifestSnap.data() || {};
+      const photos = Array.isArray(data.photos) ? data.photos : [];
+      const filtered = photos.filter(
+        (p) =>
+          !String(p?.path || '').includes(filePath) &&
+          !(typeof p?.url === 'string' && p.url.includes(pathEncoded))
+      );
+      if (filtered.length !== photos.length) {
+        await manifestRef.set(
+          {
+            photos: filtered,
+            photoCount: filtered.length,
+            lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        console.log(`[storageModeration] removed gallery photo for user ${userId}.`);
+      }
+    }
+  }
+}
+
+async function moderateStorageObject(filePath, bucketName) {
+  const bucket = admin.storage().bucket(bucketName);
+  const file = bucket.file(filePath);
+  const tempPath = path.join(os.tmpdir(), `mod-${Date.now()}-${path.basename(filePath)}`);
+
+  try {
+    await file.download({ destination: tempPath });
+    const imageBuffer = fs.readFileSync(tempPath);
+    const safeSearch = await safeSearchFromBuffer(imageBuffer);
+    const blocked = isBlockedSafeSearch(safeSearch);
+    return { safeSearch, blocked };
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
+/**
+ * Synchronous moderation — client calls after upload, before publishing to Firestore.
+ */
+exports.moderateUploadedImage = functions
+  .region('us-central1')
+  .runWith({ memory: '512MB', timeoutSeconds: 60 })
+  .https.onCall(async (data, context) => {
+    const uid = await resolveCallableUid(context, data);
+    if (!uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+    }
+
+    const storagePath = String(data?.storagePath || '').trim();
+
+    if (!isModeratedStoragePath(storagePath)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid storage path.');
+    }
+
+    const ownerId = userIdFromModeratedPath(storagePath);
+    if (!ownerId || ownerId !== uid) {
+      throw new functions.https.HttpsError('permission-denied', 'Not allowed for this path.');
+    }
+
+    const bucketName = admin.storage().bucket().name;
+
+    try {
+      const bucket = admin.storage().bucket(bucketName);
+      const file = bucket.file(storagePath);
+      const [exists] = await file.exists();
+      if (!exists) {
+        throw new functions.https.HttpsError('not-found', 'Upload not found.');
+      }
+
+      const { safeSearch, blocked } = await moderateStorageObject(storagePath, bucketName);
+
+      if (blocked) {
+        await applyStorageModerationResult({
+          filePath: storagePath,
+          bucketName,
+          userId: uid,
+          safeSearch,
+          blocked: true,
+        });
+        return {
+          allowed: false,
+          message: BLOCKED_USER_MESSAGE,
+          safeSearch: safeSearch
+            ? { adult: safeSearch.adult, racy: safeSearch.racy, violence: safeSearch.violence }
+            : null,
+        };
+      }
+
+      return {
+        allowed: true,
+        safeSearch: safeSearch
+          ? { adult: safeSearch.adult, racy: safeSearch.racy, violence: safeSearch.violence }
+          : null,
+      };
+    } catch (err) {
+      if (err instanceof functions.https.HttpsError) throw err;
+      console.error('[moderateUploadedImage] Error:', err.message);
+      throw new functions.https.HttpsError(
+        'internal',
+        "We couldn't verify this photo. Try again in a moment."
+      );
+    }
+  });
+
+/**
+ * Profile / gallery image moderation — Google Cloud Vision Safe Search (async backup).
  */
 exports.moderateProfileImage = functions
   .region('us-central1')
-  .runWith({ memory: '1GB', timeoutSeconds: 60 })
+  .runWith({ memory: '512MB', timeoutSeconds: 60 })
   .storage.object()
   .onFinalize(async (object) => {
     const filePath = object.name;
     const bucketName = object.bucket;
 
-    if (!filePath || !filePath.startsWith('images/')) {
+    if (!filePath || (!filePath.startsWith('images/') && !filePath.startsWith('gallery/'))) {
       return null;
     }
 
-    const pathParts = filePath.split('/');
-    if (pathParts.length < 3) {
-      return null;
-    }
-
-    const userId = pathParts[1];
-    const bucket = admin.storage().bucket(bucketName);
-    const file = bucket.file(filePath);
-    const tempPath = path.join(os.tmpdir(), path.basename(filePath));
+    const userId = userIdFromModeratedPath(filePath);
+    if (!userId) return null;
 
     try {
-      await file.download({ destination: tempPath });
-      const imageBuffer = fs.readFileSync(tempPath);
-
-      const tf = require('@tensorflow/tfjs-node');
-      const nsfwjs = require('nsfwjs');
-
-      const model = await nsfwjs.load();
-      const decoded = tf.node.decodeImage(imageBuffer);
-      const resized = tf.image.resizeBilinear(decoded, [224, 224]);
-      decoded.dispose();
-
-      const predictions = await model.classify(resized);
-      resized.dispose();
-
-      const scores = {};
-      for (const p of predictions) {
-        scores[p.className] = p.probability;
-      }
-
-      const porn = scores.Porn || 0;
-      const hentai = scores.Hentai || 0;
-      const sexy = scores.Sexy || 0;
-      const isNsfw = isNsfwScores(scores);
-
-      if (isNsfw) {
-        console.log(
-          `[moderateProfileImage] NSFW detected: path=${filePath} Porn=${porn.toFixed(2)} Hentai=${hentai.toFixed(2)} Sexy=${sexy.toFixed(2)}`
-        );
-        await file.delete();
-
-        const pathEncoded = filePath.replace(/\//g, '%2F');
-        const userRef = db.collection(COL.users).doc(userId);
-        const userSnap = await userRef.get();
-        if (userSnap.exists) {
-          const data = userSnap.data();
-          const images = Array.isArray(data.images) ? data.images : [];
-          const filtered = images.filter((url) => typeof url === 'string' && !url.includes(pathEncoded));
-          if (filtered.length !== images.length) {
-            await userRef.update({ images: filtered });
-            console.log(`[moderateProfileImage] Removed NSFW image from user ${userId} profile.`);
-          }
-        }
-      }
+      const { safeSearch, blocked } = await moderateStorageObject(filePath, bucketName);
+      await applyStorageModerationResult({
+        filePath,
+        bucketName,
+        userId,
+        safeSearch,
+        blocked,
+      });
     } catch (err) {
       console.error('[moderateProfileImage] Error:', err.message);
-    } finally {
-      try {
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath);
-        }
-      } catch (e) {
-        // ignore cleanup errors
-      }
     }
 
     return null;
   });
 
 /**
- * Story image NSFW moderation — deletes storage file and Firestore story doc.
+ * Story image moderation — Google Cloud Vision Safe Search (async backup).
  */
 exports.moderateStoryImage = functions
   .region('us-central1')
-  .runWith({ memory: '1GB', timeoutSeconds: 60 })
+  .runWith({ memory: '512MB', timeoutSeconds: 60 })
   .storage.object()
   .onFinalize(async (object) => {
     const filePath = object.name;
@@ -574,74 +698,25 @@ exports.moderateStoryImage = functions
       return null;
     }
 
-    const pathParts = filePath.split('/');
-    if (pathParts.length < 3) {
-      return null;
-    }
-
-    const userId = pathParts[1];
-    const bucket = admin.storage().bucket(bucketName);
-    const file = bucket.file(filePath);
-    const tempPath = path.join(os.tmpdir(), path.basename(filePath));
+    const userId = userIdFromModeratedPath(filePath);
+    if (!userId) return null;
 
     try {
-      await file.download({ destination: tempPath });
-      const imageBuffer = fs.readFileSync(tempPath);
-
-      const tf = require('@tensorflow/tfjs-node');
-      const nsfwjs = require('nsfwjs');
-
-      const model = await nsfwjs.load();
-      const decoded = tf.node.decodeImage(imageBuffer);
-      const resized = tf.image.resizeBilinear(decoded, [224, 224]);
-      decoded.dispose();
-
-      const predictions = await model.classify(resized);
-      resized.dispose();
-
-      const scores = {};
-      for (const p of predictions) {
-        scores[p.className] = p.probability;
-      }
-
-      const porn = scores.Porn || 0;
-      const hentai = scores.Hentai || 0;
-      const sexy = scores.Sexy || 0;
-      const isNsfw = isNsfwScores(scores);
-
-      if (isNsfw) {
-        console.log(
-          `[moderateStoryImage] NSFW detected: path=${filePath} Porn=${porn.toFixed(2)} Hentai=${hentai.toFixed(2)} Sexy=${sexy.toFixed(2)}`
-        );
-        await file.delete();
-
-        const pathEncoded = filePath.replace(/\//g, '%2F');
-        const fileName = path.basename(filePath);
-        const storiesSnap = await db.collection('stories').where('userId', '==', userId).get();
-        const deletes = [];
-        storiesSnap.forEach((docSnap) => {
-          const url = String(docSnap.data()?.mediaUrl || '');
-          if (url.includes(pathEncoded) || url.includes(fileName)) {
-            deletes.push(docSnap.ref.delete());
-          }
-        });
-        await Promise.all(deletes);
-        console.log(`[moderateStoryImage] Removed ${deletes.length} story doc(s) for user ${userId}.`);
-      }
+      const { safeSearch, blocked } = await moderateStorageObject(filePath, bucketName);
+      await applyStorageModerationResult({
+        filePath,
+        bucketName,
+        userId,
+        safeSearch,
+        blocked,
+      });
     } catch (err) {
       console.error('[moderateStoryImage] Error:', err.message);
-    } finally {
-      try {
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath);
-        }
-      } catch (e) {
-        // ignore cleanup errors
-      }
     }
 
     return null;
   });
+
 
 // ---------------------------------------------------------------------------
 // Chat safety: toxicity check before send. Blocks vulgar messages and logs

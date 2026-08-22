@@ -52,6 +52,7 @@ import {
 } from './callables';
 
 import { userService } from './userService';
+import { verifyUploadedImage } from '../imageModerationService';
 
 export const photoUploadService = {
   async getPhotosForUser(uid) {
@@ -75,6 +76,12 @@ export const photoUploadService = {
       const path = `gallery/${uid}/${safeId}.${ext}`;
       const storageRef = ref(storage, path);
       await uploadBytes(storageRef, blob, { contentType: type || 'image/jpeg' });
+
+      const moderation = await verifyUploadedImage(path);
+      if (!moderation.allowed) {
+        return { url: null, path, error: moderation.message || 'This photo is not allowed.' };
+      }
+
       const url = await getDownloadURL(storageRef);
       return { url, path, error: null };
     } catch (error) {
@@ -113,18 +120,3 @@ export const photoUploadService = {
   },
 };
 
-/**
- * Client-side NSFWJS gate before Storage upload (native only).
- */
-async function gateStorageImage(imageUri) {
-  try {
-    const { gateImageBeforeUpload } = require('../../utils/nsfwImageGate.native');
-    return await gateImageBeforeUpload(imageUri);
-  } catch {
-    return { allowed: true, blocked: false, message: null };
-  }
-}
-
-/**
- * Storage Service (for images)
- */

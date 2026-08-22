@@ -14,15 +14,14 @@
   },
   "main": "index.js",
   "dependencies": {
-    "@tensorflow/tfjs-node": "^4.22.0",
+    "@google-cloud/vision": "^4.3.3",
     "bad-words": "^4.0.0",
     "dotenv": "^17.4.1",
     "firebase-admin": "^12.0.0",
     "firebase-functions": "^4.6.2",
     "jose": "^6.2.8",
     "livekit-server-sdk": "^2.15.1",
-    "nodemailer": "^7.0.13",
-    "nsfwjs": "^4.2.1"
+    "nodemailer": "^7.0.13"
   },
   "devDependencies": {
     "eslint": "^8.57.0",

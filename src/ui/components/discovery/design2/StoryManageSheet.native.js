@@ -5,15 +5,15 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
-  Alert,
   Modal,
   ActivityIndicator,
+  TouchableOpacity,
+  Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Eye, EyeOff, Trash2, Users, X } from 'lucide-react-native';
 import { tokens } from '../../../tokens';
-import { HuzzPressable } from '../../HuzzPressable.native';
-import { clubService } from '../../../../services/firebaseService';
+import { authService, clubService } from '../../../../services/firebaseService';
 import {
   addStoryHiddenFrom,
   deleteAllMyStories,
@@ -30,8 +30,10 @@ export function StoryManageSheet({
   activeStoryId = null,
   myStories = [],
   onStoriesChanged,
+  embedded = false,
 }) {
   const insets = useSafeAreaInsets();
+  const ownerUid = authorUid || authService.getCurrentUser()?.uid || null;
   const [hiddenFrom, setHiddenFrom] = useState([]);
   const [viewers, setViewers] = useState([]);
   const [usernameInput, setUsernameInput] = useState('');
@@ -39,18 +41,24 @@ export function StoryManageSheet({
   const [tab, setTab] = useState('viewers');
   const [privacyError, setPrivacyError] = useState('');
   const [viewersError, setViewersError] = useState('');
+  const [statusMsg, setStatusMsg] = useState('');
   const [selectedStoryId, setSelectedStoryId] = useState(activeStoryId);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
-    if (visible) setSelectedStoryId(activeStoryId);
+    if (visible) {
+      setSelectedStoryId(activeStoryId);
+      setConfirmDelete(null);
+      setStatusMsg('');
+    }
   }, [visible, activeStoryId]);
 
-  const storyIdForViewers = selectedStoryId || activeStoryId;
+  const storyIdForViewers = selectedStoryId || activeStoryId || myStories[0]?.id || null;
 
   useEffect(() => {
-    if (!visible || !authorUid) return undefined;
+    if (!visible || !ownerUid) return undefined;
     setPrivacyError('');
-    const unsub = listenStoryPrivacy(authorUid, ({ data, error }) => {
+    const unsub = listenStoryPrivacy(ownerUid, ({ data, error }) => {
       if (error) {
         setPrivacyError(error);
         setHiddenFrom([]);
@@ -59,7 +67,7 @@ export function StoryManageSheet({
       setHiddenFrom(Array.isArray(data?.hiddenFrom) ? data.hiddenFrom : []);
     });
     return () => unsub && unsub();
-  }, [visible, authorUid]);
+  }, [visible, ownerUid]);
 
   useEffect(() => {
     if (!visible || !storyIdForViewers) {
@@ -81,268 +89,306 @@ export function StoryManageSheet({
 
   const handleAddHidden = useCallback(async () => {
     const raw = String(usernameInput || '').trim();
-    if (!raw || !authorUid) return;
+    if (!raw || !ownerUid) {
+      setStatusMsg('Enter a username first.');
+      return;
+    }
     setBusy(true);
+    setStatusMsg('');
     try {
       const { uid, error } = await clubService.lookupUsername(raw);
       if (error || !uid) {
-        Alert.alert('Not found', error || 'Username not found.');
+        setStatusMsg(error || 'Username not found. They need a @username on Huzz.');
         return;
       }
-      if (String(uid) === String(authorUid)) {
-        Alert.alert('Nope', "You can't hide your story from yourself.");
+      if (String(uid) === String(ownerUid)) {
+        setStatusMsg("You can't hide your story from yourself.");
         return;
       }
-      const { error: hideErr } = await addStoryHiddenFrom(authorUid, uid, raw.replace(/^@+/, ''));
-      if (hideErr) Alert.alert('Error', hideErr);
+      const { error: hideErr } = await addStoryHiddenFrom(ownerUid, uid, raw.replace(/^@+/, ''));
+      if (hideErr) setStatusMsg(hideErr);
       else {
         setUsernameInput('');
-        Alert.alert('Hidden', `@${raw.replace(/^@+/, '')} won't see your stories anymore.`);
+        setStatusMsg(`Hidden from @${raw.replace(/^@+/, '')}.`);
       }
     } finally {
       setBusy(false);
     }
-  }, [authorUid, usernameInput]);
+  }, [ownerUid, usernameInput]);
 
   const handleRemoveHidden = useCallback(
     async (targetUid) => {
-      if (!authorUid || !targetUid) return;
+      if (!ownerUid || !targetUid) return;
       setBusy(true);
+      setStatusMsg('');
       try {
-        const { error } = await removeStoryHiddenFrom(authorUid, targetUid);
-        if (error) Alert.alert('Error', error);
+        const { error } = await removeStoryHiddenFrom(ownerUid, targetUid);
+        if (error) setStatusMsg(error);
+        else setStatusMsg('User unhidden.');
       } finally {
         setBusy(false);
       }
     },
-    [authorUid]
+    [ownerUid]
   );
 
-  const handleDeleteCurrent = useCallback(() => {
+  const runDeleteOne = useCallback(async () => {
     const targetId = storyIdForViewers;
-    if (!targetId || !authorUid) return;
-    Alert.alert('Delete this story?', 'It will disappear for everyone immediately.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setBusy(true);
-          try {
-            const { error } = await deleteStory(targetId, authorUid);
-            if (error) Alert.alert('Error', error);
-            else {
-              Alert.alert('Deleted', 'Story removed.');
-              onStoriesChanged?.();
-              onClose?.();
-            }
-          } finally {
-            setBusy(false);
-          }
-        },
-      },
-    ]);
-  }, [storyIdForViewers, authorUid, onClose, onStoriesChanged]);
+    if (!targetId || !ownerUid) return;
+    setBusy(true);
+    setStatusMsg('');
+    try {
+      const { error } = await deleteStory(targetId, ownerUid);
+      if (error) setStatusMsg(error);
+      else {
+        setStatusMsg('Story deleted.');
+        setConfirmDelete(null);
+        onStoriesChanged?.();
+        onClose?.();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [storyIdForViewers, ownerUid, onClose, onStoriesChanged]);
 
-  const handleDeleteAll = useCallback(() => {
-    if (!authorUid || !myStories.length) return;
-    Alert.alert('Delete all stories?', `Remove all ${myStories.length} active stories?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete all',
-        style: 'destructive',
-        onPress: async () => {
-          setBusy(true);
-          try {
-            const { error } = await deleteAllMyStories(authorUid, myStories);
-            if (error) Alert.alert('Error', error);
-            else {
-              Alert.alert('Deleted', 'All stories removed.');
-              onStoriesChanged?.();
-              onClose?.();
-            }
-          } finally {
-            setBusy(false);
-          }
-        },
-      },
-    ]);
-  }, [authorUid, myStories, onClose, onStoriesChanged]);
+  const runDeleteAll = useCallback(async () => {
+    if (!ownerUid || !myStories.length) return;
+    setBusy(true);
+    setStatusMsg('');
+    try {
+      const { error } = await deleteAllMyStories(ownerUid, myStories);
+      if (error) setStatusMsg(error);
+      else {
+        setStatusMsg('All stories deleted.');
+        setConfirmDelete(null);
+        onStoriesChanged?.();
+        onClose?.();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [ownerUid, myStories, onClose, onStoriesChanged]);
 
   if (!visible) return null;
 
+  const sheetBody = (
+    <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <View style={styles.sheetHead}>
+        <Text style={styles.sheetTitle}>Story settings</Text>
+        <TouchableOpacity onPress={onClose} accessibilityLabel="Close story settings" hitSlop={12}>
+          <X size={22} color={tokens.colors.text} strokeWidth={2.3} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.tabs}>
+        {[
+          { id: 'viewers', label: 'Viewers', Icon: Eye },
+          { id: 'privacy', label: 'Hide from', Icon: EyeOff },
+          { id: 'delete', label: 'Delete', Icon: Trash2 },
+        ].map(({ id, label, Icon }) => (
+          <TouchableOpacity
+            key={id}
+            style={[styles.tab, tab === id && styles.tabActive]}
+            onPress={() => {
+              setTab(id);
+              setConfirmDelete(null);
+            }}
+            activeOpacity={0.85}
+          >
+            <Icon size={16} color={tab === id ? '#fff' : tokens.colors.brandPinkDeep} />
+            <Text style={[styles.tabText, tab === id && styles.tabTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {busy ? <ActivityIndicator style={styles.loader} color={tokens.colors.brandPink} /> : null}
+      {statusMsg ? <Text style={styles.statusMsg}>{statusMsg}</Text> : null}
+      {!ownerUid ? (
+        <Text style={styles.errorText}>Not signed in — close and try again.</Text>
+      ) : null}
+
+      <ScrollView style={styles.body} keyboardShouldPersistTaps="always" nestedScrollEnabled>
+        {tab === 'viewers' ? (
+          <>
+            <View style={styles.infoBox}>
+              <Users size={18} color={tokens.colors.brandPinkDeep} />
+              <Text style={styles.infoText}>
+                Everyone on Huzz can view except people on your hide list. Only other accounts
+                appear here — not you.
+              </Text>
+            </View>
+            {myStories.length > 1 ? (
+              <>
+                <Text style={styles.sectionLabel}>Pick a story</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.storyPickRow}>
+                  {myStories.map((s, idx) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[
+                        styles.storyPickChip,
+                        storyIdForViewers === s.id && styles.storyPickChipActive,
+                      ]}
+                      onPress={() => setSelectedStoryId(s.id)}
+                      activeOpacity={0.85}
+                    >
+                      <Text
+                        style={[
+                          styles.storyPickText,
+                          storyIdForViewers === s.id && styles.storyPickTextActive,
+                        ]}
+                      >
+                        Story {idx + 1}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+            <Text style={styles.sectionLabel}>Who viewed this story</Text>
+            {viewersError ? <Text style={styles.errorText}>{viewersError}</Text> : null}
+            {!storyIdForViewers ? (
+              <Text style={styles.empty}>Post a story first to see viewers.</Text>
+            ) : viewers.length === 0 ? (
+              <Text style={styles.empty}>No views yet.</Text>
+            ) : (
+              viewers.map((v) => (
+                <Text key={v.viewerUid || v.id} style={styles.row}>
+                  {v.viewerName || 'User'}
+                </Text>
+              ))
+            )}
+          </>
+        ) : null}
+
+        {tab === 'privacy' ? (
+          <>
+            <Text style={styles.sectionLabel}>Hide story from username</Text>
+            <Text style={styles.hint}>They won&apos;t see any of your stories.</Text>
+            <View style={styles.addRow}>
+              <TextInput
+                style={styles.input}
+                value={usernameInput}
+                onChangeText={setUsernameInput}
+                placeholder="@username"
+                placeholderTextColor={tokens.colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleAddHidden}
+              />
+              <TouchableOpacity style={styles.addBtn} onPress={handleAddHidden} activeOpacity={0.85}>
+                <Text style={styles.addBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionLabel}>Hidden from ({hiddenFrom.length})</Text>
+            {privacyError ? <Text style={styles.errorText}>{privacyError}</Text> : null}
+            {hiddenFrom.length === 0 ? (
+              <Text style={styles.empty}>Nobody hidden yet.</Text>
+            ) : (
+              hiddenFrom.map((entry) => (
+                <View key={entry.uid} style={styles.hiddenRow}>
+                  <Text style={styles.hiddenName}>@{entry.label || entry.uid}</Text>
+                  <TouchableOpacity onPress={() => handleRemoveHidden(entry.uid)} hitSlop={8}>
+                    <Text style={styles.unhide}>Unhide</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </>
+        ) : null}
+
+        {tab === 'delete' ? (
+          <>
+            <Text style={styles.sectionLabel}>Remove stories</Text>
+            {confirmDelete === 'one' ? (
+              <View style={styles.confirmBox}>
+                <Text style={styles.confirmText}>Delete this story for everyone?</Text>
+                <View style={styles.confirmRow}>
+                  <TouchableOpacity style={styles.confirmCancel} onPress={() => setConfirmDelete(null)}>
+                    <Text style={styles.confirmCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.confirmDanger} onPress={runDeleteOne}>
+                    <Text style={styles.confirmDangerText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.dangerBtn, !storyIdForViewers && styles.dangerBtnDisabled]}
+                onPress={() => storyIdForViewers && setConfirmDelete('one')}
+                activeOpacity={0.85}
+                disabled={!storyIdForViewers}
+              >
+                <Trash2 size={18} color="#fff" />
+                <Text style={styles.dangerBtnText}>Delete this story</Text>
+              </TouchableOpacity>
+            )}
+
+            {confirmDelete === 'all' ? (
+              <View style={styles.confirmBox}>
+                <Text style={styles.confirmText}>Delete all {myStories.length} active stories?</Text>
+                <View style={styles.confirmRow}>
+                  <TouchableOpacity style={styles.confirmCancel} onPress={() => setConfirmDelete(null)}>
+                    <Text style={styles.confirmCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.confirmDanger} onPress={runDeleteAll}>
+                    <Text style={styles.confirmDangerText}>Delete all</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.dangerBtn,
+                  styles.dangerBtnOutline,
+                  !myStories.length && styles.dangerBtnDisabled,
+                ]}
+                onPress={() => myStories.length && setConfirmDelete('all')}
+                activeOpacity={0.85}
+                disabled={!myStories.length}
+              >
+                <Trash2 size={18} color="#BE123C" />
+                <Text style={styles.dangerBtnTextOutline}>
+                  Delete all active stories ({myStories.length})
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+
+  if (embedded) {
+    return (
+      <View style={styles.embeddedRoot} pointerEvents="box-none">
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        {sheetBody}
+      </View>
+    );
+  }
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          <View style={styles.sheetHead}>
-            <Text style={styles.sheetTitle}>Story settings</Text>
-            <HuzzPressable onPress={onClose} haptic="light" accessibilityLabel="Close story settings">
-              <X size={22} color={tokens.colors.text} strokeWidth={2.3} />
-            </HuzzPressable>
-          </View>
-
-          <View style={styles.tabs}>
-            <HuzzPressable
-              style={[styles.tab, tab === 'viewers' && styles.tabActive]}
-              onPress={() => setTab('viewers')}
-              haptic="light"
-            >
-              <Eye size={16} color={tab === 'viewers' ? '#fff' : tokens.colors.brandPinkDeep} />
-              <Text style={[styles.tabText, tab === 'viewers' && styles.tabTextActive]}>Viewers</Text>
-            </HuzzPressable>
-            <HuzzPressable
-              style={[styles.tab, tab === 'privacy' && styles.tabActive]}
-              onPress={() => setTab('privacy')}
-              haptic="light"
-            >
-              <EyeOff size={16} color={tab === 'privacy' ? '#fff' : tokens.colors.brandPinkDeep} />
-              <Text style={[styles.tabText, tab === 'privacy' && styles.tabTextActive]}>Hide from</Text>
-            </HuzzPressable>
-            <HuzzPressable
-              style={[styles.tab, tab === 'delete' && styles.tabActive]}
-              onPress={() => setTab('delete')}
-              haptic="light"
-            >
-              <Trash2 size={16} color={tab === 'delete' ? '#fff' : tokens.colors.brandPinkDeep} />
-              <Text style={[styles.tabText, tab === 'delete' && styles.tabTextActive]}>Delete</Text>
-            </HuzzPressable>
-          </View>
-
-          {busy ? (
-            <ActivityIndicator style={styles.loader} color={tokens.colors.brandPink} />
-          ) : null}
-
-          <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
-            {tab === 'viewers' ? (
-              <>
-                <View style={styles.infoBox}>
-                  <Users size={18} color={tokens.colors.brandPinkDeep} />
-                  <Text style={styles.infoText}>
-                    Who can view: everyone on Huzz, except people on your hide list. Only other
-                    accounts show up in the viewer list — not you.
-                  </Text>
-                </View>
-                {myStories.length > 1 ? (
-                  <>
-                    <Text style={styles.sectionLabel}>Pick a story</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.storyPickRow}>
-                      {myStories.map((s, idx) => (
-                        <HuzzPressable
-                          key={s.id}
-                          style={[
-                            styles.storyPickChip,
-                            storyIdForViewers === s.id && styles.storyPickChipActive,
-                          ]}
-                          onPress={() => setSelectedStoryId(s.id)}
-                          haptic="light"
-                        >
-                          <Text
-                            style={[
-                              styles.storyPickText,
-                              storyIdForViewers === s.id && styles.storyPickTextActive,
-                            ]}
-                          >
-                            Story {idx + 1}
-                          </Text>
-                        </HuzzPressable>
-                      ))}
-                    </ScrollView>
-                  </>
-                ) : null}
-                <Text style={styles.sectionLabel}>Who viewed this story</Text>
-                {viewersError ? (
-                  <Text style={styles.errorText}>{viewersError}</Text>
-                ) : null}
-                {!storyIdForViewers ? (
-                  <Text style={styles.empty}>Post a story first to see viewers.</Text>
-                ) : viewers.length === 0 ? (
-                  <Text style={styles.empty}>No views yet — share your story or wait for people to watch.</Text>
-                ) : (
-                  viewers.map((v) => (
-                    <Text key={v.viewerUid || v.id} style={styles.row}>
-                      {v.viewerName || 'User'}
-                    </Text>
-                  ))
-                )}
-              </>
-            ) : null}
-
-            {tab === 'privacy' ? (
-              <>
-                <Text style={styles.sectionLabel}>Hide story from username</Text>
-                <Text style={styles.hint}>They won&apos;t see any of your stories.</Text>
-                <View style={styles.addRow}>
-                  <TextInput
-                    style={styles.input}
-                    value={usernameInput}
-                    onChangeText={setUsernameInput}
-                    placeholder="@username"
-                    placeholderTextColor={tokens.colors.textMuted}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <HuzzPressable style={styles.addBtn} onPress={handleAddHidden} haptic="light">
-                    <Text style={styles.addBtnText}>Add</Text>
-                  </HuzzPressable>
-                </View>
-                <Text style={styles.sectionLabel}>Hidden from ({hiddenFrom.length})</Text>
-                {privacyError ? (
-                  <Text style={styles.errorText}>{privacyError}</Text>
-                ) : null}
-                {hiddenFrom.length === 0 ? (
-                  <Text style={styles.empty}>Nobody hidden — all users can see your story</Text>
-                ) : (
-                  hiddenFrom.map((entry) => (
-                    <View key={entry.uid} style={styles.hiddenRow}>
-                      <Text style={styles.hiddenName}>@{entry.label || entry.uid}</Text>
-                      <HuzzPressable
-                        onPress={() => handleRemoveHidden(entry.uid)}
-                        haptic="light"
-                        accessibilityLabel={`Unhide from ${entry.label}`}
-                      >
-                        <Text style={styles.unhide}>Unhide</Text>
-                      </HuzzPressable>
-                    </View>
-                  ))
-                )}
-              </>
-            ) : null}
-
-            {tab === 'delete' ? (
-              <>
-                <Text style={styles.sectionLabel}>Remove stories</Text>
-                <HuzzPressable
-                  style={styles.dangerBtn}
-                  onPress={handleDeleteCurrent}
-                  haptic="light"
-                  disabled={!storyIdForViewers}
-                >
-                  <Trash2 size={18} color="#fff" />
-                  <Text style={styles.dangerBtnText}>Delete this story</Text>
-                </HuzzPressable>
-                <HuzzPressable
-                  style={[styles.dangerBtn, styles.dangerBtnOutline]}
-                  onPress={handleDeleteAll}
-                  haptic="light"
-                  disabled={!myStories.length}
-                >
-                  <Trash2 size={18} color="#BE123C" />
-                  <Text style={styles.dangerBtnTextOutline}>
-                    Delete all active stories ({myStories.length})
-                  </Text>
-                </HuzzPressable>
-              </>
-            ) : null}
-          </ScrollView>
-        </View>
+      <View style={styles.backdropModal}>
+        {sheetBody}
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  embeddedRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    elevation: 50,
+    justifyContent: 'flex-end',
+  },
   backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+  },
+  backdropModal: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
     justifyContent: 'flex-end',
@@ -351,7 +397,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '78%',
+    maxHeight: '82%',
     paddingTop: 14,
   },
   sheetHead: {
@@ -394,6 +440,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   loader: { marginVertical: 8 },
+  statusMsg: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.colors.brandPinkDeep,
+    paddingHorizontal: 18,
+    marginBottom: 6,
+  },
   body: {
     paddingHorizontal: 18,
     paddingBottom: 12,
@@ -436,6 +489,7 @@ const styles = StyleSheet.create({
     color: '#BE123C',
     fontWeight: '600',
     marginBottom: 10,
+    paddingHorizontal: 18,
   },
   storyPickRow: {
     marginBottom: 12,
@@ -521,6 +575,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginBottom: 10,
   },
+  dangerBtnDisabled: {
+    opacity: 0.45,
+  },
   dangerBtnOutline: {
     backgroundColor: '#FFF1F2',
     borderWidth: 1.5,
@@ -535,5 +592,45 @@ const styles = StyleSheet.create({
     color: '#BE123C',
     fontWeight: '800',
     fontSize: 15,
+  },
+  confirmBox: {
+    backgroundColor: '#FFF1F2',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+  },
+  confirmText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tokens.colors.text,
+    marginBottom: 12,
+  },
+  confirmRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  confirmCancel: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  confirmCancelText: {
+    fontWeight: '700',
+    color: tokens.colors.text,
+  },
+  confirmDanger: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: '#BE123C',
+  },
+  confirmDangerText: {
+    fontWeight: '800',
+    color: '#fff',
   },
 });

@@ -1,28 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Track } from 'livekit-client';
 import { LiveKitRoom, VideoTrack, useTracks } from '@livekit/react-native';
-import { Shield, UserRound } from 'lucide-react-native';
+import { UserRound } from 'lucide-react-native';
 import { liveRandomService } from '../../../services/firebaseService';
-import { useNsfwVideoGuard } from '../../../hooks/useNsfwVideoGuard.native';
-import { preloadNsfwModel } from '../../../services/nsfwScanner.native';
 import { tokens } from '../../tokens';
 import { LiveText } from './LiveTypography.native';
 import { LiveSessionControls } from './LiveSessionControls.native';
 
-function NsfwRemoteTile({ trackRef, scanEnabled, onNsfwConfirmed }) {
-  const viewRef = useRef(null);
-  const hasRemoteTrack = !!trackRef?.publication?.track && !trackRef?.publication?.isMuted;
-
-  const { shielded } = useNsfwVideoGuard({
-    viewRef,
-    enabled: scanEnabled && hasRemoteTrack,
-    onNsfwConfirmed,
-  });
-
+function RemoteVideoTile({ trackRef }) {
   return (
-    <View ref={viewRef} collapsable={false} style={styles.remoteVideo}>
+    <View style={styles.remoteVideo}>
       {trackRef ? (
         <VideoTrack
           trackRef={trackRef}
@@ -36,15 +24,6 @@ function NsfwRemoteTile({ trackRef, scanEnabled, onNsfwConfirmed }) {
           <LiveText style={styles.placeholderText}>Waiting for stranger…</LiveText>
         </View>
       )}
-      {shielded ? (
-        <BlurView intensity={92} tint="dark" style={StyleSheet.absoluteFill}>
-          <View style={styles.shieldCenter}>
-            <Shield size={28} color="#fff" strokeWidth={2} />
-            <LiveText style={styles.shieldTitle}>Content hidden</LiveText>
-            <LiveText style={styles.shieldHint}>Inappropriate video detected</LiveText>
-          </View>
-        </BlurView>
-      ) : null}
     </View>
   );
 }
@@ -74,7 +53,7 @@ function VideoOffIcon() {
   return <VideoOff size={20} color={tokens.colors.textMuted} strokeWidth={2} />;
 }
 
-function OmegleStage({ onSkip, onLeave, onNsfwConfirmed }) {
+function OmegleStage({ onSkip, onLeave }) {
   const trackRefs = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }], {
     onlySubscribed: false,
   });
@@ -94,11 +73,7 @@ function OmegleStage({ onSkip, onLeave, onNsfwConfirmed }) {
   return (
     <View style={styles.stageWrap}>
       <View style={styles.stage}>
-        <NsfwRemoteTile
-          trackRef={remoteRef}
-          scanEnabled
-          onNsfwConfirmed={onNsfwConfirmed}
-        />
+        <RemoteVideoTile trackRef={remoteRef} />
         <LocalPip trackRef={localRef} cameraOff={cameraOff} />
       </View>
       <LiveSessionControls onSkip={onSkip} onLeave={onLeave} />
@@ -107,28 +82,10 @@ function OmegleStage({ onSkip, onLeave, onNsfwConfirmed }) {
 }
 
 /** Loaded only after polyfill + registerGlobals; do not import from app entry. */
-export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave, onNsfwDetected }) {
+export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave }) {
   const [token, setToken] = useState(undefined);
   const [url, setUrl] = useState(undefined);
   const [loadErr, setLoadErr] = useState(null);
-  const nsfwHandledRef = useRef(false);
-
-  useEffect(() => {
-    preloadNsfwModel();
-  }, []);
-
-  useEffect(() => {
-    nsfwHandledRef.current = false;
-  }, [sessionId]);
-
-  const handleNsfwConfirmed = useCallback(
-    (payload) => {
-      if (nsfwHandledRef.current) return;
-      nsfwHandledRef.current = true;
-      onNsfwDetected?.(payload);
-    },
-    [onNsfwDetected]
-  );
 
   const report = useCallback(
     (msg) => {
@@ -203,7 +160,7 @@ export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave, onNsf
       onError={(e) => report(e?.message || e)}
       onDisconnected={() => {}}
     >
-      <OmegleStage onSkip={onSkip} onLeave={onLeave} onNsfwConfirmed={handleNsfwConfirmed} />
+      <OmegleStage onSkip={onSkip} onLeave={onLeave} />
     </LiveKitRoom>
   );
 }
@@ -265,24 +222,6 @@ const styles = StyleSheet.create({
   placeholderText: {
     ...tokens.typography.bodySmall,
     color: tokens.colors.textMuted,
-  },
-  shieldCenter: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 6,
-  },
-  shieldTitle: {
-    ...tokens.typography.label,
-    color: '#fff',
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  shieldHint: {
-    ...tokens.typography.caption,
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
   },
   pip: {
     position: 'absolute',

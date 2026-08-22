@@ -63,7 +63,7 @@ export const userService = {
       }
       
       const snap = await getDoc(doc(db, COL.users, userId));
-      if (snap.exists()) return { data: snap.data(), error: null };
+      if (snap.exists()) return { data: { id: snap.id, uid: snap.id, ...snap.data() }, error: null };
       return { data: null, error: 'User not found' };
     } catch (error) {
       // Only log non-permission errors (permission errors are expected when not logged in)
@@ -77,11 +77,28 @@ export const userService = {
   // Get all users
   async getUsers(filters = {}) {
     try {
-      let qRef = query(collection(db, COL.users), orderBy('createdAt', 'desc'));
-      if (filters.limit) qRef = query(qRef, limit(filters.limit));
-      const snap = await getDocs(qRef);
-      const users = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      return { data: users, error: null };
+      const cap = filters.limit || 200;
+      const map = new Map();
+
+      const addDocs = (docs) => {
+        docs.forEach((d) => {
+          if (!map.has(d.id)) map.set(d.id, { id: d.id, uid: d.id, ...d.data() });
+        });
+      };
+
+      try {
+        const ordered = query(collection(db, COL.users), orderBy('createdAt', 'desc'), limit(cap));
+        addDocs((await getDocs(ordered)).docs);
+      } catch (orderErr) {
+        console.warn('[getUsers] createdAt query failed:', orderErr?.message || orderErr);
+      }
+
+      if (map.size < cap) {
+        const plain = query(collection(db, COL.users), limit(cap));
+        addDocs((await getDocs(plain)).docs);
+      }
+
+      return { data: Array.from(map.values()), error: null };
     } catch (error) {
       console.error('Get users error:', error);
       return { data: [], error: error.message };

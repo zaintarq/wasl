@@ -18,7 +18,7 @@ import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native'
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
 import { getProfileImageUrls, hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
-import { getEffectiveGenderPreferences } from '../../utils/profilePreferences';
+import { getEffectiveGenderPreferences, normalizeProfileGender } from '../../utils/profilePreferences';
 import { hasPassedAgeCheck, blockIfAgeNotVerified, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
 import { sortDiscoveryByTab } from '../../utils/discoverySort';
 import { isUserOnline } from '../../utils/presence';
@@ -80,9 +80,13 @@ function filterDiscoveryCandidates({
   alreadySwipedUids,
   matchCountry,
   meProfile,
+  skipMutualPreference = false,
+  includePreviouslySwiped = false,
+  skipGenderFilter = false,
+  allowMissingGender = false,
 }) {
   const targetCountry = String(matchCountry || '').trim();
-  const myGender = String(meProfile?.gender || '').trim().toLowerCase();
+  const myGender = normalizeProfileGender(meProfile?.gender);
   const myReligion = String(meProfile?.religion || '').trim();
   const myPreferences = getEffectiveGenderPreferences(meProfile || {});
   const isMuslim = myReligion === 'Muslim' || myReligion === 'Islam';
@@ -94,45 +98,79 @@ function filterDiscoveryCandidates({
     if (blockedSet?.has?.(uid)) return false;
     if (contactHashes?.has?.(String(u?.emailHash || ''))) return false;
     if (contactHashes?.has?.(String(u?.phoneHash || ''))) return false;
-    if (alreadySwipedUids.has(uid)) return false;
+    if (!includePreviouslySwiped && alreadySwipedUids.has(uid)) return false;
 
-    const candidateGender = String(u?.gender || '').trim().toLowerCase();
-    if (!candidateGender) return false;
+    const candidateGender = normalizeProfileGender(u?.gender);
+    if (!candidateGender && !allowMissingGender) return false;
 
     const candidatePreferences = getEffectiveGenderPreferences(u);
-    const candidateReligion = String(u?.religion || '').trim();
-    const candidateIsMuslim = candidateReligion === 'Muslim' || candidateReligion === 'Islam';
 
-    if (isMuslim) {
-      if (myGender === 'male' && candidateGender !== 'female') return false;
-      if (myGender === 'female' && candidateGender !== 'male') return false;
-      if (candidatePreferences.length > 0) {
-        const candidateWantsMe =
-          (candidatePreferences.includes('boys') && myGender === 'male')
-          || (candidatePreferences.includes('girls') && myGender === 'female');
-        if (!candidateWantsMe) return false;
+    if (!skipGenderFilter && candidateGender) {
+      if (isMuslim) {
+        if (myGender === 'male' && candidateGender !== 'female') return false;
+        if (myGender === 'female' && candidateGender !== 'male') return false;
+        if (!skipMutualPreference && candidatePreferences.length > 0) {
+          const candidateWantsMe =
+            (candidatePreferences.includes('boys') && myGender === 'male')
+            || (candidatePreferences.includes('girls') && myGender === 'female');
+          if (!candidateWantsMe) return false;
+        }
+      } else if (myPreferences.length > 0) {
+        const wantsBoys = myPreferences.includes('boys');
+        const wantsGirls = myPreferences.includes('girls');
+        const candidateIsMale = candidateGender === 'male';
+        const candidateIsFemale = candidateGender === 'female';
+        if (!((wantsBoys && candidateIsMale) || (wantsGirls && candidateIsFemale))) return false;
+        if (!skipMutualPreference && candidatePreferences.length > 0) {
+          const candidateWantsMe =
+            (candidatePreferences.includes('boys') && myGender === 'male')
+            || (candidatePreferences.includes('girls') && myGender === 'female');
+          if (!candidateWantsMe) return false;
+        }
+      } else if (myGender) {
+        if (myGender === 'male' && candidateGender !== 'female') return false;
+        if (myGender === 'female' && candidateGender !== 'male') return false;
       }
-    } else if (myPreferences.length > 0) {
-      const wantsBoys = myPreferences.includes('boys');
-      const wantsGirls = myPreferences.includes('girls');
-      const candidateIsMale = candidateGender === 'male';
-      const candidateIsFemale = candidateGender === 'female';
-      if (!((wantsBoys && candidateIsMale) || (wantsGirls && candidateIsFemale))) return false;
-      if (candidatePreferences.length > 0) {
-        const candidateWantsMe =
-          (candidatePreferences.includes('boys') && myGender === 'male')
-          || (candidatePreferences.includes('girls') && myGender === 'female');
-        if (!candidateWantsMe) return false;
-      }
-    } else {
-      if (myGender === 'male' && candidateGender !== 'female') return false;
-      if (myGender === 'female' && candidateGender !== 'male') return false;
     }
 
     const candidateCountry = String(u?.country || u?.countryOfResidence || '').trim();
     if (targetCountry && candidateCountry && candidateCountry !== targetCountry) return false;
     return true;
   });
+}
+
+function resolveDiscoveryCandidates(args) {
+  const strict = filterDiscoveryCandidates(args);
+  if (strict.length > 0) return { candidates: strict, mode: 'strict' };
+
+  const relaxedMutual = filterDiscoveryCandidates({ ...args, skipMutualPreference: true });
+  if (relaxedMutual.length > 0) return { candidates: relaxedMutual, mode: 'relaxed-mutual' };
+
+  const includeSwiped = filterDiscoveryCandidates({
+    ...args,
+    skipMutualPreference: true,
+    includePreviouslySwiped: true,
+  });
+  if (includeSwiped.length > 0) return { candidates: includeSwiped, mode: 'include-swiped' };
+
+  const noGender = filterDiscoveryCandidates({
+    ...args,
+    skipMutualPreference: true,
+    includePreviouslySwiped: true,
+    allowMissingGender: true,
+  });
+  if (noGender.length > 0) return { candidates: noGender, mode: 'allow-missing-gender' };
+
+  const anyone = filterDiscoveryCandidates({
+    ...args,
+    skipMutualPreference: true,
+    includePreviouslySwiped: true,
+    skipGenderFilter: true,
+    allowMissingGender: true,
+  });
+  if (anyone.length > 0) return { candidates: anyone, mode: 'anyone' };
+
+  return { candidates: [], mode: 'empty' };
 }
 
 export function HomeScreen({ onNavigate }) {
@@ -569,7 +607,7 @@ export function HomeScreen({ onNavigate }) {
           }
         });
 
-        const filtered = filterDiscoveryCandidates({
+        const filterArgs = {
           allUsers,
           authUid: authUser.uid,
           blockedSet,
@@ -577,15 +615,18 @@ export function HomeScreen({ onNavigate }) {
           alreadySwipedUids,
           matchCountry: effectiveMatchCountry,
           meProfile,
-        });
+        };
+        const { candidates: filtered, mode: filterMode } = resolveDiscoveryCandidates(filterArgs);
 
         if (!cancelled) {
           setBaseCandidates(filtered);
           setCurrentIndex(0);
           if (__DEV__ && filtered.length === 0 && (allUsers || []).length > 0) {
             console.warn(
-              `[HomeScreen] ${allUsers.length} users fetched, 0 after filters (country=${matchCountry || 'any'}, gender=${meProfile?.gender || '?'})`
+              `[HomeScreen] ${allUsers.length} users fetched, 0 after filters (country=${effectiveMatchCountry || 'any'}, gender=${meProfile?.gender || '?'}, swiped=${alreadySwipedUids.size})`
             );
+          } else if (__DEV__ && filterMode !== 'strict') {
+            console.warn(`[HomeScreen] Discovery using relaxed filter mode: ${filterMode}`);
           }
         }
       } catch (e) {
