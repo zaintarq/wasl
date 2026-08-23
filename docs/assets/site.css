@@ -1,32 +1,192 @@
-@import url("huzz-shell.css");
+@import url("huzz-shell.css?v=23");
 
-/* Landing uses welcome screen layout only — no extra chrome */
+html, body {
+  font-family: "DM Sans", Inter, system-ui, sans-serif;
+}
+
+/* Floating atmosphere behind the page */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: 50%;
+  filter: blur(40px);
+}
+
+body::before {
+  width: min(420px, 70vw);
+  height: min(420px, 70vw);
+  top: -8%;
+  left: -12%;
+  background: radial-gradient(circle, rgba(244, 114, 182, 0.55), transparent 70%);
+  animation: floatGlow 12s ease-in-out infinite;
+}
+
+body::after {
+  width: min(380px, 65vw);
+  height: min(380px, 65vw);
+  bottom: 5%;
+  right: -15%;
+  background: radial-gradient(circle, rgba(251, 113, 133, 0.45), transparent 70%);
+  animation: floatGlow 15s ease-in-out infinite reverse;
+}
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 50% 35% at 70% 40%, rgba(255, 255, 255, 0.35), transparent 60%),
+    radial-gradient(ellipse 40% 30% at 20% 70%, rgba(244, 114, 182, 0.2), transparent 55%);
+  animation: auroraShift 18s ease-in-out infinite alternate;
+}
+
+@keyframes auroraShift {
+  from { opacity: 0.7; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes floatGlow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(18px, -22px) scale(1.08); }
+}
+
+.page {
+  position: relative;
+  z-index: 1;
+}
+
+/* Floating action cluster — top right */
+.float-cluster {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  z-index: 50;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 28px);
+}
+
+.why-float,
+.oss-float,
+.admin-float {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.why-float {
+  color: var(--brand-pink-deep);
+  background: rgba(255, 247, 251, 0.88);
+  border-color: rgba(190, 24, 93, 0.28);
+  box-shadow: 0 8px 22px rgba(190, 24, 93, 0.16);
+}
+
+.oss-float {
+  color: #3b0a24;
+  background: linear-gradient(135deg, #ffe4ef, #fff7fb);
+  border-color: rgba(157, 23, 77, 0.35);
+  box-shadow: 0 8px 20px rgba(157, 23, 77, 0.14);
+}
+
+.admin-float {
+  color: #fff;
+  background: linear-gradient(135deg, #3b0a24, #9d174d 55%, #be185d);
+  box-shadow:
+    0 10px 28px rgba(107, 16, 64, 0.35),
+    0 2px 0 rgba(255, 255, 255, 0.18) inset;
+}
+
+.why-float:hover,
+.oss-float:hover,
+.admin-float:hover {
+  transform: translateY(-1px) scale(1.02);
+  filter: brightness(1.04);
+}
+
+.why-float:active,
+.oss-float:active,
+.admin-float:active {
+  transform: scale(0.98);
+}
+
+/* Landing layout */
 .shell-compact {
-  gap: 28px;
+  gap: 26px;
+  padding-top: 10px;
+  animation: riseIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.welcome-hero {
+  position: relative;
+}
+
+.logo-stack {
+  filter: drop-shadow(0 16px 32px rgba(190, 24, 93, 0.22));
+}
+
+.hero-tagline {
+  background: linear-gradient(90deg, #9d174d, #e11d70, #db2777);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .shell-tiles-section {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .shell-tiles-section .section-label {
   font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
   color: var(--ink-muted);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .contact-row {
   display: block;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--shell-tile);
-  border: 1px solid var(--shell-tile-border);
+  padding: 13px 15px;
+  border-radius: 16px;
+  background: rgba(255, 247, 251, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   text-decoration: none;
   color: inherit;
   margin-top: 8px;
+  box-shadow: 0 4px 14px rgba(190, 24, 93, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.contact-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(190, 24, 93, 0.14);
 }
 
 .contact-row strong {
@@ -38,4 +198,73 @@
 .contact-row span {
   font-size: 0.75rem;
   color: var(--ink-muted);
+}
+
+.footer-links a {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 247, 251, 0.55);
+  border: 1px solid rgba(190, 24, 93, 0.12);
+  transition: background 0.15s ease;
+}
+
+.footer-links a:hover {
+  background: rgba(255, 247, 251, 0.95);
+}
+
+@media (min-width: 720px) {
+  .page { padding-top: 32px; }
+  .shell { max-width: 480px; }
+  .float-cluster {
+    top: 22px;
+    right: 24px;
+  }
+}
+
+@media (max-width: 560px) {
+  .float-cluster {
+    gap: 5px;
+    max-width: calc(100vw - 20px);
+    right: max(10px, env(safe-area-inset-right));
+  }
+
+  .why-float,
+  .oss-float,
+  .admin-float {
+    min-height: 34px;
+    padding: 0 9px;
+    font-size: 0.68rem;
+  }
+
+  /* Keep full accessible label; show short text so all three fit in one row */
+  .why-float {
+    font-size: 0;
+  }
+  .why-float::before {
+    content: "Why?";
+    font-size: 0.68rem;
+    font-family: "DM Sans", system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .admin-float {
+    font-size: 0;
+  }
+  .admin-float::before {
+    content: "Admin";
+    font-size: 0.68rem;
+    font-family: "DM Sans", system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after,
+  .aurora,
+  .shell-compact {
+    animation: none;
+  }
 }

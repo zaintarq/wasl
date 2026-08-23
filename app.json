@@ -2,7 +2,7 @@
   "expo": {
     "name": "Huzz",
     "slug": "huzz",
-    "version": "1.0.3",
+    "version": "1.0.6",
     "icon": "./assets/images/icon-1024.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -32,6 +32,7 @@
     },
     "android": {
       "package": "com.huzz.app",
+      "versionCode": 7,
       "softwareKeyboardLayoutMode": "resize",
       "intentFilters": [
         {

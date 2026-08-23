@@ -2,23 +2,23 @@
  * Huzz design system — ported from src/ui/tokens.js + shellStyles + MainBottomNav
  */
 :root {
-  --bg: #fbcfe8;
-  --bg-soft: #fdf2f8;
+  --bg: #ffd6e8;
+  --bg-soft: #fff0f6;
   --bg-secondary: #f9a8d4;
-  --ink-brand: #831843;
-  --ink-muted: rgba(131, 24, 67, 0.68);
-  --ink-faint: rgba(131, 24, 67, 0.52);
-  --shell-ink: #2b2420;
-  --cream: #f7f1e8;
-  --brand-pink: #db2777;
+  --ink-brand: #6b1040;
+  --ink-muted: rgba(107, 16, 64, 0.68);
+  --ink-faint: rgba(107, 16, 64, 0.48);
+  --shell-ink: #3b0a24;
+  --cream: #fff7fb;
+  --brand-pink: #e11d70;
   --brand-pink-dark: #be185d;
   --brand-pink-deep: #9d174d;
-  --shell-tile: rgba(255, 255, 255, 0.42);
-  --shell-tile-border: rgba(131, 24, 67, 0.1);
-  --shell-icon-btn: rgba(255, 255, 255, 0.55);
-  --shell-row-border: rgba(131, 24, 67, 0.12);
-  --text: #0f172a;
-  --text-muted: #64748b;
+  --shell-tile: rgba(255, 247, 251, 0.72);
+  --shell-tile-border: rgba(190, 24, 93, 0.16);
+  --shell-icon-btn: rgba(255, 247, 251, 0.85);
+  --shell-row-border: rgba(157, 23, 77, 0.16);
+  --text: #3b0a24;
+  --text-muted: #8b4a66;
   --max: 440px;
   --gutter: 20px;
   --nav-tile: 52px;
@@ -31,8 +31,12 @@ html, body {
   min-height: 100%;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--ink-brand);
-  background: var(--bg);
-  background-image: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 100%);
+  background-color: #ffe4ef;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(244, 114, 182, 0.55), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 95% 15%, rgba(251, 113, 133, 0.35), transparent 50%),
+    radial-gradient(ellipse 90% 60% at 50% 100%, rgba(190, 24, 93, 0.22), transparent 55%),
+    linear-gradient(165deg, #fff5f9 0%, #ffd6e8 48%, #fecdd3 100%);
   background-attachment: fixed;
 }
 
@@ -68,7 +72,7 @@ a { color: var(--brand-pink-dark); }
   width: min(300px, 78vw);
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 10px 24px rgba(131, 24, 67, 0.12));
+  filter: drop-shadow(0 10px 24px rgba(31, 21, 24, 0.1));
 }
 
 .logo-tap {
@@ -195,16 +199,19 @@ a { color: var(--brand-pink-dark); }
 .btn:active { transform: scale(0.98); }
 
 .btn-primary {
-  background: var(--brand-pink);
+  background: linear-gradient(135deg, #f472b6 0%, #e11d70 45%, #be185d 100%);
   color: #fff;
-  box-shadow: 0 6px 14px rgba(157, 23, 77, 0.22);
+  box-shadow:
+    0 8px 22px rgba(190, 24, 93, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .btn-outline {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 247, 251, 0.7);
   color: var(--brand-pink-deep);
-  border: 2px solid var(--brand-pink-deep);
-  box-shadow: 0 3px 10px rgba(157, 23, 77, 0.08);
+  border: 2px solid rgba(190, 24, 93, 0.55);
+  box-shadow: 0 4px 16px rgba(190, 24, 93, 0.1);
+  backdrop-filter: blur(8px);
 }
 
 .btn-ghost {
@@ -353,13 +360,17 @@ a { color: var(--brand-pink-dark); }
 
 .nav-tile.on svg { stroke: var(--cream); }
 
-/* Shell panels — no white chrome */
+/* Shell panels — frosted rose glass */
 .shell-card {
-  background: var(--shell-tile);
-  border: 1px solid var(--shell-tile-border);
-  border-radius: 16px;
-  padding: 16px;
+  background: linear-gradient(160deg, rgba(255, 247, 251, 0.88), rgba(255, 228, 239, 0.62));
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 20px;
+  padding: 18px;
   margin-bottom: 12px;
+  box-shadow:
+    0 12px 36px rgba(157, 23, 77, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(14px);
 }
 
 .shell-card h2 {
@@ -699,11 +710,18 @@ textarea { min-height: 88px; resize: vertical; }
 }
 
 .tile-cell {
-  background: var(--shell-tile);
-  border: 1px solid var(--shell-tile-border);
-  border-radius: 16px;
-  padding: 14px 10px;
+  background: linear-gradient(165deg, rgba(255, 247, 251, 0.9), rgba(252, 231, 243, 0.75));
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 18px;
+  padding: 16px 12px;
   text-align: center;
+  box-shadow: 0 8px 22px rgba(190, 24, 93, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tile-cell:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(190, 24, 93, 0.16);
 }
 
 .tile-cell strong {

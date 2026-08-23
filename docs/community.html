@@ -3,55 +3,43 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Huzz Safety &amp; Moderation</title>
-  <meta name="description" content="How Huzz prevents sexting, verifies age, and protects users." />
+  <title>Safety &amp; Moderation · The Wasl Dispatch</title>
+  <meta name="description" content="How Wasl prevents sexting, verifies age, and protects users." />
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
   <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-  <link rel="stylesheet" href="assets/policy.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/policy.css?v=30" />
 </head>
 <body>
-  <header class="site-header">
-    <a class="logo" href="index.html">Huzz</a>
-    <a class="back-link" href="trust.html">Trust center</a>
-  </header>
+  <div class="float-cluster">
+    <a class="why-float" href="why.html">Why? for readers</a>
+    <a class="oss-float" href="opensource.html">Open source</a>
+    <a class="admin-float" href="app.html?mode=admin">Admin login</a>
+  </div>
 
-  <main class="policy-page">
-    <section class="policy-hero">
-      <p class="eyebrow">Safety &amp; moderation</p>
-      <h1>How we protect you</h1>
-      <p class="lead">Real systems in the app today. Expand any section for detail.</p>
-    </section>
+  <div class="paper">
+    <p class="paper-home"><a href="trust.html">← Trust center</a> · <a href="index.html">Home</a></p>
+
+    <header class="masthead">
+      <p class="mast-edition">Vol. I · Safety Desk · August 2026</p>
+      <h1 class="mast-title">The Wasl Dispatch</h1>
+      <p class="mast-tag">Safety &amp; moderation systems</p>
+    </header>
+
+    <p class="headline">How we protect you when the chat turns ugly</p>
+    <p class="subhead">Age gates, message filters, Google Safe Search, reports, Mehram, and device bans</p>
+    <p class="byline">Safety desk · Real systems in the app today</p>
 
     <div class="banner">
       <span class="banner-icon">18+</span>
-      <div>Huzz is adults only. Age verification, blocking, reporting, and moderation keep the platform safer. No system is perfect.</div>
+      <div>Wasl is adults only. Age verification, blocking, reporting, and moderation keep the platform safer. No system is perfect.</div>
     </div>
 
-    <div class="layer-stack" aria-label="Protection layers">
-      <div class="layer-item">
-        <span class="layer-badge">A</span>
-        <div><strong>Block before send</strong><span>Profanity filter stops vulgar messages from going out</span></div>
-      </div>
-      <div class="layer-item">
-        <span class="layer-badge">B</span>
-        <div><strong>Keyword scan</strong><span>Sexual &amp; harassment terms flagged + reported</span></div>
-      </div>
-      <div class="layer-item">
-        <span class="layer-badge">C</span>
-        <div><strong>Photo scan</strong><span>NSFW profile images removed automatically</span></div>
-      </div>
-      <div class="layer-item">
-        <span class="layer-badge">D</span>
-        <div><strong>Risk profiles</strong><span>Repeat offenders flagged for admin review</span></div>
-      </div>
-      <div class="layer-item">
-        <span class="layer-badge">E</span>
-        <div><strong>Human review</strong><span>Staff dashboard for reports &amp; bans</span></div>
-      </div>
-    </div>
-
-    <nav class="policy-jump" aria-label="Jump to section">
+    <nav class="toc" aria-label="Jump to section">
+      <a href="#layers">Layers</a>
       <a href="#age">Age</a>
       <a href="#sexting">Anti-sexting</a>
       <a href="#block">Block</a>
@@ -61,101 +49,84 @@
       <a href="#limits">Limits</a>
     </nav>
 
-    <details class="policy-fold" id="age" open>
-      <summary><span><span class="fold-num">01</span>Age verification</span></summary>
-      <div class="fold-body">
-        <p>Core features stay locked until you pass an 18+ check.</p>
-        <h4>Provider</h4>
-        <p><a href="https://zoivera.zoitra.com" target="_blank" rel="noopener">ZoiVera</a> facial age estimation on your device.</p>
-        <h4>Flow</h4>
-        <ol>
-          <li>Scan runs on your phone (camera required).</li>
-          <li>ZoiVera returns a signed token if you pass.</li>
-          <li>Our server verifies the token and stores pass/fail only. No face photo gallery.</li>
-        </ol>
+    <div class="article-body">
+      <h2 id="layers">Protection layers</h2>
+      <div class="layer-stack">
+        <div class="layer-item"><span class="layer-badge">A</span><div><strong>Block before send</strong><span>Profanity filter stops vulgar messages from going out</span></div></div>
+        <div class="layer-item"><span class="layer-badge">B</span><div><strong>Keyword scan</strong><span>Sexual &amp; harassment terms flagged + reported</span></div></div>
+        <div class="layer-item"><span class="layer-badge">C</span><div><strong>Photo scan</strong><span>Unsafe images blocked via Google Safe Search</span></div></div>
+        <div class="layer-item"><span class="layer-badge">D</span><div><strong>Risk profiles</strong><span>Repeat offenders flagged for admin review</span></div></div>
+        <div class="layer-item"><span class="layer-badge">E</span><div><strong>Human review</strong><span>Staff dashboard for reports &amp; bans</span></div></div>
       </div>
-    </details>
 
-    <details class="policy-fold" id="sexting">
-      <summary><span><span class="fold-num">02</span>Anti-sexting &amp; vulgar chat</span></summary>
-      <div class="fold-body">
-        <h4>Before send</h4>
-        <p>Cloud function <code>checkMessageToxicity</code> uses <strong>bad-words</strong>. Blocked messages never reach the other person. Logged in <code>vulgarAttempts</code>.</p>
-        <h4>On send</h4>
-        <p><code>scanMessageText</code> checks sexual and harassment keyword lists. Flagged messages get moderation metadata and an auto-report to admins.</p>
-        <h4>Profile photos</h4>
-        <p><strong>NSFWJS</strong> scans uploads on-device and on the server. Explicit images are blocked or deleted.</p>
-        <h4>Live Random video</h4>
-        <p><strong>NSFWJS</strong> samples the remote video feed on your phone every few seconds. Inappropriate content is blurred, then the session skips and auto-reports.</p>
-        <h4>Club group chat</h4>
-        <p>Same filters as private chat: profanity blocked before send, sexual/harassment keywords flagged and auto-reported. Club admins can kick members and control mic access.</p>
-        <h4>Risk scoring</h4>
-        <p>We track flags, blocks, and reports over 7–30 days. High-risk accounts are marked watch / review / restricted for staff.</p>
-      </div>
-    </details>
+      <h2 id="age">Age verification</h2>
+      <p>Core features stay locked until you pass an 18+ check.</p>
+      <h4>Provider</h4>
+      <p><a href="https://zoivera.zoitra.com" target="_blank" rel="noopener">ZoiVera</a> facial age estimation on your device.</p>
+      <h4>Flow</h4>
+      <ol>
+        <li>Scan runs on your phone (camera required).</li>
+        <li>ZoiVera returns a signed token if you pass.</li>
+        <li>Our server verifies the token and stores pass/fail only. No face photo gallery.</li>
+      </ol>
 
-    <details class="policy-fold" id="block">
-      <summary><span><span class="fold-num">03</span>Block</span></summary>
-      <div class="fold-body">
-        <p>Block from profile or chat anytime.</p>
-        <ul>
-          <li>Messaging stops immediately.</li>
-          <li>Manage blocked people in Settings.</li>
-          <li>Unblock restores the match thread if you choose.</li>
-        </ul>
-      </div>
-    </details>
+      <h2 id="sexting">Anti-sexting &amp; vulgar chat</h2>
+      <h4>Before send</h4>
+      <p>Cloud function <code>checkMessageToxicity</code> uses <strong>bad-words</strong>. Blocked messages never reach the other person. Logged in <code>vulgarAttempts</code>.</p>
+      <h4>On send</h4>
+      <p><code>scanMessageText</code> checks sexual and harassment keyword lists. Flagged messages get moderation metadata and an auto-report to admins.</p>
+      <h4>Profile photos</h4>
+      <p><strong>Google Cloud Vision Safe Search</strong> scans uploads on the server after Storage write. Explicit or racy images are blocked or deleted before publish.</p>
+      <h4>Live Random video</h4>
+      <p>Live media uses LiveKit with session gated tokens. Visual policy for uploaded images uses Google Safe Search. Skip or leave anytime; reports go to admins.</p>
+      <h4>Club group chat</h4>
+      <p>Same filters as private chat: profanity blocked before send, sexual/harassment keywords flagged and auto-reported. Club admins can kick members and control mic access.</p>
+      <h4>Risk scoring</h4>
+      <p>We track flags, blocks, and reports over 7 to 30 days. High-risk accounts are marked watch / review / restricted for staff.</p>
 
-    <details class="policy-fold" id="report">
-      <summary><span><span class="fold-num">04</span>Report</span></summary>
-      <div class="fold-body">
-        <p>Report users, messages, or behavior in-app. Mehram supervisors can report too.</p>
-        <ul>
-          <li>Manual reports go to our admin queue.</li>
-          <li>Keyword flags create automatic reports.</li>
-          <li>Child safety: email <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a> urgently.</li>
-        </ul>
-      </div>
-    </details>
+      <h2 id="block">Block</h2>
+      <p>Block from profile or chat anytime.</p>
+      <ul>
+        <li>Messaging stops immediately.</li>
+        <li>Manage blocked people in Settings.</li>
+        <li>Unblock restores the match thread if you choose.</li>
+      </ul>
 
-    <details class="policy-fold" id="device">
-      <summary><span><span class="fold-num">05</span>Device ban</span></summary>
-      <div class="fold-body">
-        <p>For repeat offenders who make new accounts, admins can ban the physical device.</p>
-        <ul>
-          <li>Device fingerprint checked on app open.</li>
-          <li>Banned device = automatic sign-out.</li>
-        </ul>
-      </div>
-    </details>
+      <h2 id="report">Report</h2>
+      <p>Report users, messages, or behavior in-app. Mehram supervisors can report too.</p>
+      <ul>
+        <li>Manual reports go to our admin queue.</li>
+        <li>Keyword flags create automatic reports.</li>
+        <li>Child safety: email <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a> urgently.</li>
+      </ul>
 
-    <details class="policy-fold" id="mehram">
-      <summary><span><span class="fold-num">06</span>Mehram supervision</span></summary>
-      <div class="fold-body">
-        <p>Optional for sisters in a chat. Invite a trusted supervisor (view only or reply).</p>
-        <ul>
-          <li>Secure invite link, expires in 7 days, revocable anytime.</li>
-          <li>Mehram uses the Huzz app only for that chat. No dating profile.</li>
-          <li>Mehram messages are clearly labeled.</li>
-          <li>Mehram can report, block on her behalf, or leave.</li>
-          <li>Both chat partners see a Mehram banner when active.</li>
-        </ul>
-      </div>
-    </details>
+      <h2 id="device">Device ban</h2>
+      <p>For repeat offenders who make new accounts, admins can ban the physical device.</p>
+      <ul>
+        <li>Device fingerprint checked on app open.</li>
+        <li>Banned device = automatic sign-out.</li>
+      </ul>
 
-    <details class="policy-fold" id="limits">
-      <summary><span><span class="fold-num">07</span>What we don't promise</span></summary>
-      <div class="fold-body">
-        <ul>
-          <li>We don't read every message live.</li>
-          <li>Filters can miss content or false-flag.</li>
-          <li>No criminal background checks on users.</li>
-          <li>In danger? Call emergency services first, then email us.</li>
-        </ul>
-      </div>
-    </details>
+      <h2 id="mehram">Mehram supervision</h2>
+      <p>Optional for sisters in a chat. Invite a trusted supervisor (view only or reply).</p>
+      <ul>
+        <li>Secure invite link, expires in 7 days, revocable anytime.</li>
+        <li>Mehram uses the app only for that chat. No dating profile.</li>
+        <li>Mehram messages are clearly labeled.</li>
+        <li>Mehram can report, block on her behalf, or leave.</li>
+        <li>Both chat partners see a Mehram banner when active.</li>
+      </ul>
 
-    <div class="contact-row-wrap" style="margin-top:20px">
+      <h2 id="limits">What we don't promise</h2>
+      <ul>
+        <li>We don't read every message live.</li>
+        <li>Filters can miss content or false-flag.</li>
+        <li>No criminal background checks on users.</li>
+        <li>In danger? Call emergency services first, then email us.</li>
+      </ul>
+    </div>
+
+    <div class="contact-row-wrap">
       <a class="contact-chip" href="mailto:zain.tariq@mail.com">
         <span>Support</span>
         <strong>zain.tariq@mail.com</strong>
@@ -166,14 +137,15 @@
       </a>
     </div>
 
-    <nav class="policy-nav">
-      <a href="trust.html">Trust center</a>
-      <a href="privacy.html">Privacy</a>
-      <a href="terms.html">Terms</a>
-      <a href="child-safety.html">Child safety</a>
-    </nav>
-
-    <p class="page-footer">© 2026 Huzz</p>
-  </main>
+    <footer class="paper-end">
+      <nav class="policy-nav">
+        <a href="trust.html">Trust center</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a href="child-safety.html">Child safety</a>
+      </nav>
+      <p class="page-footer">© 2026 Wasl / Huzz</p>
+    </footer>
+  </div>
 </body>
 </html>

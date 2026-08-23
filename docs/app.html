@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="assets/app.css" />
+  <link rel="stylesheet" href="assets/app.css?v=22" />
 </head>
 <body>
   <div class="app">
@@ -18,8 +18,9 @@
       <div class="header-side">
         <a class="header-btn" href="index.html">Home</a>
       </div>
-      <span class="header-title">Huzz</span>
-      <div class="header-side" style="display:flex;justify-content:flex-end">
+      <span class="header-title" id="headerTitle">Wasl</span>
+      <div class="header-side" style="display:flex;justify-content:flex-end;gap:8px">
+        <a class="header-btn" href="app.html?mode=admin" id="adminHeaderLink">Admin</a>
         <button type="button" id="profileBtn" class="header-btn hidden">Profile</button>
       </div>
     </header>
@@ -29,8 +30,25 @@
       (function () {
         var mode = new URLSearchParams(location.search).get('mode');
         var main = document.getElementById('main');
+        var title = document.getElementById('headerTitle');
+        var adminLink = document.getElementById('adminHeaderLink');
         if (!main) return;
-        if (mode === 'signup') {
+        if (mode === 'admin') {
+          if (title) title.textContent = 'Admin';
+          if (adminLink) adminLink.classList.add('hidden');
+          main.innerHTML =
+            '<div class="shell-card auth-card admin-card">' +
+            '<p class="admin-badge">Staff only</p>' +
+            '<h2>Admin login</h2>' +
+            '<p class="sub">Separate from the normal user login. Authorized staff accounts only.</p>' +
+            '<label for="adminEmail">Admin email</label>' +
+            '<input id="adminEmail" type="email" autocomplete="username" inputmode="email" />' +
+            '<label for="adminPass">Password</label>' +
+            '<input id="adminPass" type="password" autocomplete="current-password" />' +
+            '<button type="button" class="btn btn-primary" id="adminSubmit">Sign in as admin</button>' +
+            '<a class="btn btn-ghost" href="app.html?mode=login">User login instead</a>' +
+            '</div>';
+        } else if (mode === 'signup') {
           main.innerHTML =
             '<div class="shell-card">' +
             '<h2>Sign up</h2>' +
@@ -51,6 +69,7 @@
             '<input id="loginPass" type="password" autocomplete="current-password" />' +
             '<button type="button" class="btn btn-primary" id="loginSubmit">Log in</button>' +
             '<button type="button" class="btn btn-outline" id="loginToSignup">Create account</button>' +
+            '<a class="btn btn-ghost" href="app.html?mode=admin">Admin login</a>' +
             '</div>';
         }
       })();

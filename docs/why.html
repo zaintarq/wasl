@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>The Wasl Dispatch</title>
+  <meta name="description" content="A newspaper story about why Wasl was built, how the backend works, and why safety comes first." />
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/why.css?v=31" />
+</head>
+<body>
+  <div class="float-cluster">
+    <a class="why-float" href="why.html" aria-current="page">Why? for readers</a>
+    <a class="oss-float" href="opensource.html">Open source</a>
+    <a class="admin-float" href="app.html?mode=admin">Admin login</a>
+  </div>
+
+  <div class="paper">
+    <p class="paper-home"><a href="index.html">Return to Wasl</a></p>
+
+    <header class="masthead">
+      <p class="mast-edition">Vol. I · Special Feature · Sunday Edition</p>
+      <h1 class="mast-title">The Wasl Dispatch</h1>
+      <p class="mast-tag">Stories behind the product · Safety · Code · Intent</p>
+    </header>
+
+    <p class="headline">He wanted a dating app that did not treat people like inventory</p>
+    <p class="subhead">How Wasl began, why safety sits above growth, and what actually runs under the pink buttons</p>
+    <p class="byline">By the founder · Filed from the build logs · For readers who stay past the download screen</p>
+
+    <div class="deck">
+      <p>
+        Most dating apps sell speed. Swipe faster. Pay for boosts. Hope a human being survives the feed.
+        This is the story of why I refused that script, what I built instead, and how the machines behind
+        Wasl are wired to protect people before they try to impress them.
+      </p>
+    </div>
+
+    <div class="columns">
+      <p class="drop">
+        <span class="dropcap">T</span>he idea did not arrive as a pitch deck. It arrived as irritation.
+        Night after night, friends described the same comedy of errors: empty profiles, bots that smiled
+        too perfectly, chats that jumped from hello to something ugly in three messages, and platforms
+        that treated reporting like a suggestion box nobody emptied. I kept thinking the same quiet
+        sentence. Connection should not feel like a casino.
+      </p>
+      <p>
+        Wasl, which also ships under the Huzz name in store listings, is named for a simple Arabic word
+        that means joining, reaching, arriving. Not optimizing. Not farming attention. Arriving. That
+        word became the brief. Build a mobile first place where people can discover each other with
+        clearer intent, where mutual interest unlocks a private thread, and where optional Live sessions
+        stay short, timed, and easy to leave.
+      </p>
+      <p>
+        I am making this app because I want a product that feels culturally awake without becoming a
+        lecture. Features like Mehram, supervised lanes for conversation, clubs with live audio, and a
+        real admin queue exist because I do not believe one Western template of romance fits every user
+        who still wants honesty and dignity online. I want people to feel safe enough to be specific
+        about who they are and what they want.
+      </p>
+
+      <h2 class="section-rule">The night the backend became the story</h2>
+      <p>
+        Pretty screens are easy to fake. Trust is not. Early on I decided the serious work would live
+        on the server side, where the client cannot casually rewrite the rules. Accounts and most live
+        application data sit on Firebase. Authentication holds identity. Firestore stores profiles,
+        matches, reports, and session documents, with realtime listeners so both people see the same
+        truth without stabbing refresh. Cloud Functions handle privileged work: age related gates,
+        sensitive writes, token minting, and moderation side effects that should never be decided by a
+        lonely phone alone.
+      </p>
+      <p>
+        Live video and voice run through LiveKit. That choice matters. Media credentials are short lived
+        and only minted after the backend confirms you belong to an active Live session. In ordinary
+        language, a stranger should not walk into your call by guessing a room name. The clock, the pair,
+        the skip, the leave: those live in server backed state so both sides share one timeline.
+      </p>
+      <p>
+        Playful rooms and heavier realtime games lean on dedicated session servers where we ship them.
+        Push rides the usual platform channels. Admin tools sit on a separate path, because moderation
+        power should never look like a normal dating profile. The stack is boring on purpose. Boring
+        infrastructure is how you keep romance from becoming chaos.
+      </p>
+
+      <h2 class="section-rule">Safety is not a footer</h2>
+      <p>
+        If you only remember one line from this paper, remember this. Safety is the design constraint,
+        not the brochure chapter we paste on after launch week. Reporting has somewhere to land.
+        Blocking cuts a path. Message scanning watches for sexual and harassment patterns. Flagged
+        traffic can auto route into an admin queue. Repeat harm can escalate. In serious cases we can
+        ban a physical device so a ban is not just a new email address with the same old habits.
+      </p>
+      <p>
+        Age assurance workflows gate dating surfaces until required steps are done. Child sexual abuse
+        and exploitation get a zero tolerance posture. There is no soft landing for that category. Read
+        the child safety and community pages if you want the operational detail. Mehram exists because
+        some families and cultures want supervised conversation, and I refuse to pretend privacy means
+        abandoning care.
+      </p>
+      <p>
+        Growth still matters. Downloads still matter. But I would rather ship slower and keep the room
+        clean than race a chart while people get hurt inside the product. That is the trade I am making
+        in public.
+      </p>
+
+      <h2 class="section-rule">What I want, said plainly</h2>
+      <p>
+        I want Wasl to be a place where people can meet without feeling hunted. I want the backend to
+        keep score when someone misbehaves. I want Live to feel like a doorway you can close. I want
+        matches to feel like consent, not a prize wheel. I want readers, parents, reviewers, and future
+        teammates to understand that the pink gradient on the homepage is decoration. The real color of
+        the product is the discipline underneath it.
+      </p>
+      <p>
+        This dispatch will grow as the product grows. If you are still here, thank you for reading past
+        the buttons. The app is the invitation. This page is the reason.
+      </p>
+
+      <h2 class="section-rule">Safe Search how it works (comic strip)</h2>
+      <p>
+        Four panels. Zero mystery. The journey of a naughty upload that thought it was slick.
+      </p>
+
+      <aside class="comic-strip" aria-label="Safe Search how it works comic strip">
+        <header class="comic-mast">
+          <span class="comic-series">Wasl Safety Funnies</span>
+          <span class="comic-episode">No. 01 · “Nice Try”</span>
+          <span class="comic-tag">Google Cloud Vision · Safe Search Detection</span>
+        </header>
+
+        <div class="comic" role="img" aria-label="Four panel comic: upload, Vision Safe Search, block, nice try">
+          <figure class="comic-panel">
+            <div class="comic-art comic-art-1" aria-hidden="true">
+              <div class="phone">
+                <div class="phone-notch"></div>
+                <div class="phone-screen">
+                  <div class="selfie"></div>
+                  <div class="upload-arrow">↑</div>
+                </div>
+              </div>
+              <div class="fly-dots" aria-hidden="true">
+                <i></i><i></i><i></i>
+              </div>
+              <div class="cloud-box">
+                <span class="cloud-label">Storage</span>
+                <span class="cloud-sub">Firebase</span>
+              </div>
+            </div>
+            <figcaption>
+              <span class="panel-num">1</span>
+              <strong>Upload</strong>
+              <em>Photo hits Firebase Storage. Client calls <code>moderateUploadedImage</code>. Confidence: maximum. Clue: none.</em>
+            </figcaption>
+          </figure>
+
+          <figure class="comic-panel">
+            <div class="comic-art comic-art-2" aria-hidden="true">
+              <div class="scan-line"></div>
+              <div class="vision-orb">
+                <span>Vision</span>
+                <small>Safe Search</small>
+              </div>
+              <div class="enum-chips">
+                <span class="chip-hot">adult: LIKELY</span>
+                <span class="chip-warn">racy: POSSIBLE</span>
+              </div>
+            </div>
+            <figcaption>
+              <span class="panel-num">2</span>
+              <strong>Vision</strong>
+              <em>Google <code>safeSearchDetection</code> returns likelihood enums. Not vibes. Labels.</em>
+            </figcaption>
+          </figure>
+
+          <figure class="comic-panel">
+            <div class="comic-art comic-art-3" aria-hidden="true">
+              <div class="gate">
+                <div class="gate-bar">BLOCKED</div>
+                <div class="gate-x">✕</div>
+              </div>
+              <div class="trash-row">
+                <span class="trash-bin" aria-hidden="true"></span>
+                <span class="trash">object deleted</span>
+              </div>
+            </div>
+            <figcaption>
+              <span class="panel-num">3</span>
+              <strong>Block</strong>
+              <em>Server gate: adult/racy in POSSIBLE+ → reject. Object gone before publish.</em>
+            </figcaption>
+          </figure>
+
+          <figure class="comic-panel comic-panel-finale">
+            <div class="comic-art comic-art-4" aria-hidden="true">
+              <div class="speech">nice try.</div>
+              <div class="mod-stamp">MODERATED</div>
+              <div class="shrug-guy">
+                <div class="face">ಠ_ಠ</div>
+                <div class="arms">¯\_(ツ)_/¯</div>
+              </div>
+            </div>
+            <figcaption>
+              <span class="panel-num">4</span>
+              <strong>Nice try</strong>
+              <em>Client cannot override. Logs keep the labels. Avatar stays unposted. Dignity: restored.</em>
+            </figcaption>
+          </figure>
+        </div>
+      </aside>
+
+      <h2 class="section-rule">Common questions that might come to your mind</h2>
+      <p>
+        Readers always ask the spicy ones. Here they are, answered in public, without soft lighting.
+      </p>
+
+      <h2 class="section-rule">What if someone gets naked on Live video?</h2>
+      <p>
+        We do not rely on an on-device NSFWJS model anymore. That path is gone. Visual enforcement
+        now runs through <strong>Google Cloud Vision Safe Search Detection</strong>, the same family
+        of Vision API calls we use when a photo hits Firebase Storage.
+      </p>
+      <p>
+        Technically: image bytes are passed to <code>ImageAnnotatorClient.safeSearchDetection</code>.
+        Google returns a <code>SafeSearchAnnotation</code> object. Inside it, each risk category is a
+        likelihood enum, not a free floating score. Categories include <code>adult</code>,
+        <code>racy</code>, <code>violence</code>, <code>medical</code>, and <code>spoof</code>. The
+        enum values are <code>UNKNOWN</code>, <code>VERY_UNLIKELY</code>, <code>UNLIKELY</code>,
+        <code>POSSIBLE</code>, <code>LIKELY</code>, and <code>VERY_LIKELY</code>.
+      </p>
+      <p>
+        Our Cloud Function layer, in <code>visionModeration.js</code>, maps those enums into a hard
+        gate. If <code>adult</code> is in <code>{POSSIBLE, LIKELY, VERY_LIKELY}</code>, block. If
+        <code>racy</code> is in the same set, block. That means bikini soft porn framing can fail,
+        not only full nudity. The callable <code>moderateUploadedImage</code> downloads the Storage
+        object server side, runs Safe Search, and if blocked deletes or rejects the object before it
+        becomes a published profile or story image. The client cannot override that decision. Logs
+        keep <code>adult</code>, <code>racy</code>, and <code>violence</code> labels for audit.
+      </p>
+      <p>
+        For Live, the same Safe Search philosophy is the visual brain. Session media still rides
+        LiveKit with short lived tokens. If a session turns explicit, skip and leave cut the media
+        path, and staff get the report trail. Safe Search is the classifier. The server is the judge.
+        The admin queue is the appeal court.
+      </p>
+
+      <h2 class="section-rule">What if someone starts sexting?</h2>
+      <p>
+        Text is a different weapon, so it gets a different pipeline. Before send, a Cloud Function
+        toxicity check hits a bad words style blocklist. Blocked text never reaches the other person.
+        The attempt is stored in <code>vulgarAttempts</code>. If something slips through,
+        <code>scanMessageText</code> still scans sexual and harassment keyword lists, stamps
+        moderation metadata on the message, and auto opens a report for admins. Club chat uses the
+        same idea. Sexting is not a secret between two keyboards. It becomes structured evidence.
+      </p>
+
+      <h2 class="section-rule">What happens after someone taps Report?</h2>
+      <p>
+        A Firestore report document is born: reporter, target, reason, categories, status, timestamps,
+        optional match and message pointers. Auto flags create reports too. In the admin app, staff are
+        routed away from the dating home into a console with reports, safety, verifications, users, and
+        vulgar attempt views. They can open a case, read context, pull evidence CSV rows that stitch
+        reports with message moderation flags, then warn, suspend, or device ban. Device bans fingerprint
+        the hardware so "new Gmail, same phone, same habits" dies on launch with an automatic sign out.
+      </p>
+
+      <h2 class="section-rule">What if they upload a thirsty "harmless selfie"?</h2>
+      <p>
+        Same Safe Search gate. Upload lands in Storage, <code>moderateUploadedImage</code> runs Vision,
+        <code>adult</code> and <code>racy</code> thresholds fire, object rejected. No avatar, no story
+        tile, no soft launch of soft porn.
+      </p>
+
+      <h2 class="section-rule">What if Live turns into flashing or a sexual performance?</h2>
+      <p>
+        End it. Skip. Leave. Tokens die with the session. Reports hit the queue. Admins can escalate
+        using the same warn, suspend, and device ban tools. Safe Search remains the visual policy brain
+        for image content in the product. LiveKit remains the transport, not the moral system.
+      </p>
+
+      <h2 class="section-rule">What if they ask for Snap, OnlyFans, or "rate my body"?</h2>
+      <p>
+        That is solicitation and off platform grooming adjacent behavior. Keyword scanning can flag it.
+        Users can report it. Admins see opener spam and vulgar attempt history. Repeated bait gets treated
+        like abuse, not like marketing.
+      </p>
+
+      <h2 class="section-rule">What if a Mehram sees something disgusting?</h2>
+      <p>
+        Supervisors can report. They can block on behalf of the person they protect. The chat stays labeled
+        so nobody confuses a guardian with a flirt. Cases still land in the same admin pipeline.
+      </p>
+
+      <h2 class="section-rule">What if they ban evade with a fresh account?</h2>
+      <p>
+        Account bans stop a login. Device bans stop the handset. Fingerprint match on open means forced
+        sign out. That is the answer to the eternal "I will just make another email" trick.
+      </p>
+
+      <h2 class="section-rule">What if two adults mutually want explicit chat anyway?</h2>
+      <p>
+        Then they want a different product. Mutual agreement to break Wasl rules is still a break.
+        Filters and reports still apply. This newspaper is not a porn brochure.
+      </p>
+
+      <h2 class="section-rule">What if Safe Search is wrong?</h2>
+      <p>
+        Classifiers miss and overfire. That is why we keep likelihood labels in logs, keep thresholds in
+        server code we can tighten, and keep humans in the admin console. Automation is the smoke alarm.
+        Staff are the fire crew.
+      </p>
+    </div>
+
+    <aside class="sidebar-note">
+      <h3>Field notes</h3>
+      <ul>
+        <li><strong>Client:</strong> React Native / Expo for Android and iOS</li>
+        <li><strong>Identity &amp; data:</strong> Firebase Auth, Firestore, Cloud Functions</li>
+        <li><strong>Vision:</strong> Google Cloud Vision Safe Search (NSFWJS removed)</li>
+        <li><strong>Live media:</strong> LiveKit with server gated tokens</li>
+        <li><strong>Ops:</strong> separate admin path, report queues, device bans</li>
+      </ul>
+      <p class="sidebar-links">
+        <a href="trust.html">Trust center</a> ·
+        <a href="community.html">Safety</a> ·
+        <a href="child-safety.html">Child safety</a>
+      </p>
+    </aside>
+
+    <footer class="paper-end">
+      <p>Correspondence: <a href="mailto:zain.tariq@mail.com">zain.tariq@mail.com</a></p>
+      <p>Child safety desk: <a href="mailto:saudbilal1999@gmail.com">saudbilal1999@gmail.com</a></p>
+      <p class="end-mark">■ End of dispatch</p>
+      <a class="paper-btn" href="index.html">Back to the homepage</a>
+    </footer>
+  </div>
+</body>
+</html>
