@@ -1,27 +1,79 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Platform, ActivityIndicator, Alert, Linking } from 'react-native';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Shield, LogOut, Users } from 'lucide-react-native';
+import { Shield, LogOut, Users, FileMinus } from 'lucide-react-native';
 
-import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { authService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { shellStyles } from '../../ui/styles/shellStyles.native';
-import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { ScreenBackHeader } from '../../ui/components/ScreenBackHeader.native';
 import { MatchPreferencesSettings } from './MatchPreferencesSettings.native';
 
-const cardShadow =
-  Platform.OS === 'ios'
-    ? {
-        shadowColor: '#0f172a',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.07,
-        shadowRadius: 12,
-      }
-    : { elevation: 3 };
+const PRIVACY_URL = 'https://zaintarq.github.io/wasl/privacy.html';
+const DELETE_ACCOUNT_URL = 'https://zaintarq.github.io/wasl/delete-account.html';
+const DELETE_DATA_URL = 'https://zaintarq.github.io/wasl/delete-account.html#partial';
+const SUPPORT_EMAIL = 'zain.tariq@mail.com';
+
+async function openUrl(url) {
+  try {
+    await Linking.openURL(url);
+  } catch (error) {
+    Alert.alert('Could not open link', 'Please try again, or email zain.tariq@mail.com.');
+  }
+}
+
+function requestDataDeletion() {
+  const email = authService.getCurrentUser()?.email || '';
+  Alert.alert(
+    'Request data deletion',
+    'You can ask us to delete some or all of your personal data without deleting your whole account. We will email you when it is done.\n\nOpen the request page, or email support from the address on your account.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Open request page',
+        onPress: () => openUrl(DELETE_DATA_URL),
+      },
+      {
+        text: 'Email support',
+        onPress: () =>
+          openUrl(
+            `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Wasl data deletion request')}&body=${encodeURIComponent(
+              `Please delete the following personal data from my Wasl account (keep my account open):\n\nAccount email: ${email}\nWhat to delete: (describe photos, chats, profile fields, etc.)\n`
+            )}`
+          ),
+      },
+    ]
+  );
+}
+
+function requestAccountDeletion() {
+  const email = authService.getCurrentUser()?.email || '';
+  Alert.alert(
+    'Delete your Wasl account',
+    'This permanently deletes your account and associated personal data (safety records may be kept for a limited time). You will not be able to sign in again.\n\nContinue to the deletion page for full steps, or email support from your account address.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Open deletion page',
+        style: 'destructive',
+        onPress: () => openUrl(DELETE_ACCOUNT_URL),
+      },
+      {
+        text: 'Email support',
+        style: 'destructive',
+        onPress: () =>
+          openUrl(
+            `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Wasl account deletion request')}&body=${encodeURIComponent(
+              `Please delete my Wasl account and associated data.\n\nAccount email: ${email}\nUsername: \n`
+            )}`
+          ),
+      },
+    ]
+  );
+}
 
 export function SettingsScreen({ onNavigate }) {
   const insets = useSafeAreaInsets();
@@ -126,6 +178,7 @@ export function SettingsScreen({ onNavigate }) {
             <View style={styles.btnStack}>
               <RetroButton variant="green" title="Block people (optional)" onPress={() => onNavigate('contacts')} style={styles.fullBtn} />
               <RetroButton variant="gray" title="Blocked users" onPress={() => onNavigate('blockedUsers')} style={styles.fullBtn} />
+              <RetroButton variant="outline" title="Privacy policy" onPress={() => openUrl(PRIVACY_URL)} style={styles.fullBtn} />
             </View>
           </View>
 
@@ -135,10 +188,39 @@ export function SettingsScreen({ onNavigate }) {
       <View style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={[styles.sectionIconWrap, styles.iconWrapRose]}>
+            <FileMinus size={20} color={tokens.colors.textOnBrand} strokeWidth={2.2} />
+          </View>
+          <View style={styles.sectionHeadText}>
+            <Text style={styles.sectionTitle}>Your data</Text>
+            <Text style={styles.sectionHint}>Request deletion of some data, or your whole account</Text>
+          </View>
+        </View>
+        <View style={styles.btnStack}>
+          <RetroButton
+            variant="outline"
+            title="Request data deletion"
+            onPress={requestDataDeletion}
+            style={styles.fullBtn}
+          />
+          <RetroButton
+            variant="danger"
+            title="Delete account"
+            onPress={requestAccountDeletion}
+            style={styles.fullBtn}
+          />
+        </View>
+        <Text style={styles.dataFootnote}>
+          Data deletion keeps your account. Account deletion removes your login and associated personal data.
+        </Text>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.sectionHead}>
+          <View style={[styles.sectionIconWrap, styles.iconWrapRose]}>
             <LogOut size={20} color={tokens.colors.textOnBrand} strokeWidth={2.2} />
           </View>
           <View style={styles.sectionHeadText}>
-            <Text style={styles.sectionTitle}>Account</Text>
+            <Text style={styles.sectionTitle}>Session</Text>
             <Text style={styles.sectionHint}>Sign out on this device</Text>
           </View>
         </View>
@@ -257,5 +339,12 @@ const styles = StyleSheet.create({
   fullBtn: {
     alignSelf: 'stretch',
     width: '100%',
+  },
+  dataFootnote: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
+    color: tokens.colors.textMutedOnBrand,
   },
 });

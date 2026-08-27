@@ -1060,6 +1060,8 @@ export function createWebApp(ctx) {
         <a class="settings-link" href="trust.html">Trust center <span>→</span></a>
         <a class="settings-link" href="community.html">Community &amp; moderation <span>→</span></a>
         <a class="settings-link" href="privacy.html">Privacy policy <span>→</span></a>
+        <a class="settings-link" href="delete-account.html#partial">Request data deletion <span>→</span></a>
+        <a class="settings-link" href="delete-account.html">Delete account <span>→</span></a>
         <a class="settings-link" href="terms.html">Terms of service <span>→</span></a>
         <a class="settings-link" href="child-safety.html">Child safety <span>→</span></a>
         <a class="settings-link" href="mailto:zain.tariq@mail.com">Contact support <span>→</span></a>
