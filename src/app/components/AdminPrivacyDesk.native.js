@@ -268,6 +268,49 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
                 {expanded && g.stack ? (
                   <Text style={styles.stack}>{String(g.stack).slice(0, 1200)}</Text>
                 ) : null}
+                <RetroButton
+                  variant="gray"
+                  title={
+                    busyId === `issue-${g.id}`
+                      ? 'Opening…'
+                      : g.trackerUrl
+                        ? 'Open tracker issue'
+                        : 'Create GitHub / Linear issue'
+                  }
+                  onPress={async () => {
+                    if (g.trackerUrl) {
+                      Linking.openURL(g.trackerUrl).catch(() => {});
+                      return;
+                    }
+                    setBusyId(`issue-${g.id}`);
+                    const res = await privacyAdminService.createCrashTrackerIssue({
+                      fingerprint: g.fingerprint || g.id,
+                      groupId: g.id,
+                    });
+                    setBusyId('');
+                    if (res.error) {
+                      Alert.alert('Tracker', res.error);
+                      return;
+                    }
+                    const url = res.data?.url;
+                    Alert.alert(
+                      res.data?.provider === 'prefill' ? 'Open GitHub form' : 'Issue ready',
+                      res.data?.message ||
+                        (res.data?.provider === 'prefill'
+                          ? 'No API token set — opening a prefilled GitHub issue page.'
+                          : `Created via ${res.data?.provider}.`),
+                      [
+                        { text: 'OK', style: 'cancel' },
+                        url
+                          ? { text: 'Open', onPress: () => Linking.openURL(url).catch(() => {}) }
+                          : null,
+                      ].filter(Boolean)
+                    );
+                    load();
+                  }}
+                  style={styles.fullBtn}
+                  disabled={Boolean(busyId)}
+                />
               </View>
             );
           })

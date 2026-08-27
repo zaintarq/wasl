@@ -62,15 +62,20 @@ export const messageService = {
   },
 
   /**
-   * Returns true if the message is toxic (block send), false otherwise.
+   * Returns { toxic, strikeCount, message }.
    * Falls back to local keyword scan when Cloud Function is unavailable.
    */
   async checkMessageToxicity(matchId, text, { clubId = null } = {}) {
     const trimmed = String(text || '').trim();
-    if (!trimmed) return false;
+    if (!trimmed) return { toxic: false, strikeCount: 0, message: '' };
     const callable = _checkMessageToxicityCallable;
     if (!callable) {
-      return isMessageToxicLocal(trimmed);
+      const toxic = isMessageToxicLocal(trimmed);
+      return {
+        toxic,
+        strikeCount: toxic ? 1 : 0,
+        message: toxic ? 'Message blocked. Please rephrase before sending.' : '',
+      };
     }
     try {
       const { data } = await callable({
@@ -78,9 +83,19 @@ export const messageService = {
         matchId: matchId || null,
         clubId: clubId || null,
       });
-      return data && data.toxic === true;
+      const toxic = data && data.toxic === true;
+      return {
+        toxic,
+        strikeCount: Number(data?.strikeCount || 0) || (toxic ? 1 : 0),
+        message: String(data?.message || '').trim(),
+      };
     } catch {
-      return isMessageToxicLocal(trimmed);
+      const toxic = isMessageToxicLocal(trimmed);
+      return {
+        toxic,
+        strikeCount: toxic ? 1 : 0,
+        message: toxic ? 'Message blocked. Please rephrase before sending.' : '',
+      };
     }
   },
 

@@ -1,12 +1,13 @@
-import { app, db } from '../firebase';
 import {
   collection,
   getDocs,
   limit,
   orderBy,
   query,
+  where,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app, auth, db } from '../firebase';
 import { COL } from './constants';
 
 function callable(name) {
@@ -25,6 +26,8 @@ const _reportCrash = callable('reportCrash');
 const _getDeletionWipePreview = callable('getDeletionWipePreview');
 const _exportUserDataPacket = callable('exportUserDataPacket');
 const _selfWipeAccount = callable('selfWipeAccount');
+const _sendReportOutcomeEmail = callable('sendReportOutcomeEmail');
+const _createCrashTrackerIssue = callable('createCrashTrackerIssue');
 
 export const privacyAdminService = {
   async submitDeletionRequest({ type = 'account', details = '' } = {}) {
@@ -168,6 +171,53 @@ export const privacyAdminService = {
       return { data: res?.data || null, error: null };
     } catch (error) {
       return { data: null, error: error?.message || 'Failed to delete account.' };
+    }
+  },
+
+  async sendReportOutcomeEmail({ reportId, message, subject = '' } = {}) {
+    if (!_sendReportOutcomeEmail) return { error: 'Outcome email unavailable.' };
+    try {
+      const res = await _sendReportOutcomeEmail({ reportId, message, subject });
+      return { data: res?.data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to email reporter.' };
+    }
+  },
+
+  async createCrashTrackerIssue({ fingerprint = '', groupId = '', title = '', body = '' } = {}) {
+    if (!_createCrashTrackerIssue) return { error: 'Tracker issue unavailable.' };
+    try {
+      const res = await _createCrashTrackerIssue({ fingerprint, groupId, title, body });
+      return { data: res?.data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to create tracker issue.' };
+    }
+  },
+
+  async listMyDeletionRequests({ limitCount = 20 } = {}) {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return { data: [], error: 'Not signed in.' };
+      const qRef = query(
+        collection(db, COL.deletionRequests),
+        where('uid', '==', String(uid)),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount || 20)
+      );
+      const snap = await getDocs(qRef);
+      const data = snap.docs.map((d) => {
+        const x = d.data() || {};
+        return {
+          id: d.id,
+          ...x,
+          createdAt: x.createdAt?.toMillis?.() ?? x.createdAt?.seconds * 1000 ?? null,
+          processedAt: x.processedAt?.toMillis?.() ?? x.processedAt?.seconds * 1000 ?? null,
+        };
+      });
+      return { data, error: null };
+    } catch (error) {
+      console.error('[privacyAdminService] listMyDeletionRequests', error);
+      return { data: [], error: error.message };
     }
   },
 };

@@ -1140,6 +1140,7 @@ exports.checkMessageToxicity = functions
 
     const toxic = isMessageToxicLocal(text);
     if (toxic) {
+      let strikeCount = 1;
       try {
         await db.collection(VULGAR_COLLECTION).add({
           userId: uid,
@@ -1160,12 +1161,39 @@ exports.checkMessageToxicity = functions
           details: clubId ? `club:${clubId} ${text.trim()}` : text.trim(),
           score: 1,
         });
+
+        const userRef = db.collection('users').doc(uid);
+        await db.runTransaction(async (tx) => {
+          const userSnap = await tx.get(userRef);
+          const ud = userSnap.exists ? userSnap.data() || {} : {};
+          const lastAt = ud.lastChatBlockAt?.toMillis?.() || 0;
+          const windowMs = 24 * 60 * 60 * 1000;
+          let count = Number(ud.chatBlockStrikes24h || 0) || 0;
+          if (!lastAt || Date.now() - lastAt > windowMs) count = 0;
+          count += 1;
+          strikeCount = count;
+          tx.set(
+            userRef,
+            {
+              chatBlockStrikes24h: count,
+              lastChatBlockAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        });
       } catch (e) {
         console.error('[checkMessageToxicity] Failed to log vulgar attempt:', e.message);
       }
-      return { toxic: true };
+      return {
+        toxic: true,
+        strikeCount,
+        message:
+          strikeCount >= 3
+            ? `Message blocked. Strike ${strikeCount} in the last 24 hours. Repeated blocks may be reviewed by admins.`
+            : `Message blocked (strike ${strikeCount} of 3 in 24h). Please rephrase before sending.`,
+      };
     }
-    return { toxic: false };
+    return { toxic: false, strikeCount: 0 };
   });
 
 exports.recordSafetyEvent = functions

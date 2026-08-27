@@ -174,11 +174,13 @@ export function LiveRandomScreen({ onNavigate }) {
     const t = chatText.trim();
     if (!t || !session?.id || !meUid) return;
     try {
-      const toxic = await liveRandomService.checkMessageToxicity(session.id, t);
-      if (toxic) {
+      const check = await liveRandomService.checkMessageToxicity(session.id, t);
+      if (check?.toxic || check === true) {
+        const strikes = Number(check?.strikeCount || 1);
         Alert.alert(
-          'Message not allowed',
-          'This message was flagged as inappropriate. Please change it before sending. Repeated attempts may be reported to admins.',
+          'Message blocked',
+          check?.message ||
+            `This message was flagged as inappropriate (strike ${strikes} in 24h). Please change it before sending.`,
           [{ text: 'OK' }]
         );
         return;

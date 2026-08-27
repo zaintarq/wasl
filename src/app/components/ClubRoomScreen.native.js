@@ -119,10 +119,11 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
     if (!t) return;
     try {
       const toxic = await clubService.checkMessageToxicity(cid, t);
-      if (toxic) {
+      if (toxic?.toxic || toxic === true) {
         Alert.alert(
-          'Message not allowed',
-          'This message was flagged as inappropriate. Please change it before sending. Repeated attempts may be reported to admins.',
+          'Message blocked',
+          toxic?.message ||
+            `This message was flagged (strike ${toxic?.strikeCount || 1} in 24h). Please change it before sending.`,
           [{ text: 'OK' }]
         );
         return;

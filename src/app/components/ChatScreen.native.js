@@ -1221,10 +1221,11 @@ export function ChatScreen({ onNavigate, matchId }) {
                     await messageService.setTyping(matchId, uid, false);
                     if (editing?.id) {
                       const toxicEdit = await messageService.checkMessageToxicity(matchId, text);
-                      if (toxicEdit) {
+                      if (toxicEdit?.toxic) {
                         Alert.alert(
-                          'Message not allowed',
-                          'This message was flagged as inappropriate. Please change it before sending. Repeated attempts may be reported to admins.',
+                          'Message blocked',
+                          toxicEdit.message ||
+                            `This message was flagged (strike ${toxicEdit.strikeCount || 1} in 24h). Please change it before sending.`,
                           [{ text: 'OK' }]
                         );
                         return;
@@ -1236,10 +1237,11 @@ export function ChatScreen({ onNavigate, matchId }) {
                       return;
                     }
                     const toxic = await messageService.checkMessageToxicity(matchId, text);
-                    if (toxic) {
+                    if (toxic?.toxic) {
                       Alert.alert(
-                        'Message not allowed',
-                        'This message was flagged as inappropriate. Please change it before sending. Repeated attempts may be reported to admins.',
+                        'Message blocked',
+                        toxic.message ||
+                          `This message was flagged (strike ${toxic.strikeCount || 1} in 24h). Please change it before sending.`,
                         [{ text: 'OK' }]
                       );
                       return;

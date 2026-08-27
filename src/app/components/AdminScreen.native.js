@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { tokens, brandShellGradientSoft } from '../../ui/tokens';
-import { adminService, appUpdateService, authService, deviceBanService, moderationNoticeService, userService, verificationService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { adminService, appUpdateService, authService, deviceBanService, moderationNoticeService, privacyAdminService, userService, verificationService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { PLAY_STORE_WEB_URL } from '../../config/appStore';
 import { exportService } from '../../services/exportService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -124,6 +124,7 @@ export function AdminScreen({ onNavigate }) {
     reportId: '',
     matchId: '',
   });
+  const [outcomeDrafts, setOutcomeDrafts] = useState({});
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [createUserEmail, setCreateUserEmail] = useState('');
   const [createUserPassword, setCreateUserPassword] = useState('');
@@ -1746,7 +1747,52 @@ export function AdminScreen({ onNavigate }) {
                   {r.status ? ` · Status: ${String(r.status).toUpperCase()}` : ''}
                 </Text>
 
+                <Text style={styles.reportMeta}>Email reporter (no details about the other person)</Text>
+                <TextInput
+                  style={styles.outcomeInput}
+                  multiline
+                  placeholder="We reviewed your report. Thank you for helping keep Wasl safe."
+                  placeholderTextColor="#94a3b8"
+                  value={
+                    outcomeDrafts[r.id] ??
+                    'We reviewed your report. Thank you for helping keep Wasl safe. We cannot share details about other accounts, but your report was helpful.'
+                  }
+                  onChangeText={(t) =>
+                    setOutcomeDrafts((prev) => ({
+                      ...prev,
+                      [r.id]: t,
+                    }))
+                  }
+                />
+                {r.outcomeEmailSent ? (
+                  <Text style={styles.reportMeta}>Outcome emailed{r.outcomeEmailTo ? ` to ${r.outcomeEmailTo}` : ''}</Text>
+                ) : null}
+
                 <View style={styles.actions}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionBtnSky]}
+                    onPress={async () => {
+                      const message = String(
+                        outcomeDrafts[r.id] ||
+                          'We reviewed your report. Thank you for helping keep Wasl safe. We cannot share details about other accounts, but your report was helpful.'
+                      ).trim();
+                      if (!message) {
+                        Alert.alert('Message required', 'Write what you want the reporter to read.');
+                        return;
+                      }
+                      const res = await privacyAdminService.sendReportOutcomeEmail({
+                        reportId: r.id,
+                        message,
+                      });
+                      if (res.error) Alert.alert('Email failed', res.error);
+                      else {
+                        Alert.alert('Sent', `Emailed reporter${res.data?.to ? ` at ${res.data.to}` : ''}.`);
+                        load();
+                      }
+                    }}
+                  >
+                    <Text style={styles.actionText}>Email reporter</Text>
+                  </TouchableOpacity>
                   {resolvedTargetUid ? (
                     <TouchableOpacity
                       style={[styles.actionBtn, styles.actionBtnSky]}
@@ -2220,6 +2266,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: tokens.colors.text,
     lineHeight: 18,
+  },
+  outcomeInput: {
+    marginTop: 8,
+    minHeight: 72,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    color: '#0f172a',
+    textAlignVertical: 'top',
+    fontSize: 13,
   },
   badge: {
     marginTop: 8,

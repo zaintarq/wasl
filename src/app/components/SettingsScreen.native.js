@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Shield, LogOut, Users, FileMinus } from 'lucide-react-native';
 
-import { authService, checkUserRoleFromAdminCollection, privacyAdminService } from '../../services/firebaseService';
+import { authService, checkUserRoleFromAdminCollection, privacyAdminService, userService } from '../../services/firebaseService';
 import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
@@ -142,6 +142,7 @@ export function SettingsScreen({ onNavigate }) {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [privacyStatus, setPrivacyStatus] = useState({ requests: [], dsar: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -154,10 +155,32 @@ export function SettingsScreen({ onNavigate }) {
           return;
         }
 
-        const roleCheck = await checkUserRoleFromAdminCollection(uid);
+        const [roleCheck, delRes, userRes] = await Promise.all([
+          checkUserRoleFromAdminCollection(uid),
+          privacyAdminService.listMyDeletionRequests({ limitCount: 10 }),
+          userService.getUserById(uid),
+        ]);
         if (!cancelled) {
           setIsAdmin(roleCheck.isAdmin);
           setIsStaff(roleCheck.isStaff);
+          const u = userRes?.data || {};
+          const expiresMs =
+            u.lastDsarExportExpiresAt?.toMillis?.() ??
+            u.lastDsarExportExpiresAt?.seconds * 1000 ??
+            null;
+          const exportAt =
+            u.lastDsarExportAt?.toMillis?.() ?? u.lastDsarExportAt?.seconds * 1000 ?? null;
+          setPrivacyStatus({
+            requests: delRes.data || [],
+            dsar: exportAt
+              ? {
+                  exportedAt: exportAt,
+                  expiresAt: expiresMs,
+                  bytes: u.lastDsarExportBytes || null,
+                  expired: expiresMs ? Date.now() > expiresMs : false,
+                }
+              : null,
+          });
           setLoading(false);
         }
       } catch (error) {
@@ -363,6 +386,39 @@ export function SettingsScreen({ onNavigate }) {
           Delete account now re-checks your password and wipes data immediately. The admin queue is a
           backup (ack email, processed within 30 days). Download my data builds a DSAR JSON/ZIP packet.
         </Text>
+
+        <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Your privacy status</Text>
+        {privacyStatus.dsar ? (
+          <Text style={styles.statusLine}>
+            Last data export:{' '}
+            {new Date(privacyStatus.dsar.exportedAt).toLocaleString()}
+            {privacyStatus.dsar.expired
+              ? ' · links expired'
+              : privacyStatus.dsar.expiresAt
+                ? ` · links until ${new Date(privacyStatus.dsar.expiresAt).toLocaleString()}`
+                : ''}
+            {privacyStatus.dsar.bytes
+              ? ` · ~${Math.round(privacyStatus.dsar.bytes / 1024)} KB`
+              : ''}
+          </Text>
+        ) : (
+          <Text style={styles.statusLine}>No data export yet.</Text>
+        )}
+        {!privacyStatus.requests?.length ? (
+          <Text style={styles.statusLine}>No deletion requests on file.</Text>
+        ) : (
+          privacyStatus.requests.slice(0, 5).map((req) => (
+            <Text key={req.id} style={styles.statusLine}>
+              {req.type === 'partial' ? 'Data deletion' : 'Account deletion'}: {String(req.status || 'open')}
+              {req.status === 'done' && req.processedAt
+                ? ` · completed ${new Date(req.processedAt).toLocaleString()}`
+                : req.createdAt
+                  ? ` · submitted ${new Date(req.createdAt).toLocaleString()}`
+                  : ''}
+              {req.selfWiped ? ' · self-wipe' : ''}
+            </Text>
+          ))
+        )}
       </View>
 
       <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => !deleting && setDeleteOpen(false)}>
@@ -546,6 +602,13 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '500',
     color: tokens.colors.textMutedOnBrand,
+  },
+  statusLine: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 17,
+    color: tokens.colors.textMutedOnBrand,
+    fontWeight: '600',
   },
   modalBackdrop: {
     flex: 1,

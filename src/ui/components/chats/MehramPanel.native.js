@@ -30,6 +30,16 @@ function formatVisit(ms) {
   }
 }
 
+function buildMehramShareMessage(inviteUrl) {
+  return (
+    `You're invited to supervise my Wasl conversation as my Mehram.\n\n` +
+    `Checklist:\n` +
+    `• Install or open the Wasl / Huzz app\n` +
+    `• Tap this private link (app only — not a browser):\n${inviteUrl}\n` +
+    `• Keep the link private — do not forward it\n`
+  );
+}
+
 export function MehramPanel({
   visible,
   onClose,
@@ -131,14 +141,36 @@ export function MehramPanel({
     if (!inviteUrl) return;
     try {
       await Share.share({
-        message:
-          `You're invited to supervise my Wasl conversation as my Mehram.\n\n` +
-          `1) Install or open the Wasl / Huzz app\n` +
-          `2) Tap this private link (works only in the app):\n\n${inviteUrl}\n\n` +
-          `Do not forward this link.`,
+        message: buildMehramShareMessage(inviteUrl),
       });
     } catch {
       /* ignore */
+    }
+  }, [inviteUrl]);
+
+  const handleWhatsApp = useCallback(async () => {
+    if (!inviteUrl) return;
+    const text = encodeURIComponent(buildMehramShareMessage(inviteUrl));
+    const url = `whatsapp://send?text=${text}`;
+    try {
+      const { Linking } = require('react-native');
+      const can = await Linking.canOpenURL(url);
+      if (can) await Linking.openURL(url);
+      else await Linking.openURL(`https://wa.me/?text=${text}`);
+    } catch {
+      Alert.alert('WhatsApp', 'Could not open WhatsApp. Use Share or Copy instead.');
+    }
+  }, [inviteUrl]);
+
+  const handleSms = useCallback(async () => {
+    if (!inviteUrl) return;
+    const text = encodeURIComponent(buildMehramShareMessage(inviteUrl));
+    try {
+      const { Linking, Platform } = require('react-native');
+      const sep = Platform.OS === 'ios' ? '&' : '?';
+      await Linking.openURL(`sms:${sep}body=${text}`);
+    } catch {
+      Alert.alert('SMS', 'Could not open Messages. Use Share or Copy instead.');
     }
   }, [inviteUrl]);
 
@@ -257,6 +289,12 @@ export function MehramPanel({
       </View>
       <HuzzPressable style={styles.primaryBtn} onPress={handleCopy} haptic="light">
         <Text style={styles.primaryBtnText}>Copy link</Text>
+      </HuzzPressable>
+      <HuzzPressable style={styles.secondaryBtn} onPress={handleWhatsApp} haptic="light">
+        <Text style={styles.secondaryBtnText}>Share on WhatsApp</Text>
+      </HuzzPressable>
+      <HuzzPressable style={styles.secondaryBtn} onPress={handleSms} haptic="light">
+        <Text style={styles.secondaryBtnText}>Share via SMS</Text>
       </HuzzPressable>
       <HuzzPressable style={styles.secondaryBtn} onPress={handleShare} haptic="light">
         <Text style={styles.secondaryBtnText}>Share via apps</Text>

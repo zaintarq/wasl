@@ -942,6 +942,20 @@ exports.exportUserDataPacket = functions
       asAdmin: isAdmin && requestedUid !== callerUid,
     });
 
+    await db()
+      .collection('users')
+      .doc(requestedUid)
+      .set(
+        {
+          lastDsarExportAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastDsarExportExpiresAt: admin.firestore.Timestamp.fromMillis(expires),
+          lastDsarExportBytes: jsonBuf.length,
+          lastDsarExportBy: callerUid,
+        },
+        { merge: true }
+      )
+      .catch(() => {});
+
     return {
       ok: true,
       uid: requestedUid,
@@ -961,3 +975,212 @@ exports.exportUserDataPacket = functions
       },
     };
   });
+
+/** Admin emails the reporter a custom “we reviewed it” note — never includes action on target. */
+exports.sendReportOutcomeEmail = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+  }
+
+  const reportId = String(data?.reportId || '').trim();
+  const customMessage = String(data?.message || '').trim().slice(0, 5000);
+  if (!reportId || !customMessage) {
+    throw new functions.https.HttpsError('invalid-argument', 'reportId and message are required.');
+  }
+
+  const reportRef = db().collection('reports').doc(reportId);
+  const reportSnap = await reportRef.get();
+  if (!reportSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Report not found.');
+  }
+  const report = reportSnap.data() || {};
+  const reporterUid = String(report.reporterUid || '').trim();
+  if (!reporterUid) {
+    throw new functions.https.HttpsError('failed-precondition', 'Report has no reporter.');
+  }
+
+  const reporterSnap = await db().collection('users').doc(reporterUid).get();
+  const to = String(reporterSnap.data()?.email || report.reporterEmail || '')
+    .trim()
+    .toLowerCase();
+  if (!to) {
+    throw new functions.https.HttpsError('failed-precondition', 'Reporter has no email on file.');
+  }
+
+  const subject = String(data?.subject || 'Wasl: update on your report').trim().slice(0, 200);
+  const safeBody =
+    `${customMessage}\n\n` +
+    `— Wasl safety team\n` +
+    `(This note does not share what action, if any, was taken with the other person.)`;
+
+  const transporter = getOtpEmailTransporter();
+  await transporter.sendMail({
+    from: OTP_FROM,
+    to,
+    subject,
+    text: safeBody,
+    html: `<p>${safeBody.replace(/\n/g, '<br/>')}</p>`,
+  });
+
+  await reportRef.set(
+    {
+      outcomeEmailSent: true,
+      outcomeEmailAt: admin.firestore.FieldValue.serverTimestamp(),
+      outcomeEmailTo: to,
+      outcomeEmailPreview: customMessage.slice(0, 500),
+      outcomeEmailBy: context.auth.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await writeAudit(context.auth.uid, 'send_report_outcome_email', reporterUid, {
+    reportId,
+    to,
+  });
+
+  return { ok: true, to };
+});
+
+/** Create a GitHub issue (or return a prefilled new-issue URL) from a crash group. */
+exports.createCrashTrackerIssue = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+  }
+
+  const fingerprint = String(data?.fingerprint || data?.groupId || '').trim();
+  const titleIn = String(data?.title || '').trim().slice(0, 200);
+  const bodyIn = String(data?.body || '').trim().slice(0, 12000);
+
+  let group = null;
+  if (fingerprint) {
+    const snap = await db().collection('crashGroups').doc(fingerprint).get();
+    if (snap.exists) group = { id: snap.id, ...(snap.data() || {}) };
+  }
+
+  const title =
+    titleIn ||
+    `[crash] ${group?.name || 'Error'} ×${group?.count || '?'}`.slice(0, 200);
+  const body =
+    bodyIn ||
+    [
+      `Fingerprint: ${fingerprint || group?.id || 'n/a'}`,
+      `Count: ${group?.count || '?'}`,
+      `Fatal: ${group?.isFatal ? 'yes' : 'no'}`,
+      `Platform: ${group?.platform || '—'}`,
+      `App: ${group?.appVersion || '—'}`,
+      '',
+      '### Message',
+      group?.message || '—',
+      '',
+      '### Stack',
+      '```',
+      String(group?.stack || '').slice(0, 6000) || '—',
+      '```',
+    ].join('\n');
+
+  const githubToken = String(process.env.GITHUB_TOKEN || '').trim();
+  const githubRepo = String(process.env.GITHUB_REPO || 'zaintarq/wasl').trim();
+  const linearKey = String(process.env.LINEAR_API_KEY || '').trim();
+
+  if (githubToken && githubRepo.includes('/')) {
+    const res = await fetch(`https://api.github.com/repos/${githubRepo}/issues`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${githubToken}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ title, body, labels: ['crash', 'auto'] }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new functions.https.HttpsError(
+        'internal',
+        json?.message || `GitHub issue failed (${res.status})`
+      );
+    }
+    if (fingerprint) {
+      await db()
+        .collection('crashGroups')
+        .doc(fingerprint)
+        .set(
+          {
+            trackerUrl: json.html_url || null,
+            trackerIssueNumber: json.number || null,
+            trackerProvider: 'github',
+            trackerCreatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+    }
+    await writeAudit(context.auth.uid, 'create_crash_tracker_issue', null, {
+      provider: 'github',
+      url: json.html_url || null,
+      fingerprint,
+    });
+    return { ok: true, provider: 'github', url: json.html_url || null, number: json.number || null };
+  }
+
+  if (linearKey) {
+    const teamId = String(process.env.LINEAR_TEAM_ID || '').trim();
+    if (!teamId) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'LINEAR_API_KEY is set but LINEAR_TEAM_ID is missing.'
+      );
+    }
+    const res = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: linearKey,
+      },
+      body: JSON.stringify({
+        query: `mutation($input: IssueCreateInput!) {
+          issueCreate(input: $input) {
+            success
+            issue { id identifier url }
+          }
+        }`,
+        variables: {
+          input: { teamId, title, description: body },
+        },
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    const issue = json?.data?.issueCreate?.issue;
+    if (!json?.data?.issueCreate?.success || !issue?.url) {
+      throw new functions.https.HttpsError('internal', 'Linear issue create failed.');
+    }
+    if (fingerprint) {
+      await db()
+        .collection('crashGroups')
+        .doc(fingerprint)
+        .set(
+          {
+            trackerUrl: issue.url,
+            trackerProvider: 'linear',
+            trackerCreatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+    }
+    return { ok: true, provider: 'linear', url: issue.url };
+  }
+
+  const prefillUrl = `https://github.com/${githubRepo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  return {
+    ok: true,
+    provider: 'prefill',
+    url: prefillUrl,
+    message: 'Set GITHUB_TOKEN (+ GITHUB_REPO) or LINEAR_API_KEY (+ LINEAR_TEAM_ID) to create issues automatically.',
+  };
+});

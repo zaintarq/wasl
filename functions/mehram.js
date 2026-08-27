@@ -118,11 +118,42 @@ async function syncMatchMehram(matchId, access, accessId) {
         girlUid: String(access.girlUserId),
         girlDisplayName: String(access.girlDisplayName || 'Her'),
         sessionActive: !!access.sessionActive,
+        lastAccessedAt: access.lastAccessedAt || null,
         grantedAt: access.createdAt || admin.firestore.FieldValue.serverTimestamp(),
       },
     },
     { merge: true }
   );
+}
+
+async function notifyGirlMehramPush(girlUid, { title, body, data = {} } = {}) {
+  try {
+    const snap = await db.collection(USERS).doc(String(girlUid)).get();
+    const token = String(snap.data()?.expoPushToken || '').trim();
+    if (!token.startsWith('ExponentPushToken[') && !token.startsWith('ExpoPushToken[')) {
+      return { sent: false };
+    }
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([
+        {
+          to: token,
+          sound: 'default',
+          title: String(title || 'Mehram'),
+          body: String(body || ''),
+          data: { type: 'mehram', ...data },
+        },
+      ]),
+    });
+    return { sent: true };
+  } catch (e) {
+    console.warn('[mehram] girl push failed', e?.message || e);
+    return { sent: false };
+  }
 }
 
 async function revokeActiveForMatch(matchId, exceptId = null, reason = 'revoked') {
@@ -470,7 +501,18 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
     }
     await startMehramSessionVisit(accessId, access, { girlDisplayName, guyDisplayName });
 
-    await syncMatchMehram(access.matchId, { ...access, sessionActive: true }, accessId);
+    const accessForSync = {
+      ...access,
+      sessionActive: true,
+      lastAccessedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    await syncMatchMehram(access.matchId, accessForSync, accessId);
+
+    await notifyGirlMehramPush(access.girlUserId, {
+      title: 'Mehram is viewing',
+      body: 'Your Mehram opened this conversation.',
+      data: { matchId: String(access.matchId), event: 'opened' },
+    });
 
     return {
       customToken,
@@ -486,17 +528,28 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
   });
 
   exports.mehramHeartbeat = region.https.onCall(async (_data, context) => {
-    const { accessId } = assertMehramAuth(context);
+    const { accessId, matchId } = assertMehramAuth(context);
     const ref = db.collection(MEHRAM_COL).doc(accessId);
     const snap = await ref.get();
     if (!snap.exists || snap.data()?.status !== 'active') {
       throw new functions.https.HttpsError('permission-denied', 'Mehram access has ended.');
     }
+    const accessData = snap.data() || {};
     await ref.update({
       lastAccessedAt: admin.firestore.FieldValue.serverTimestamp(),
       sessionActive: true,
+      inviteStatus: 'viewing',
     });
-    return { ok: true, permission: snap.data()?.permission === 'reply' ? 'reply' : 'view' };
+    await syncMatchMehram(
+      accessData.matchId || matchId,
+      {
+        ...accessData,
+        sessionActive: true,
+        lastAccessedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      accessId
+    );
+    return { ok: true, permission: accessData.permission === 'reply' ? 'reply' : 'view' };
   });
 
   exports.mehramLeaveSession = region.https.onCall(async (_data, context) => {
@@ -506,7 +559,12 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
     if (snap.exists) {
       const access = snap.data() || {};
       await endMehramSessionVisit(accessId, access, 'left');
-      await syncMatchMehram(matchId, { ...access, sessionActive: false }, accessId);
+      await syncMatchMehram(matchId, { ...access, sessionActive: false, lastAccessedAt: access.lastAccessedAt || null }, accessId);
+      await notifyGirlMehramPush(access.girlUserId, {
+        title: 'Mehram left',
+        body: 'Your Mehram left the conversation.',
+        data: { matchId: String(matchId), event: 'left' },
+      });
     }
     return { left: true };
   });
