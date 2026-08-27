@@ -9,8 +9,15 @@ import {
   TextInput,
   Image,
   Platform,
+  Linking,
 } from 'react-native';
-import { adminService, authService, deviceBanService, userService } from '../../services/firebaseService';
+import {
+  adminService,
+  authService,
+  deviceBanService,
+  privacyAdminService,
+  userService,
+} from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 
 function shortId(value) {
@@ -170,6 +177,42 @@ export function AdminUserDirectory({ cardShadow = {} }) {
     );
   };
 
+  const exportDsarForUser = async (user) => {
+    const uid = String(user?.id || '').trim();
+    if (!uid) return;
+    setActionUid(uid);
+    try {
+      const res = await privacyAdminService.exportUserDataPacket({ uid });
+      if (res.error) {
+        Alert.alert('Export failed', res.error);
+        return;
+      }
+      const zipUrl = res.data?.zipUrl;
+      const jsonUrl = res.data?.jsonUrl;
+      Alert.alert(
+        'DSAR packet ready',
+        `${user?.name || user?.email || uid}\nJSON ${Math.round((res.data?.bytes || 0) / 1024)} KB · expires ${res.data?.expiresAt || '7 days'}.`,
+        [
+          { text: 'OK', style: 'cancel' },
+          zipUrl
+            ? {
+                text: 'Open ZIP',
+                onPress: () => Linking.openURL(zipUrl).catch(() => {}),
+              }
+            : null,
+          jsonUrl
+            ? {
+                text: 'Open JSON',
+                onPress: () => Linking.openURL(jsonUrl).catch(() => {}),
+              }
+            : null,
+        ].filter(Boolean)
+      );
+    } finally {
+      setActionUid('');
+    }
+  };
+
   return (
     <View style={[styles.wrap, cardShadow]}>
       <View style={styles.headRow}>
@@ -279,6 +322,13 @@ export function AdminUserDirectory({ cardShadow = {} }) {
                       {user?.isShadowBanned ? 'Lift shadowban' : 'Shadowban'}
                     </Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionExport]}
+                    onPress={() => exportDsarForUser(user)}
+                    disabled={busy}
+                  >
+                    <Text style={styles.actionBtnText}>{busy ? '…' : 'Export DSAR'}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ) : null}
@@ -354,5 +404,8 @@ const styles = StyleSheet.create({
   actionDisable: { backgroundColor: '#334155' },
   actionShadow: { backgroundColor: '#6b2148' },
   actionUnshadow: { backgroundColor: '#0f766e' },
+  actionExport: { backgroundColor: '#1d4ed8' },
+  actionBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+});  actionUnshadow: { backgroundColor: '#0f766e' },
   actionBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });

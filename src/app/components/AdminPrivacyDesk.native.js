@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ActivityIndicator, Alert, Linking } from 'react-native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { tokens } from '../../ui/tokens';
 import { privacyAdminService } from '../../services/firebaseService';
@@ -13,20 +13,76 @@ function formatTs(ms) {
   }
 }
 
+/** Fallback grouping when crashGroups collection is empty / unindexed. */
+function groupCrashLogsClient(logs) {
+  const map = new Map();
+  for (const log of logs || []) {
+    const key =
+      log.fingerprint ||
+      `${log.name || 'Error'}|${String(log.message || '').slice(0, 120)}|${String(log.stack || '')
+        .split('\n')
+        .slice(0, 4)
+        .join('|')}`;
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, {
+        id: key,
+        fingerprint: log.fingerprint || key,
+        name: log.name,
+        message: log.message,
+        stack: log.stack,
+        isFatal: !!log.isFatal,
+        platform: log.platform,
+        appVersion: log.appVersion,
+        lastUid: log.uid,
+        lastDeviceHash: log.deviceHash,
+        count: 1,
+        lastSeenAt: log.createdAt,
+        firstSeenAt: log.createdAt,
+        _clientGrouped: true,
+      });
+    } else {
+      prev.count += 1;
+      if (log.isFatal) prev.isFatal = true;
+      if (log.createdAt && (!prev.lastSeenAt || log.createdAt > prev.lastSeenAt)) {
+        prev.lastSeenAt = log.createdAt;
+        prev.platform = log.platform || prev.platform;
+        prev.appVersion = log.appVersion || prev.appVersion;
+        prev.lastUid = log.uid;
+        prev.message = log.message || prev.message;
+        prev.stack = log.stack || prev.stack;
+      }
+      if (log.createdAt && (!prev.firstSeenAt || log.createdAt < prev.firstSeenAt)) {
+        prev.firstSeenAt = log.createdAt;
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0));
+}
+
 export function AdminPrivacyDesk({ mode = 'deletions' }) {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [deletionRequests, setDeletionRequests] = useState([]);
-  const [crashLogs, setCrashLogs] = useState([]);
+  const [crashGroups, setCrashGroups] = useState([]);
+  const [crashSource, setCrashSource] = useState('groups');
+  const [expandedCrashId, setExpandedCrashId] = useState('');
   const [emailDrafts, setEmailDrafts] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       if (mode === 'crashes') {
-        const res = await privacyAdminService.listCrashLogs({ limitCount: 100 });
-        setCrashLogs(res.data || []);
-        if (res.error) Alert.alert('Crash logs', res.error);
+        const groupsRes = await privacyAdminService.listCrashGroups({ limitCount: 80 });
+        if (!groupsRes.error && (groupsRes.data || []).length) {
+          setCrashGroups(groupsRes.data || []);
+          setCrashSource('groups');
+        } else {
+          const logsRes = await privacyAdminService.listCrashLogs({ limitCount: 150 });
+          setCrashGroups(groupCrashLogsClient(logsRes.data || []));
+          setCrashSource('client');
+          if (logsRes.error) Alert.alert('Crash logs', logsRes.error);
+        }
       } else {
         const res = await privacyAdminService.listDeletionRequests({ limitCount: 80 });
         setDeletionRequests(res.data || []);
@@ -48,7 +104,27 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
     }));
   };
 
-  const processRequest = (item) => {
+  const runWipe = async (item, customMessage) => {
+    setBusyId(item.id);
+    const res = await privacyAdminService.processDeletionRequest({
+      requestId: item.id,
+      customMessage,
+      sendEmail: true,
+    });
+    setBusyId('');
+    if (res.error) Alert.alert('Failed', res.error);
+    else {
+      Alert.alert(
+        'Done',
+        res.data?.emailSent
+          ? `Processed. Confirmation emailed to ${res.data.email || item.email}.`
+          : 'Processed. Email may have failed — check the request card.'
+      );
+      load();
+    }
+  };
+
+  const processRequest = async (item) => {
     const draft = emailDrafts[item.id] || {};
     const customMessage =
       draft.body ||
@@ -56,37 +132,65 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
         ? 'Hello,\n\nWe have completed your request to delete personal data from your Wasl account while keeping the account open.\n\n— Wasl / HUZZ'
         : 'Hello,\n\nWe have deleted your Wasl (HUZZ) account and associated personal data as requested.\n\n— Wasl / HUZZ');
 
+    setBusyId(`preview-${item.id}`);
+    const preview = await privacyAdminService.getDeletionWipePreview({ requestId: item.id });
+    setBusyId('');
+
+    const checklist = preview.data?.checklist || [];
+    const retained = preview.data?.retainedNote || '';
+    const listText = checklist.length
+      ? checklist.map((line, i) => `${i + 1}. ${line}`).join('\n')
+      : item.type === 'partial'
+        ? 'Profile media + storage files (account kept).'
+        : 'Auth, profile, related personal data, and storage files.';
+
     Alert.alert(
-      item.type === 'partial' ? 'Process data deletion?' : 'Delete all account data?',
-      item.type === 'partial'
-        ? `Clear profile data for ${item.email || item.uid} and email them from noreplyonlystream@gmail.com.`
-        : `This permanently deletes Auth + profile data for ${item.email || item.uid}, then emails confirmation.`,
+      item.type === 'partial' ? 'Wipe preview — data deletion' : 'Wipe preview — account deletion',
+      `Target: ${item.email || item.uid}\n\nWill remove:\n${listText}\n\n${retained}\n\nThen email confirmation from noreplyonlystream@gmail.com.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Process + email',
+          text: 'Delete data + email',
           style: 'destructive',
-          onPress: async () => {
-            setBusyId(item.id);
-            const res = await privacyAdminService.processDeletionRequest({
-              requestId: item.id,
-              customMessage,
-              sendEmail: true,
-            });
-            setBusyId('');
-            if (res.error) Alert.alert('Failed', res.error);
-            else {
-              Alert.alert(
-                'Done',
-                res.data?.emailSent
-                  ? `Processed. Confirmation emailed to ${res.data.email || item.email}.`
-                  : 'Processed. Email may have failed — check the request card.'
-              );
-              load();
-            }
-          },
+          onPress: () => runWipe(item, customMessage),
         },
       ]
+    );
+  };
+
+  const exportDsar = async (item) => {
+    const uid = String(item.uid || '').trim();
+    if (!uid) {
+      Alert.alert('Export', 'This request has no uid.');
+      return;
+    }
+    setBusyId(`dsar-${item.id}`);
+    const res = await privacyAdminService.exportUserDataPacket({ uid });
+    setBusyId('');
+    if (res.error) {
+      Alert.alert('Export failed', res.error);
+      return;
+    }
+    const zipUrl = res.data?.zipUrl;
+    const jsonUrl = res.data?.jsonUrl;
+    Alert.alert(
+      'DSAR packet ready',
+      `JSON ${Math.round((res.data?.bytes || 0) / 1024)} KB · ZIP ${Math.round((res.data?.zipBytes || 0) / 1024)} KB\nExpires ${res.data?.expiresAt || 'in 7 days'}.`,
+      [
+        { text: 'OK', style: 'cancel' },
+        zipUrl
+          ? {
+              text: 'Open ZIP',
+              onPress: () => Linking.openURL(zipUrl).catch(() => Alert.alert('Open failed', zipUrl)),
+            }
+          : null,
+        jsonUrl
+          ? {
+              text: 'Open JSON',
+              onPress: () => Linking.openURL(jsonUrl).catch(() => Alert.alert('Open failed', jsonUrl)),
+            }
+          : null,
+      ].filter(Boolean)
     );
   };
 
@@ -129,26 +233,44 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
     return (
       <View style={styles.wrap}>
         <Text style={styles.hint}>
-          Crashes reported from devices. Fatal ones appear first in the feed as they arrive.
+          Same stack fingerprint → one card with a count
+          {crashSource === 'client' ? ' (grouped on device from recent logs).' : '.'} Expand a card for
+          the sample stack.
         </Text>
-        <RetroButton variant="gray" title="Refresh crash logs" onPress={load} style={styles.fullBtn} />
-        {!crashLogs.length ? (
-          <Text style={styles.empty}>No crash logs yet.</Text>
+        <RetroButton variant="gray" title="Refresh crash groups" onPress={load} style={styles.fullBtn} />
+        {!crashGroups.length ? (
+          <Text style={styles.empty}>No crash groups yet.</Text>
         ) : (
-          crashLogs.map((log) => (
-            <View key={log.id} style={styles.card}>
-              <Text style={styles.title}>
-                {log.isFatal ? 'FATAL · ' : ''}
-                {log.name || 'Error'}
-              </Text>
-              <Text style={styles.meta}>
-                {formatTs(log.createdAt)} · {log.platform || '—'} · v{log.appVersion || '?'}
-              </Text>
-              <Text style={styles.meta}>uid: {log.uid || 'signed-out'} · device: {log.deviceHash || '—'}</Text>
-              <Text style={styles.body}>{log.message}</Text>
-              {log.stack ? <Text style={styles.stack}>{String(log.stack).slice(0, 600)}</Text> : null}
-            </View>
-          ))
+          crashGroups.map((g) => {
+            const expanded = expandedCrashId === g.id;
+            return (
+              <View key={g.id} style={styles.card}>
+                <Text style={styles.title}>
+                  {g.isFatal ? 'FATAL · ' : ''}
+                  {g.name || 'Error'} · ×{g.count || 1}
+                </Text>
+                <Text style={styles.meta}>
+                  Last {formatTs(g.lastSeenAt)} · First {formatTs(g.firstSeenAt)} ·{' '}
+                  {g.platform || '—'} · v{g.appVersion || '?'}
+                </Text>
+                <Text style={styles.meta}>
+                  last uid: {g.lastUid || 'signed-out'} · device: {g.lastDeviceHash || '—'}
+                </Text>
+                <Text style={styles.body} numberOfLines={expanded ? 12 : 3}>
+                  {g.message}
+                </Text>
+                <RetroButton
+                  variant="outline"
+                  title={expanded ? 'Hide stack' : 'Show stack'}
+                  onPress={() => setExpandedCrashId(expanded ? '' : g.id)}
+                  style={styles.fullBtn}
+                />
+                {expanded && g.stack ? (
+                  <Text style={styles.stack}>{String(g.stack).slice(0, 1200)}</Text>
+                ) : null}
+              </View>
+            );
+          })
         )}
       </View>
     );
@@ -160,8 +282,8 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.hint}>
-        Users submit requests from Settings. Process deletes their data and emails them with the same
-        noreply OTP mailbox.
+        Users submit from Settings (auto-ack email within ~30 days). Process shows a wipe checklist
+        first. Export builds a JSON/ZIP DSAR packet.
       </Text>
       <RetroButton variant="gray" title="Refresh requests" onPress={load} style={styles.fullBtn} />
 
@@ -179,8 +301,28 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
             </Text>
             <Text style={styles.meta}>
               uid {item.uid} · {formatTs(item.createdAt)}
+              {item.ackEmailSent ? ' · ack emailed' : ''}
             </Text>
             {item.details ? <Text style={styles.body}>Details: {item.details}</Text> : null}
+
+            <Text style={styles.checklistTitle}>Wipe checklist (preview)</Text>
+            {(item.type === 'partial'
+              ? [
+                  'Profile photos, about-voice, bio',
+                  'Storage: images / voice / stories / gallery / verification',
+                  'Login kept',
+                ]
+              : [
+                  'Auth login + users profile',
+                  'Likes, blocks, notifications, stories, reports',
+                  'User chat messages + storage files',
+                  'Username reservation',
+                ]
+            ).map((line) => (
+              <Text key={line} style={styles.checklistLine}>
+                • {line}
+              </Text>
+            ))}
 
             <Text style={styles.label}>Email to</Text>
             <TextInput
@@ -224,13 +366,24 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
                 disabled={Boolean(busyId)}
               />
               <RetroButton
-                variant="danger"
-                title={busyId === item.id ? 'Processing…' : 'Delete data + email'}
-                onPress={() => processRequest(item)}
+                variant="gray"
+                title={busyId === `dsar-${item.id}` ? 'Exporting…' : 'Export DSAR'}
+                onPress={() => exportDsar(item)}
                 style={styles.flexBtn}
                 disabled={Boolean(busyId)}
               />
             </View>
+            <RetroButton
+              variant="danger"
+              title={
+                busyId === item.id || busyId === `preview-${item.id}`
+                  ? 'Working…'
+                  : 'Delete data + email'
+              }
+              onPress={() => processRequest(item)}
+              style={styles.fullBtn}
+              disabled={Boolean(busyId)}
+            />
           </View>
         );
       })}
@@ -244,7 +397,15 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
           <Text style={styles.meta}>
             {item.email || item.uid} · {formatTs(item.processedAt || item.createdAt)}
             {item.confirmationEmailSent ? ' · emailed' : ''}
+            {item.ackEmailSent ? ' · had ack' : ''}
           </Text>
+          <RetroButton
+            variant="outline"
+            title={busyId === `dsar-${item.id}` ? 'Exporting…' : 'Export DSAR packet'}
+            onPress={() => exportDsar(item)}
+            style={styles.fullBtn}
+            disabled={Boolean(busyId) || !item.uid}
+          />
         </View>
       ))}
     </View>
@@ -278,6 +439,13 @@ const styles = StyleSheet.create({
   title: { fontSize: 15, fontWeight: '700', color: tokens.colors.textOnBrand },
   meta: { fontSize: 12, color: tokens.colors.textMutedOnBrand },
   body: { fontSize: 13, color: tokens.colors.textOnBrand, marginTop: 4 },
+  checklistTitle: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.textOnBrand,
+  },
+  checklistLine: { fontSize: 12, color: tokens.colors.textMutedOnBrand, lineHeight: 17 },
   stack: {
     fontSize: 11,
     color: tokens.colors.textMutedOnBrand,
@@ -301,7 +469,7 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 110, textAlignVertical: 'top' },
   btnRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   flexBtn: { flex: 1 },
-  fullBtn: { alignSelf: 'stretch' },
+  fullBtn: { alignSelf: 'stretch', marginTop: 6 },
 });
 
 function PlatformSelectMono() {

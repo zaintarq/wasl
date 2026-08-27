@@ -22,6 +22,8 @@ const _submitDeletionRequest = callable('submitDeletionRequest');
 const _processDeletionRequest = callable('processDeletionRequest');
 const _sendDeletionNoticeEmail = callable('sendDeletionNoticeEmail');
 const _reportCrash = callable('reportCrash');
+const _getDeletionWipePreview = callable('getDeletionWipePreview');
+const _exportUserDataPacket = callable('exportUserDataPacket');
 
 export const privacyAdminService = {
   async submitDeletionRequest({ type = 'account', details = '' } = {}) {
@@ -49,12 +51,23 @@ export const privacyAdminService = {
           ...x,
           createdAt: x.createdAt?.toMillis?.() ?? x.createdAt?.seconds * 1000 ?? null,
           processedAt: x.processedAt?.toMillis?.() ?? x.processedAt?.seconds * 1000 ?? null,
+          ackEmailAt: x.ackEmailAt?.toMillis?.() ?? x.ackEmailAt?.seconds * 1000 ?? null,
         };
       });
       return { data, error: null };
     } catch (error) {
       console.error('[privacyAdminService] listDeletionRequests', error);
       return { data: [], error: error.message };
+    }
+  },
+
+  async getDeletionWipePreview({ requestId = '', type = 'account' } = {}) {
+    if (!_getDeletionWipePreview) return { error: 'Wipe preview unavailable.' };
+    try {
+      const res = await _getDeletionWipePreview({ requestId, type });
+      return { data: res?.data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to load wipe preview.' };
     }
   },
 
@@ -75,6 +88,42 @@ export const privacyAdminService = {
       return { data: res?.data || null, error: null };
     } catch (error) {
       return { data: null, error: error?.message || 'Failed to send email.' };
+    }
+  },
+
+  async exportUserDataPacket({ uid = '' } = {}) {
+    if (!_exportUserDataPacket) return { error: 'Data export unavailable.' };
+    try {
+      const payload = {};
+      if (uid) payload.uid = uid;
+      const res = await _exportUserDataPacket(payload);
+      return { data: res?.data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to export user data.' };
+    }
+  },
+
+  async listCrashGroups({ limitCount = 80 } = {}) {
+    try {
+      const qRef = query(
+        collection(db, COL.crashGroups),
+        orderBy('lastSeenAt', 'desc'),
+        limit(limitCount || 80)
+      );
+      const snap = await getDocs(qRef);
+      const data = snap.docs.map((d) => {
+        const x = d.data() || {};
+        return {
+          id: d.id,
+          ...x,
+          firstSeenAt: x.firstSeenAt?.toMillis?.() ?? x.firstSeenAt?.seconds * 1000 ?? null,
+          lastSeenAt: x.lastSeenAt?.toMillis?.() ?? x.lastSeenAt?.seconds * 1000 ?? null,
+        };
+      });
+      return { data, error: null };
+    } catch (error) {
+      console.error('[privacyAdminService] listCrashGroups', error);
+      return { data: [], error: error.message };
     }
   },
 

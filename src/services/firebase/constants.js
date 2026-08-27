@@ -18,6 +18,7 @@ export const COL = {
   usernames: 'usernames',
   deletionRequests: 'deletionRequests',
   crashLogs: 'crashLogs',
+  crashGroups: 'crashGroups',
   appeals: 'appeals',
 };
 

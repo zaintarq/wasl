@@ -47,7 +47,9 @@ async function submitInAppDeletion(type) {
             'Request submitted',
             res.data?.alreadyOpen
               ? `You already have an open ${label} request. Admins will process it.`
-              : `Your ${label} request is in the admin queue. You will be emailed when it is complete.`
+              : res.data?.ackEmailSent
+                ? `We emailed you a confirmation. We aim to process this within 30 days and will email again when it is done.`
+                : `Your ${label} request is in the admin queue. We aim to process it within 30 days.`
           );
         },
       },
@@ -84,6 +86,41 @@ function requestDataDeletion() {
 
 function requestAccountDeletion() {
   submitInAppDeletion('account');
+}
+
+async function requestDataExport() {
+  Alert.alert(
+    'Download my data',
+    'We will build a JSON/ZIP packet of your Wasl profile, stories, reports, and messages you sent. Links expire in 7 days.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Build packet',
+        onPress: async () => {
+          const res = await privacyAdminService.exportUserDataPacket();
+          if (res.error) {
+            Alert.alert('Export failed', res.error);
+            return;
+          }
+          const zipUrl = res.data?.zipUrl;
+          const jsonUrl = res.data?.jsonUrl;
+          Alert.alert(
+            'Your data is ready',
+            `About ${Math.round((res.data?.bytes || 0) / 1024)} KB. Open ZIP or JSON to download.`,
+            [
+              { text: 'OK', style: 'cancel' },
+              zipUrl
+                ? { text: 'Open ZIP', onPress: () => openUrl(zipUrl) }
+                : null,
+              jsonUrl
+                ? { text: 'Open JSON', onPress: () => openUrl(jsonUrl) }
+                : null,
+            ].filter(Boolean)
+          );
+        },
+      },
+    ]
+  );
 }
 
 export function SettingsScreen({ onNavigate }) {
@@ -208,6 +245,12 @@ export function SettingsScreen({ onNavigate }) {
         </View>
         <View style={styles.btnStack}>
           <RetroButton
+            variant="gray"
+            title="Download my data"
+            onPress={requestDataExport}
+            style={styles.fullBtn}
+          />
+          <RetroButton
             variant="outline"
             title="Request data deletion"
             onPress={requestDataDeletion}
@@ -221,7 +264,8 @@ export function SettingsScreen({ onNavigate }) {
           />
         </View>
         <Text style={styles.dataFootnote}>
-          Data deletion keeps your account. Account deletion removes your login and associated personal data.
+          Download my data builds a DSAR packet (JSON/ZIP). Data deletion keeps your account. Account
+          deletion removes your login and associated personal data (processed within 30 days).
         </Text>
       </View>
 

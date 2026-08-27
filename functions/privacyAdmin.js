@@ -1,11 +1,41 @@
 /**
- * Admin privacy tools: deletion requests, account wipe, confirmation email (OTP SMTP), crash logs.
+ * Admin privacy tools: deletion requests, account wipe, confirmation email (OTP SMTP),
+ * DSAR export, crash logs / crash grouping.
  */
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const zlib = require('zlib');
 
 const db = () => admin.firestore();
+
+/** Checklist shown to admins before wipe (must stay in sync with wipeUserAccount / partial). */
+const WIPE_CHECKLIST_ACCOUNT = [
+  'Firebase Auth login (account can no longer sign in)',
+  'User profile document (users/{uid})',
+  'Profile subcollections: likes, blocks, contact hashes, notifications, story seen, club memberships',
+  'Stories posted by the user',
+  'Verification records',
+  'Reports filed by or against the user',
+  'Vulgar-message attempts and safety events targeting the user',
+  'Safety profile + photo/contact upload markers',
+  'Reserved username (usernames/{username})',
+  'Chat messages the user sent (match shells kept; user marked deleted)',
+  'Cloud Storage: images, voice, stories, gallery, verification files',
+];
+
+const WIPE_CHECKLIST_PARTIAL = [
+  'Profile photos (images[]) cleared',
+  'About-voice URL removed',
+  'Bio cleared',
+  'Cloud Storage files under images/, voice/, stories/, gallery/, verification/',
+  'Account login kept (Auth + users/{uid} remain)',
+];
+
+function wipeChecklistForType(type) {
+  return String(type || '') === 'partial' ? WIPE_CHECKLIST_PARTIAL : WIPE_CHECKLIST_ACCOUNT;
+}
 
 async function isAdminCaller(uid) {
   if (!uid) return false;
@@ -196,7 +226,79 @@ exports.submitDeletionRequest = functions.region('us-central1').https.onCall(asy
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  return { requestId: ref.id, alreadyOpen: false };
+  let ackEmailSent = false;
+  if (email) {
+    const isPartial = type === 'partial';
+    const subject = isPartial
+      ? 'Wasl: we received your data deletion request'
+      : 'Wasl: we received your account deletion request';
+    const bodyText = isPartial
+      ? `Hello,\n\nWe got your request to delete personal data from your Wasl account (while keeping the account open).\n\nWe aim to process requests within 30 days. You will get another email when it is complete.\n\nRequest id: ${ref.id}\n\n— Wasl / HUZZ`
+      : `Hello,\n\nWe got your request to delete your Wasl (HUZZ) account and associated personal data.\n\nWe aim to process requests within 30 days. You will get another email when it is complete, and you will then no longer be able to sign in.\n\nRequest id: ${ref.id}\n\n— Wasl / HUZZ`;
+    try {
+      const transporter = getOtpEmailTransporter();
+      await transporter.sendMail({
+        from: OTP_FROM,
+        to: email,
+        subject,
+        text: bodyText,
+        html: `<p>${bodyText.replace(/\n/g, '<br/>')}</p>`,
+      });
+      ackEmailSent = true;
+      await ref.set(
+        {
+          ackEmailSent: true,
+          ackEmailAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (mailErr) {
+      console.error('[submitDeletionRequest] ack email', mailErr?.message || mailErr);
+      await ref.set({ ackEmailSent: false, ackEmailError: String(mailErr?.message || mailErr) }, { merge: true });
+    }
+  }
+
+  return { requestId: ref.id, alreadyOpen: false, ackEmailSent };
+});
+
+/** Admin-only: static checklist of what processDeletionRequest will remove. */
+exports.getDeletionWipePreview = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+  }
+
+  const requestId = String(data?.requestId || '').trim();
+  let type = String(data?.type || 'account').trim().toLowerCase() === 'partial' ? 'partial' : 'account';
+  let email = null;
+  let uid = null;
+  let name = null;
+
+  if (requestId) {
+    const snap = await db().collection('deletionRequests').doc(requestId).get();
+    if (!snap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Deletion request not found.');
+    }
+    const req = snap.data() || {};
+    type = String(req.type || '') === 'partial' ? 'partial' : 'account';
+    email = req.email || null;
+    uid = req.uid || null;
+    name = req.name || null;
+  }
+
+  return {
+    type,
+    email,
+    uid,
+    name,
+    checklist: wipeChecklistForType(type),
+    retainedNote:
+      type === 'partial'
+        ? 'Login and core profile document stay. Safety/legal records may already exist separately.'
+        : 'Match shells may remain with the user marked deleted. Some safety/legal records may be retained as described in the privacy policy.',
+  };
 });
 
 exports.processDeletionRequest = functions
@@ -380,9 +482,12 @@ exports.reportCrash = functions.region('us-central1').https.onCall(async (data, 
   const appVersion = String(data?.appVersion || '').slice(0, 40);
   const osVersion = String(data?.osVersion || '').slice(0, 80);
   const deviceHash = String(data?.deviceHash || '').slice(0, 128);
+  const fingerprint = crashFingerprint(name, message, stack);
+  const uid = context.auth?.uid ? String(context.auth.uid) : null;
+  const now = admin.firestore.FieldValue.serverTimestamp();
 
-  const ref = await db().collection('crashLogs').add({
-    uid: context.auth?.uid ? String(context.auth.uid) : null,
+  const logRef = await db().collection('crashLogs').add({
+    uid,
     message,
     stack,
     name,
@@ -391,8 +496,349 @@ exports.reportCrash = functions.region('us-central1').https.onCall(async (data, 
     appVersion,
     osVersion,
     deviceHash: deviceHash || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    fingerprint,
+    createdAt: now,
   });
 
-  return { id: ref.id };
+  const groupRef = db().collection('crashGroups').doc(fingerprint);
+  try {
+    await db().runTransaction(async (tx) => {
+      const gSnap = await tx.get(groupRef);
+      if (!gSnap.exists) {
+        tx.set(groupRef, {
+          fingerprint,
+          name,
+          message,
+          stack: stack.slice(0, 4000),
+          count: 1,
+          isFatal,
+          platform,
+          appVersion,
+          osVersion,
+          lastUid: uid,
+          lastDeviceHash: deviceHash || null,
+          sampleLogIds: [logRef.id],
+          firstSeenAt: now,
+          lastSeenAt: now,
+          updatedAt: now,
+        });
+      } else {
+        const prev = gSnap.data() || {};
+        const samples = Array.isArray(prev.sampleLogIds) ? prev.sampleLogIds.slice(0, 9) : [];
+        samples.unshift(logRef.id);
+        tx.set(
+          groupRef,
+          {
+            count: admin.firestore.FieldValue.increment(1),
+            isFatal: Boolean(prev.isFatal) || isFatal,
+            message,
+            stack: stack.slice(0, 4000) || prev.stack || '',
+            platform: platform || prev.platform || null,
+            appVersion: appVersion || prev.appVersion || null,
+            osVersion: osVersion || prev.osVersion || null,
+            lastUid: uid,
+            lastDeviceHash: deviceHash || null,
+            sampleLogIds: samples.slice(0, 10),
+            lastSeenAt: now,
+            updatedAt: now,
+          },
+          { merge: true }
+        );
+      }
+    });
+  } catch (groupErr) {
+    console.warn('[reportCrash] group upsert failed', groupErr?.message || groupErr);
+  }
+
+  return { id: logRef.id, fingerprint };
 });
+
+function crashFingerprint(name, message, stack) {
+  const stackKey = String(stack || '')
+    .split('\n')
+    .slice(0, 10)
+    .map((line) =>
+      line
+        .replace(/https?:\/\/\S+/gi, '')
+        .replace(/:\d+:\d+/g, '')
+        .replace(/\b\d+\b/g, '#')
+        .trim()
+    )
+    .filter(Boolean)
+    .join('|');
+  const msgKey = String(message || '')
+    .replace(/\b\d+\b/g, '#')
+    .slice(0, 240);
+  const raw = `${String(name || 'Error').slice(0, 80)}|${msgKey}|${stackKey || msgKey}`;
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 24);
+}
+
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i += 1) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k += 1) {
+      c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
+    }
+  }
+  return ~c >>> 0;
+}
+
+/** Minimal single-file ZIP (store or deflate) without extra deps. */
+function buildSingleFileZip(entryName, contentBuf, useDeflate = true) {
+  const nameBuf = Buffer.from(String(entryName), 'utf8');
+  const raw = Buffer.isBuffer(contentBuf) ? contentBuf : Buffer.from(contentBuf);
+  const data = useDeflate ? zlib.deflateRawSync(raw) : raw;
+  const method = useDeflate ? 8 : 0;
+  const crc = crc32(raw);
+  const local = Buffer.alloc(30 + nameBuf.length);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(0, 6);
+  local.writeUInt16LE(method, 8);
+  local.writeUInt16LE(0, 10);
+  local.writeUInt16LE(0, 12);
+  local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(raw.length, 22);
+  local.writeUInt16LE(nameBuf.length, 26);
+  local.writeUInt16LE(0, 28);
+  nameBuf.copy(local, 30);
+
+  const central = Buffer.alloc(46 + nameBuf.length);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(0, 8);
+  central.writeUInt16LE(method, 10);
+  central.writeUInt16LE(0, 12);
+  central.writeUInt16LE(0, 14);
+  central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt32LE(raw.length, 24);
+  central.writeUInt16LE(nameBuf.length, 28);
+  central.writeUInt16LE(0, 30);
+  central.writeUInt16LE(0, 32);
+  central.writeUInt16LE(0, 34);
+  central.writeUInt16LE(0, 36);
+  central.writeUInt32LE(0, 38);
+  central.writeUInt32LE(0, 42);
+  nameBuf.copy(central, 46);
+
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length, 12);
+  end.writeUInt32LE(local.length + data.length, 16);
+  end.writeUInt16LE(0, 20);
+
+  return Buffer.concat([local, data, central, end]);
+}
+
+function scrubUserDoc(data) {
+  if (!data || typeof data !== 'object') return data;
+  const out = { ...data };
+  delete out.fcmToken;
+  delete out.pushToken;
+  delete out.expoPushToken;
+  delete out.tokens;
+  // Timestamps become ISO in JSON stringify via replacer below
+  return out;
+}
+
+async function collectQueryDocs(queryRef, mapFn, hardLimit = 500) {
+  const snap = await queryRef.limit(hardLimit).get();
+  return snap.docs.map((d) => {
+    const raw = d.data() || {};
+    const mapped = mapFn ? mapFn(raw, d.id) : { id: d.id, ...raw };
+    return mapped;
+  });
+}
+
+function jsonReplacer(_key, value) {
+  if (value && typeof value === 'object') {
+    if (typeof value.toDate === 'function') {
+      try {
+        return value.toDate().toISOString();
+      } catch {
+        return null;
+      }
+    }
+    if (value._seconds != null && value._nanoseconds != null) {
+      return new Date(value._seconds * 1000).toISOString();
+    }
+  }
+  return value;
+}
+
+async function buildUserDataPacket(targetUid) {
+  const uid = String(targetUid);
+  const userSnap = await db().collection('users').doc(uid).get();
+  const userData = userSnap.exists ? scrubUserDoc(userSnap.data() || {}) : null;
+
+  const subNames = [
+    'likesSent',
+    'likesReceived',
+    'blocks',
+    'contactHashes',
+    'notifications',
+    'storySeen',
+    'clubMemberships',
+  ];
+  const subcollections = {};
+  for (const sub of subNames) {
+    subcollections[sub] = await collectQueryDocs(db().collection('users').doc(uid).collection(sub), null, 300);
+  }
+
+  const stories = await collectQueryDocs(
+    db().collection('stories').where('userId', '==', uid),
+    (raw, id) => ({ id, ...raw }),
+    200
+  );
+  const verifications = await collectQueryDocs(
+    db().collection('verifications').where('uid', '==', uid),
+    (raw, id) => ({ id, ...raw }),
+    50
+  );
+  const reportsFiled = await collectQueryDocs(
+    db().collection('reports').where('reporterUid', '==', uid),
+    (raw, id) => ({ id, ...raw }),
+    100
+  );
+  const reportsAgainst = await collectQueryDocs(
+    db().collection('reports').where('targetUserId', '==', uid),
+    (raw, id) => ({ id, ...raw }),
+    100
+  );
+  const deletionRequests = await collectQueryDocs(
+    db().collection('deletionRequests').where('uid', '==', uid),
+    (raw, id) => ({ id, ...raw }),
+    50
+  );
+  const appeals = await collectQueryDocs(
+    db().collection('appeals').where('uid', '==', uid),
+    (raw, id) => ({ id, ...raw }),
+    50
+  );
+
+  const matchSnap = await db().collection('matches').where('uids', 'array-contains', uid).limit(80).get();
+  const matches = [];
+  for (const matchDoc of matchSnap.docs) {
+    const m = matchDoc.data() || {};
+    const sentA = await collectQueryDocs(
+      matchDoc.ref.collection('messages').where('senderId', '==', uid),
+      (raw, id) => ({ id, ...raw }),
+      200
+    );
+    const sentB = await collectQueryDocs(
+      matchDoc.ref.collection('messages').where('fromUid', '==', uid),
+      (raw, id) => ({ id, ...raw }),
+      200
+    );
+    const byId = new Map();
+    [...sentA, ...sentB].forEach((msg) => byId.set(msg.id, msg));
+    matches.push({
+      id: matchDoc.id,
+      uids: m.uids || [],
+      createdAt: m.createdAt || null,
+      myMessages: Array.from(byId.values()),
+    });
+  }
+
+  return {
+    exportedAt: new Date().toISOString(),
+    uid,
+    profile: userData,
+    subcollections,
+    stories,
+    verifications,
+    reportsFiled,
+    reportsAgainst,
+    deletionRequests,
+    appeals,
+    matches,
+    notes: [
+      'Packet generated for DSAR / download-my-data.',
+      'Push tokens and similar secrets are scrubbed from the profile.',
+      'Match shells list messages authored by this user only.',
+      'Some operational/safety logs may be omitted or retained separately under legal bases.',
+    ],
+  };
+}
+
+/**
+ * DSAR export — signed-in user can export self; admin can export any uid.
+ * Uploads JSON + ZIP to Storage and returns signed download URLs (7 days).
+ */
+exports.exportUserDataPacket = functions
+  .region('us-central1')
+  .runWith({ timeoutSeconds: 300, memory: '1GB' })
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+    }
+
+    const callerUid = String(context.auth.uid);
+    const requestedUid = String(data?.uid || callerUid).trim();
+    const isAdmin = await isAdminCaller(callerUid);
+    if (requestedUid !== callerUid && !isAdmin) {
+      throw new functions.https.HttpsError('permission-denied', 'You can only export your own data.');
+    }
+    if (!requestedUid) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing uid.');
+    }
+
+    const packet = await buildUserDataPacket(requestedUid);
+    const jsonStr = JSON.stringify(packet, jsonReplacer, 2);
+    const jsonBuf = Buffer.from(jsonStr, 'utf8');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const baseName = `wasl-data-${requestedUid.slice(0, 8)}-${stamp}`;
+    const jsonPath = `dsar-exports/${requestedUid}/${baseName}.json`;
+    const zipPath = `dsar-exports/${requestedUid}/${baseName}.zip`;
+    const zipBuf = buildSingleFileZip(`${baseName}.json`, jsonBuf, true);
+
+    const bucket = admin.storage().bucket();
+    const jsonFile = bucket.file(jsonPath);
+    const zipFile = bucket.file(zipPath);
+    await jsonFile.save(jsonBuf, {
+      contentType: 'application/json',
+      metadata: { cacheControl: 'private, max-age=0' },
+    });
+    await zipFile.save(zipBuf, {
+      contentType: 'application/zip',
+      metadata: { cacheControl: 'private, max-age=0' },
+    });
+
+    const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    const [jsonUrl] = await jsonFile.getSignedUrl({ action: 'read', expires });
+    const [zipUrl] = await zipFile.getSignedUrl({ action: 'read', expires });
+
+    await writeAudit(callerUid, 'export_user_data_packet', requestedUid, {
+      jsonPath,
+      zipPath,
+      bytes: jsonBuf.length,
+      asAdmin: isAdmin && requestedUid !== callerUid,
+    });
+
+    return {
+      ok: true,
+      uid: requestedUid,
+      jsonUrl,
+      zipUrl,
+      jsonPath,
+      zipPath,
+      bytes: jsonBuf.length,
+      zipBytes: zipBuf.length,
+      expiresAt: new Date(expires).toISOString(),
+      summary: {
+        hasProfile: Boolean(packet.profile),
+        stories: packet.stories.length,
+        matches: packet.matches.length,
+        reportsFiled: packet.reportsFiled.length,
+        deletionRequests: packet.deletionRequests.length,
+      },
+    };
+  });
