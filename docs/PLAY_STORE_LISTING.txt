@@ -51,5 +51,5 @@ PERMISSIONS (WHY WE ASK)
 • Contacts — safety features on device
 
 Support: support@huzz.com
-Privacy: https://zaintarq.github.io/huzz/privacy.html
-Child safety: https://zaintarq.github.io/huzz/child-safety.html
+Privacy: https://zaintarq.github.io/wasl/privacy.html
+Child safety: https://zaintarq.github.io/wasl/child-safety.html

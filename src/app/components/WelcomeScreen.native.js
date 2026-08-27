@@ -11,8 +11,8 @@ import { WelcomeMascotBlock } from './WelcomeMascotBlock.native';
 import { authService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { mehramService } from '../../services/mehramService';
 
-const TERMS_URL = 'https://zaintarq.github.io/huzz/terms.html';
-const PRIVACY_URL = 'https://zaintarq.github.io/huzz/privacy.html';
+const TERMS_URL = 'https://zaintarq.github.io/wasl/terms.html';
+const PRIVACY_URL = 'https://zaintarq.github.io/wasl/privacy.html';
 
 const WELCOME_BG = brandShellGradient;
 const WELCOME_BG_LOCATIONS = [0, 1];

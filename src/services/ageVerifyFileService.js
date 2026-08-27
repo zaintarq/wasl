@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { buildAgeVerifyHtml, getZoiVeraApiKey, getZoiVeraAudience } from '../config/ageVerify';
 
 /** HTTPS base so iOS WKWebView gets a secure context (camera + ZoiVera origin). */
-export const AGE_VERIFY_WEB_BASE = 'https://zaintarq.github.io/huzz/';
+export const AGE_VERIFY_WEB_BASE = 'https://zaintarq.github.io/wasl/';
 
 const FILE_NAME = 'huzz-age-verify.html';
 

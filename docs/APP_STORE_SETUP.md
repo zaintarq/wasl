@@ -127,7 +127,7 @@ After upload, wait **5–30 min** — build appears under **App Store Connect �
 | Category | Social Networking |
 | Secondary | Lifestyle |
 | Age rating | **17+** (complete questionnaire — dating, UGC, unrestricted web) |
-| Privacy Policy URL | https://zaintarq.github.io/huzz/privacy.html |
+| Privacy Policy URL | https://zaintarq.github.io/wasl/privacy.html |
 
 ### Description (use/adapt from PLAY_STORE_LISTING.txt)
 Paste the full Huzz description from `docs/PLAY_STORE_LISTING.txt`.
