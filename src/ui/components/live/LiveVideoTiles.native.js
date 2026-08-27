@@ -41,7 +41,7 @@ function ExpoGoVideoFallback({ partnerConnected, onSkip, onLeave }) {
   );
 }
 
-function LiveKitLazy({ sessionId, onLiveKitError, onSkip, onLeave }) {
+function LiveKitLazy({ sessionId, onLiveKitError, onSkip, onLeave, onModerationBlock }) {
   const [SessionView, setSessionView] = useState(null);
   const [bootErr, setBootErr] = useState(null);
 
@@ -101,6 +101,7 @@ function LiveKitLazy({ sessionId, onLiveKitError, onSkip, onLeave }) {
       onError={onLiveKitError}
       onSkip={onSkip}
       onLeave={onLeave}
+      onModerationBlock={onModerationBlock}
     />
   );
 }
@@ -114,6 +115,7 @@ export function LiveVideoTiles({
   onLiveKitError,
   onSkip,
   onLeave,
+  onModerationBlock,
 }) {
   if (!sessionId) {
     return (
@@ -153,6 +155,7 @@ export function LiveVideoTiles({
         onLiveKitError={onLiveKitError}
         onSkip={onSkip}
         onLeave={onLeave}
+        onModerationBlock={onModerationBlock}
       />
     </LiveContentWidth>
   );

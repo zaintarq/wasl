@@ -203,6 +203,11 @@ export function LiveRandomScreen({ onNavigate }) {
     skipOrLeave('leave');
   }, [skipOrLeave]);
 
+  /** Vision Safe Search blocked the local camera — leave idle (no rematch). */
+  const handleModerationBlock = useCallback(() => {
+    skipOrLeave('moderation');
+  }, [skipOrLeave]);
+
   const listPadBottom = Math.max(12, insets.bottom);
   const navClearance = mainBottomNavClearance(bottomNavH, 12);
 
@@ -268,6 +273,7 @@ export function LiveRandomScreen({ onNavigate }) {
                 onLiveKitError={handleLiveKitError}
                 onSkip={handleSkip}
                 onLeave={handleLeave}
+                onModerationBlock={handleModerationBlock}
               />
 
               <LiveContentWidth style={styles.chatHead}>

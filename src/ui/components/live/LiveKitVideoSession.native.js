@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Track } from 'livekit-client';
 import { LiveKitRoom, VideoTrack, useTracks } from '@livekit/react-native';
 import { UserRound } from 'lucide-react-native';
@@ -7,6 +7,7 @@ import { liveRandomService } from '../../../services/firebaseService';
 import { tokens } from '../../tokens';
 import { LiveText } from './LiveTypography.native';
 import { LiveSessionControls } from './LiveSessionControls.native';
+import { LiveFrameModerator } from './LiveFrameModerator.native';
 
 function RemoteVideoTile({ trackRef }) {
   return (
@@ -28,7 +29,7 @@ function RemoteVideoTile({ trackRef }) {
   );
 }
 
-function LocalPip({ trackRef, cameraOff }) {
+function LocalPip({ trackRef, cameraOff, pipRef }) {
   if (!trackRef || cameraOff) {
     return (
       <View style={[styles.pip, styles.pipOff]}>
@@ -38,13 +39,15 @@ function LocalPip({ trackRef, cameraOff }) {
     );
   }
   return (
-    <VideoTrack
-      trackRef={trackRef}
-      style={styles.pip}
-      objectFit="cover"
-      mirror
-      zOrder={2}
-    />
+    <View ref={pipRef} style={styles.pip} collapsable={false}>
+      <VideoTrack
+        trackRef={trackRef}
+        style={StyleSheet.absoluteFill}
+        objectFit="cover"
+        mirror
+        zOrder={2}
+      />
+    </View>
   );
 }
 
@@ -53,10 +56,11 @@ function VideoOffIcon() {
   return <VideoOff size={20} color={tokens.colors.textMuted} strokeWidth={2} />;
 }
 
-function OmegleStage({ onSkip, onLeave }) {
+function OmegleStage({ sessionId, onSkip, onLeave, onModerationBlock }) {
   const trackRefs = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }], {
     onlySubscribed: false,
   });
+  const pipRef = useRef(null);
 
   const localRef = useMemo(
     () => trackRefs.find((t) => t.participant?.isLocal) || null,
@@ -70,19 +74,38 @@ function OmegleStage({ onSkip, onLeave }) {
   const localPub = localRef?.publication;
   const cameraOff = localPub?.isMuted || !localPub?.track;
 
+  const handleViolation = useCallback(
+    (result) => {
+      Alert.alert(
+        'Live ended',
+        result?.message ||
+          'This Live session was ended because the camera feed looked inappropriate.',
+        [{ text: 'OK' }]
+      );
+      onModerationBlock?.(result);
+    },
+    [onModerationBlock]
+  );
+
   return (
     <View style={styles.stageWrap}>
       <View style={styles.stage}>
         <RemoteVideoTile trackRef={remoteRef} />
-        <LocalPip trackRef={localRef} cameraOff={cameraOff} />
+        <LocalPip trackRef={localRef} cameraOff={cameraOff} pipRef={pipRef} />
       </View>
+      <LiveFrameModerator
+        sessionId={sessionId}
+        cameraOff={cameraOff}
+        captureTargetRef={pipRef}
+        onViolation={handleViolation}
+      />
       <LiveSessionControls onSkip={onSkip} onLeave={onLeave} />
     </View>
   );
 }
 
 /** Loaded only after polyfill + registerGlobals; do not import from app entry. */
-export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave }) {
+export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave, onModerationBlock }) {
   const [token, setToken] = useState(undefined);
   const [url, setUrl] = useState(undefined);
   const [loadErr, setLoadErr] = useState(null);
@@ -160,7 +183,12 @@ export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave }) {
       onError={(e) => report(e?.message || e)}
       onDisconnected={() => {}}
     >
-      <OmegleStage onSkip={onSkip} onLeave={onLeave} />
+      <OmegleStage
+        sessionId={sessionId}
+        onSkip={onSkip}
+        onLeave={onLeave}
+        onModerationBlock={onModerationBlock}
+      />
     </LiveKitRoom>
   );
 }

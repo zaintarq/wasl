@@ -650,6 +650,123 @@ exports.moderateUploadedImage = functions
   });
 
 /**
+ * Live Random — sample a JPEG frame from the caller's camera and run Safe Search.
+ * Fail-open on Vision/network errors so an outage does not kill every Live session.
+ */
+exports.moderateLiveFrame = functions
+  .region('us-central1')
+  .runWith({ memory: '512MB', timeoutSeconds: 60 })
+  .https.onCall(async (data, context) => {
+    const uid = await resolveCallableUid(context, data);
+    if (!uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+    }
+
+    const sessionId = String(data?.sessionId || '').trim();
+    let imageBase64 = String(data?.imageBase64 || '').trim();
+    if (!sessionId || !imageBase64) {
+      throw new functions.https.HttpsError('invalid-argument', 'sessionId and imageBase64 required.');
+    }
+    imageBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    let imageBuffer;
+    try {
+      imageBuffer = Buffer.from(imageBase64, 'base64');
+    } catch {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid image data.');
+    }
+    if (imageBuffer.length < 800) {
+      return { blocked: false, skipped: true, reason: 'frame_too_small' };
+    }
+    if (imageBuffer.length > 900000) {
+      throw new functions.https.HttpsError('invalid-argument', 'Frame too large.');
+    }
+
+    const sessionRef = db.collection('liveRandomSessions').doc(sessionId);
+    const sessionSnap = await sessionRef.get();
+    if (!sessionSnap.exists) {
+      return { blocked: false, skipped: true, reason: 'session_missing' };
+    }
+    const sessionData = sessionSnap.data() || {};
+    if (String(sessionData.status || '') !== 'active') {
+      return { blocked: false, skipped: true, reason: 'session_not_active' };
+    }
+    const uids = Array.isArray(sessionData.uids) ? sessionData.uids.map(String) : [];
+    if (!uids.includes(String(uid))) {
+      throw new functions.https.HttpsError('permission-denied', 'Not a participant.');
+    }
+
+    // Per-user rate limit (~1 sample / 4s)
+    const userRef = db.collection(COL.users).doc(String(uid));
+    const userSnap = await userRef.get();
+    const lastAt = userSnap.exists ? Number(userSnap.data()?.lastLiveVisionAtMs || 0) : 0;
+    const now = Date.now();
+    if (lastAt && now - lastAt < 3500) {
+      return { blocked: false, skipped: true, reason: 'rate_limited' };
+    }
+    await userRef.set({ lastLiveVisionAtMs: now }, { merge: true });
+
+    try {
+      const safeSearch = await safeSearchFromBuffer(imageBuffer);
+      const blocked = isBlockedSafeSearch(safeSearch);
+      console.log(
+        `[moderateLiveFrame] uid=${uid} session=${sessionId} blocked=${blocked} ${formatSafeSearchLog(safeSearch)}`
+      );
+
+      if (blocked) {
+        await sessionRef.set(
+          {
+            status: 'ended',
+            endedAt: admin.firestore.FieldValue.serverTimestamp(),
+            endedBy: String(uid),
+            endedReason: 'moderation',
+            moderationSafeSearch: safeSearch
+              ? { adult: safeSearch.adult, racy: safeSearch.racy, violence: safeSearch.violence }
+              : null,
+          },
+          { merge: true }
+        );
+
+        try {
+          await recordSafetyEventAndRefresh({
+            source: 'live_vision',
+            reporterUid: uid,
+            targetUid: uid,
+            category: 'sexual',
+            categories: ['sexual'],
+            severity: 'high',
+            matchId: sessionId,
+            details: `Live Vision Safe Search block (${formatSafeSearchLog(safeSearch)})`,
+            countTowardRisk: true,
+          });
+        } catch (safetyErr) {
+          console.warn('[moderateLiveFrame] safety event failed', safetyErr?.message);
+        }
+
+        return {
+          blocked: true,
+          message: 'This Live session was ended because the camera feed looked inappropriate.',
+          safeSearch: safeSearch
+            ? { adult: safeSearch.adult, racy: safeSearch.racy, violence: safeSearch.violence }
+            : null,
+        };
+      }
+
+      return {
+        blocked: false,
+        safeSearch: safeSearch
+          ? { adult: safeSearch.adult, racy: safeSearch.racy, violence: safeSearch.violence }
+          : null,
+      };
+    } catch (err) {
+      if (err instanceof functions.https.HttpsError) throw err;
+      console.error('[moderateLiveFrame] Error:', err.message);
+      // Fail open — do not kill Live on Vision outages
+      return { blocked: false, skipped: true, reason: 'vision_error' };
+    }
+  });
+
+/**
  * Profile / gallery image moderation — Google Cloud Vision Safe Search (async backup).
  */
 exports.moderateProfileImage = functions
