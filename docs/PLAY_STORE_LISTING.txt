@@ -50,6 +50,7 @@ PERMISSIONS (WHY WE ASK)
 • Photos — add profile pictures and share images in chat
 • Contacts — safety features on device
 
-Support: support@huzz.com
+Support: zain.tariq@mail.com
 Privacy: https://zaintarq.github.io/wasl/privacy.html
 Child safety: https://zaintarq.github.io/wasl/child-safety.html
+Delete account: https://zaintarq.github.io/wasl/delete-account.html
