@@ -352,6 +352,19 @@ export const adminService = {
     }
   },
 
+  async setUserShadowBanned(userId, shadowBanned = true) {
+    try {
+      await updateDoc(doc(db, COL.users, String(userId)), {
+        isShadowBanned: !!shadowBanned,
+        updatedAt: serverTimestamp(),
+      });
+      return { error: null };
+    } catch (error) {
+      console.error('Admin setUserShadowBanned error:', error);
+      return { error: error.message };
+    }
+  },
+
   // Create a new user (normal user or staff) - admin only
   async createUser({ email, password, name, role = 'user' }) {
     try {

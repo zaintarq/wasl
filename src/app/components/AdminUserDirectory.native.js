@@ -140,6 +140,36 @@ export function AdminUserDirectory({ cardShadow = {} }) {
     ]);
   };
 
+  const toggleShadowBan = async (user) => {
+    const next = !user?.isShadowBanned;
+    Alert.alert(
+      next ? 'Shadowban user?' : 'Lift shadowban?',
+      next
+        ? `${user?.name || user?.email} will stay able to log in but disappear from discovery.`
+        : `Show ${user?.name || user?.email} in discovery again.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: next ? 'Shadowban' : 'Lift',
+          style: next ? 'destructive' : 'default',
+          onPress: async () => {
+            setActionUid(user.id);
+            try {
+              const { error } = await adminService.setUserShadowBanned(user.id, next);
+              if (error) Alert.alert('Failed', error);
+              else {
+                Alert.alert('Done', next ? 'User shadowbanned.' : 'Shadowban lifted.');
+                loadUsers();
+              }
+            } finally {
+              setActionUid('');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={[styles.wrap, cardShadow]}>
       <View style={styles.headRow}>
@@ -223,6 +253,7 @@ export function AdminUserDirectory({ cardShadow = {} }) {
                 <DetailRow label="IP location" value={[snap?.ipCity, snap?.ipCountry].filter(Boolean).join(', ')} />
                 <DetailRow label="App version" value={snap?.appVersion} />
                 <DetailRow label="Disabled" value={user?.isDisabled ? 'Yes' : 'No'} />
+                <DetailRow label="Shadowbanned" value={user?.isShadowBanned ? 'Yes' : 'No'} />
 
                 <View style={styles.actions}>
                   <TouchableOpacity
@@ -238,6 +269,15 @@ export function AdminUserDirectory({ cardShadow = {} }) {
                     disabled={busy || user?.isDisabled}
                   >
                     <Text style={styles.actionBtnText}>Disable account</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, user?.isShadowBanned ? styles.actionUnshadow : styles.actionShadow]}
+                    onPress={() => toggleShadowBan(user)}
+                    disabled={busy}
+                  >
+                    <Text style={styles.actionBtnText}>
+                      {user?.isShadowBanned ? 'Lift shadowban' : 'Shadowban'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -312,5 +352,7 @@ const styles = StyleSheet.create({
   actionBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 },
   actionBan: { backgroundColor: '#7f1d1d' },
   actionDisable: { backgroundColor: '#334155' },
+  actionShadow: { backgroundColor: '#6b2148' },
+  actionUnshadow: { backgroundColor: '#0f766e' },
   actionBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });

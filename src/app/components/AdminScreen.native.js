@@ -15,6 +15,7 @@ import { ArrowLeft, Settings } from 'lucide-react-native';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 import { AdminUserDirectory } from './AdminUserDirectory.native';
 import { AdminPrivacyDesk } from './AdminPrivacyDesk.native';
+import { AdminAppealsDesk } from './AdminAppealsDesk.native';
 
 const cardShadow =
   Platform.OS === 'ios'
@@ -94,7 +95,7 @@ export function AdminScreen({ onNavigate }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [reports, setReports] = useState([]);
   const [verifs, setVerifs] = useState([]);
-  const [tab, setTab] = useState('reports'); // 'reports' | 'safety' | 'verifications' | 'users' | 'vulgar' | 'update' | 'deletions' | 'crashes'
+  const [tab, setTab] = useState('reports'); // 'reports' | 'safety' | 'verifications' | 'users' | 'vulgar' | 'update' | 'deletions' | 'crashes' | 'appeals'
   const [vulgarAttempts, setVulgarAttempts] = useState([]);
   const [vulgarLoading, setVulgarLoading] = useState(false);
   const [usersById, setUsersById] = useState({});
@@ -803,8 +804,31 @@ export function AdminScreen({ onNavigate }) {
             >
               <Text style={styles.tabText}>Crashes</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabBtn, tab === 'appeals' ? styles.tabBtnOn : null]}
+              onPress={() => setTab('appeals')}
+            >
+              <Text style={styles.tabText}>Appeals</Text>
+            </TouchableOpacity>
           </View>
           </View>
+
+          {tab === 'appeals' && (
+            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+              <View style={styles.sectionHead}>
+                <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
+                  <Text style={styles.sectionEmoji}>⚖️</Text>
+                </View>
+                <View style={styles.sectionHeadText}>
+                  <Text style={styles.sectionTitle}>Appeals</Text>
+                  <Text style={styles.sectionHint}>
+                    Review ban/disable appeals. Approve, reject, or convert to shadowban.
+                  </Text>
+                </View>
+              </View>
+              <AdminAppealsDesk />
+            </View>
+          )}
 
           {tab === 'deletions' && (
             <View style={[styles.card, styles.sectionEmerald, cardShadow]}>

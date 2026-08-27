@@ -26,6 +26,7 @@ import { NotificationsScreen } from '../components/NotificationsScreen.native.js
 import { SocialScreen } from '../components/SocialScreen.native.js';
 import { GamePlayScreen } from '../components/GamePlayScreen.native.js';
 import { MehramAccessScreen } from '../components/MehramAccessScreen.native.js';
+import { AccountDisabledAppealGate } from '../components/AccountDisabledAppealGate.native';
 import { HomeStackNavigator } from './HomeStackNavigator.native.js';
 import { authService, userService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { hasPassedAgeCheck, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
@@ -778,6 +779,7 @@ export function RootNavigator() {
       <LocationSyncGate />
       <PushTokenGate />
       <DeviceBanGate />
+      <AccountDisabledAppealGate />
       <NotificationListener />
       <MehramLinkHandler isReady={isReady} />
       <RootStack.Navigator

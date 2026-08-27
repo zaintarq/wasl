@@ -54,7 +54,7 @@ function filterCandidate(me, candidate, swiped, blocked) {
   const uid = String(candidate?.id || candidate?.uid || '');
   const myUid = String(me?.id || me?.uid || '');
   if (!uid || uid === myUid) return false;
-  if (candidate?.isDisabled) return false;
+  if (candidate?.isDisabled || candidate?.isShadowBanned) return false;
   if (swiped.has(uid)) return false;
   if (blocked.has(uid)) return false;
 

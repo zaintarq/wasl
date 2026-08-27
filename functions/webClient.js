@@ -26,6 +26,7 @@ function stripUser(id, raw) {
     photos,
     photoURL: String(d.photoURL || d.photoUrl || ''),
     isDisabled: d.isDisabled === true,
+    isShadowBanned: d.isShadowBanned === true,
     ageChecked18Plus: d.ageChecked18Plus === true,
   };
 }
@@ -82,7 +83,9 @@ exports.webDiscoverFeed = functions.region('us-central1').https.onCall(async (_d
 
   return {
     me: meSnap.exists ? stripUser(uid, meSnap.data()) : null,
-    users: usersSnap.docs.map((doc) => stripUser(doc.id, doc.data())).filter((u) => !u.isDisabled),
+    users: usersSnap.docs
+      .map((doc) => stripUser(doc.id, doc.data()))
+      .filter((u) => !u.isDisabled && !u.isShadowBanned),
     swipedIds: sentSnap.docs.map((d) => d.id),
     blockedIds: blocksSnap.docs.map((d) => d.id),
   };

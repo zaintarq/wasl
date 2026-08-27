@@ -18,6 +18,7 @@ export const COL = {
   usernames: 'usernames',
   deletionRequests: 'deletionRequests',
   crashLogs: 'crashLogs',
+  appeals: 'appeals',
 };
 
 import { collection, doc } from 'firebase/firestore';

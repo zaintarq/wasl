@@ -94,7 +94,7 @@ function filterDiscoveryCandidates({
   return (allUsers || []).filter((u) => {
     const uid = String(u?.id || u?.uid || '');
     if (!uid || uid === authUid) return false;
-    if (u?.isDisabled || isStaffOrAdminProfile(u)) return false;
+    if (u?.isDisabled || u?.isShadowBanned || isStaffOrAdminProfile(u)) return false;
     if (blockedSet?.has?.(uid)) return false;
     if (contactHashes?.has?.(String(u?.emailHash || ''))) return false;
     if (contactHashes?.has?.(String(u?.phoneHash || ''))) return false;

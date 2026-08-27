@@ -156,6 +156,7 @@ service cloud.firestore {
         && request.auth.uid == uid
         && !request.resource.data.diff(resource.data).changedKeys().hasAny([
           'isDisabled',
+          'isShadowBanned',
           'ageChecked18Plus',
           'ageCheckAt',
           'ageCheckMethod',
@@ -734,6 +735,16 @@ service cloud.firestore {
 
     // User-submitted account / data deletion requests (admin processes)
     match /deletionRequests/{requestId} {
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'open';
+      allow get, list: if isAdmin()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // Ban / disable appeal requests (allowed even when account isDisabled)
+    match /appeals/{appealId} {
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == 'open';
