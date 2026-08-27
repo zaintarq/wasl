@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.huzz.app",
-      "versionCode": 7,
+      "versionCode": 8,
       "softwareKeyboardLayoutMode": "resize",
       "intentFilters": [
         {
