@@ -30,6 +30,18 @@ function formatVisit(ms) {
   }
 }
 
+function formatCountdown(expiresAtMs) {
+  if (!expiresAtMs) return null;
+  const left = expiresAtMs - Date.now();
+  if (left <= 0) return 'Expired';
+  const days = Math.floor(left / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((left % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const mins = Math.floor((left % (60 * 60 * 1000)) / (60 * 1000));
+  if (days > 0) return `${days}d ${hours}h left`;
+  if (hours > 0) return `${hours}h ${mins}m left`;
+  return `${Math.max(1, mins)}m left`;
+}
+
 function buildMehramShareMessage(inviteUrl) {
   return (
     `You're invited to supervise my Wasl conversation as my Mehram.\n\n` +
@@ -55,14 +67,41 @@ export function MehramPanel({
   const [expiresAt, setExpiresAt] = useState(null);
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState([]);
+  const [countdown, setCountdown] = useState('');
 
   const isActive = !!mehram?.active;
+
+  const expiresAtMs = useMemo(() => {
+    if (expiresAt) return Number(expiresAt);
+    const raw = mehram?.expiresAt;
+    if (!raw) return null;
+    if (typeof raw?.toMillis === 'function') return raw.toMillis();
+    if (typeof raw?.seconds === 'number') return raw.seconds * 1000;
+    if (typeof raw === 'number') return raw;
+    return null;
+  }, [expiresAt, mehram?.expiresAt]);
+
+  useEffect(() => {
+    if (!visible || !isActive || !expiresAtMs) {
+      setCountdown('');
+      return undefined;
+    }
+    const tick = () => setCountdown(formatCountdown(expiresAtMs) || '');
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, [visible, isActive, expiresAtMs]);
 
   const loadHistory = useCallback(async () => {
     if (!matchId) return;
     const { data } = await mehramService.listSessionHistory({ matchId, limit: 12 });
     setHistory(Array.isArray(data) ? data : []);
-  }, [matchId]);
+    if (!inviteUrl || !expiresAt) {
+      const rem = await mehramService.getInviteReminder(matchId);
+      if (rem.data?.inviteUrl) setInviteUrl(rem.data.inviteUrl);
+      if (rem.data?.expiresAt) setExpiresAt(rem.data.expiresAt);
+    }
+  }, [matchId, inviteUrl, expiresAt]);
 
   useEffect(() => {
     if (!visible) return;
@@ -208,6 +247,49 @@ export function MehramPanel({
     ]);
   }, [matchId, onClose]);
 
+  const handleRemind = useCallback(async () => {
+    if (!matchId) return;
+    setBusy(true);
+    let url = inviteUrl;
+    let exp = expiresAt;
+    if (!url) {
+      const { data, error } = await mehramService.getInviteReminder(matchId);
+      setBusy(false);
+      if (error) {
+        Alert.alert('Could not load invite', error);
+        return;
+      }
+      url = data?.inviteUrl || '';
+      exp = data?.expiresAt || null;
+      setInviteUrl(url);
+      if (exp) setExpiresAt(exp);
+    } else {
+      setBusy(false);
+    }
+    if (!url) {
+      Alert.alert('No link yet', 'Generate or recreate an invite link first.');
+      return;
+    }
+    Alert.alert('Remind Mehram', 'Resend the same invite link (does not create a new one).', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'WhatsApp', onPress: () => {
+          const text = encodeURIComponent(buildMehramShareMessage(url));
+          const { Linking } = require('react-native');
+          Linking.openURL(`whatsapp://send?text=${text}`).catch(() =>
+            Linking.openURL(`https://wa.me/?text=${text}`).catch(() => {})
+          );
+        } },
+      { text: 'Share', onPress: () => Share.share({ message: buildMehramShareMessage(url) }).catch(() => {}) },
+      {
+        text: 'Copy',
+        onPress: async () => {
+          await Clipboard.setStringAsync(url);
+          Alert.alert('Copied', 'Same Mehram link copied.');
+        },
+      },
+    ]);
+  }, [matchId, inviteUrl, expiresAt]);
+
   const renderIntro = () => (
     <View style={styles.section}>
       <Text style={styles.heroEmoji}>🛡️</Text>
@@ -319,16 +401,23 @@ export function MehramPanel({
       <View style={styles.metaBox}>
         <Text style={styles.metaLabel}>Permission</Text>
         <Text style={styles.metaValue}>{permissionLabel}</Text>
+        {countdown ? (
+          <>
+            <Text style={[styles.metaLabel, { marginTop: 8 }]}>Invite expires</Text>
+            <Text style={styles.metaValue}>{countdown}</Text>
+          </>
+        ) : null}
       </View>
       <HuzzPressable style={styles.secondaryBtn} onPress={handleChangePermission} disabled={busy} haptic="light">
         <Text style={styles.secondaryBtnText}>
           {permission === 'reply' ? 'Switch to supervision only' : 'Allow Mehram to reply'}
         </Text>
       </HuzzPressable>
+      <HuzzPressable style={styles.primaryBtn} onPress={handleRemind} disabled={busy} haptic="light">
+        <Text style={styles.primaryBtnText}>Remind Mehram (same link)</Text>
+      </HuzzPressable>
       <HuzzPressable style={styles.secondaryBtn} onPress={handleRegenerate} disabled={busy} haptic="light">
-        <Text style={styles.secondaryBtnText}>
-          {inviteUrl ? 'Create a new invite link' : 'Share / recreate invite link'}
-        </Text>
+        <Text style={styles.secondaryBtnText}>Create a new invite link</Text>
       </HuzzPressable>
       <HuzzPressable style={styles.dangerBtn} onPress={handleRevoke} disabled={busy} haptic="light">
         <Text style={styles.dangerBtnText}>Revoke access</Text>

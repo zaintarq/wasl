@@ -17,15 +17,44 @@ import { AdminUserDirectory } from './AdminUserDirectory.native';
 import { AdminPrivacyDesk } from './AdminPrivacyDesk.native';
 import { AdminAppealsDesk } from './AdminAppealsDesk.native';
 
-const cardShadow =
-  Platform.OS === 'ios'
-    ? {
-        shadowColor: '#0f172a',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.07,
-        shadowRadius: 12,
-      }
-    : { elevation: 3 };
+const BAN_REASON_TEMPLATES = [
+  {
+    key: 'harassment',
+    label: 'Harassment',
+    disableReason: 'harassment',
+    outcome:
+      'We reviewed your report. Thank you for helping keep Wasl safe. We took action under our harassment rules. We cannot share details about other accounts.',
+  },
+  {
+    key: 'sexual',
+    label: 'Sexual content',
+    disableReason: 'sexual_content',
+    outcome:
+      'We reviewed your report about inappropriate content. Thank you. We took action under our community guidelines. We cannot share details about other accounts.',
+  },
+  {
+    key: 'spam',
+    label: 'Spam / scam',
+    disableReason: 'spam_scam',
+    outcome:
+      'We reviewed your report. Thank you for flagging possible spam or scam behaviour. We took action where needed. We cannot share details about other accounts.',
+  },
+  {
+    key: 'underage',
+    label: 'Underage concern',
+    disableReason: 'age_safety',
+    outcome:
+      'We reviewed your report related to age or safety. Thank you — we take these reports seriously and took appropriate action. We cannot share details about other accounts.',
+  },
+  {
+    key: 'generic',
+    label: 'Reviewed',
+    disableReason: 'policy',
+    outcome:
+      'We reviewed your report. Thank you for helping keep Wasl safe. We cannot share what action, if any, was taken with the other person.',
+  },
+];
+
 
 function shortId(value) {
   const text = String(value || '').trim();
@@ -1747,7 +1776,25 @@ export function AdminScreen({ onNavigate }) {
                   {r.status ? ` · Status: ${String(r.status).toUpperCase()}` : ''}
                 </Text>
 
-                <Text style={styles.reportMeta}>Email reporter (no details about the other person)</Text>
+                <Text style={styles.reportMeta}>Ban reason templates (drafts reporter note)</Text>
+                <View style={styles.templateRow}>
+                  {BAN_REASON_TEMPLATES.map((tpl) => (
+                    <TouchableOpacity
+                      key={tpl.key}
+                      style={styles.templateChip}
+                      onPress={() =>
+                        setOutcomeDrafts((prev) => ({
+                          ...prev,
+                          [r.id]: tpl.outcome,
+                        }))
+                      }
+                    >
+                      <Text style={styles.templateChipText}>{tpl.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.reportMeta}>Notify reporter (email + in-app, no target details)</Text>
                 <TextInput
                   style={styles.outcomeInput}
                   multiline
@@ -1764,8 +1811,13 @@ export function AdminScreen({ onNavigate }) {
                     }))
                   }
                 />
-                {r.outcomeEmailSent ? (
-                  <Text style={styles.reportMeta}>Outcome emailed{r.outcomeEmailTo ? ` to ${r.outcomeEmailTo}` : ''}</Text>
+                {r.outcomeEmailSent || r.outcomeNotificationSent ? (
+                  <Text style={styles.reportMeta}>
+                    Outcome sent
+                    {r.outcomeEmailSent && r.outcomeEmailTo ? ` · email ${r.outcomeEmailTo}` : ''}
+                    {r.outcomeNotificationSent ? ' · in-app' : ''}
+                    {r.outcomePushSent ? ' · push' : ''}
+                  </Text>
                 ) : null}
 
                 <View style={styles.actions}>
@@ -1784,14 +1836,18 @@ export function AdminScreen({ onNavigate }) {
                         reportId: r.id,
                         message,
                       });
-                      if (res.error) Alert.alert('Email failed', res.error);
+                      if (res.error) Alert.alert('Notify failed', res.error);
                       else {
-                        Alert.alert('Sent', `Emailed reporter${res.data?.to ? ` at ${res.data.to}` : ''}.`);
+                        const bits = [];
+                        if (res.data?.emailSent) bits.push('email');
+                        if (res.data?.notificationId) bits.push('in-app');
+                        if (res.data?.pushSent) bits.push('push');
+                        Alert.alert('Sent', bits.length ? `Notified via ${bits.join(' + ')}.` : 'Outcome recorded.');
                         load();
                       }
                     }}
                   >
-                    <Text style={styles.actionText}>Email reporter</Text>
+                    <Text style={styles.actionText}>Notify reporter</Text>
                   </TouchableOpacity>
                   {resolvedTargetUid ? (
                     <TouchableOpacity
@@ -1815,23 +1871,90 @@ export function AdminScreen({ onNavigate }) {
                   {(r.targetType === 'user' || (r.targetType === 'message' && resolvedTargetUid)) && (
                     <TouchableOpacity
                       style={[styles.actionBtn, styles.actionBtnRose]}
-                      onPress={async () => {
-                        Alert.alert('Disable user?', 'This will block them from using the app.', [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Disable',
-                            style: 'destructive',
-                            onPress: async () => {
-                              const uid = r.targetType === 'user' ? r.targetId : resolvedTargetUid;
-                              const { error } = await adminService.setUserDisabled(uid, true);
-                              if (error) Alert.alert('Error', error);
-                              else Alert.alert('Done', 'User disabled.');
+                      onPress={() => {
+                        const runDisable = async (tpl) => {
+                          if (tpl) {
+                            setOutcomeDrafts((prev) => ({ ...prev, [r.id]: tpl.outcome }));
+                          }
+                          const uid = r.targetType === 'user' ? r.targetId : resolvedTargetUid;
+                          const { error } = await adminService.setUserDisabled(uid, true);
+                          if (error) Alert.alert('Error', error);
+                          else {
+                            Alert.alert(
+                              'Disabled',
+                              tpl
+                                ? `Account disabled (${tpl.disableReason}). Reporter note drafted — tap Notify reporter when ready.`
+                                : 'Account disabled. Draft a reporter note with a template chip, then Notify reporter.'
+                            );
+                          }
+                        };
+                        Alert.alert(
+                          'Disable account?',
+                          'Optionally apply a ban-reason template that drafts the reporter note.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Disable only',
+                              style: 'destructive',
+                              onPress: () => runDisable(null),
                             },
-                          },
-                        ]);
+                            {
+                              text: 'Pick reason',
+                              onPress: () => {
+                                Alert.alert('Ban reason', 'Drafts the reporter outcome note.', [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: 'Harassment',
+                                    onPress: () => runDisable(BAN_REASON_TEMPLATES[0]),
+                                  },
+                                  {
+                                    text: 'More…',
+                                    onPress: () => {
+                                      Alert.alert('Ban reason', '', [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        {
+                                          text: 'Sexual',
+                                          onPress: () => runDisable(BAN_REASON_TEMPLATES[1]),
+                                        },
+                                        {
+                                          text: 'More…',
+                                          onPress: () => {
+                                            Alert.alert('Ban reason', '', [
+                                              { text: 'Cancel', style: 'cancel' },
+                                              {
+                                                text: 'Spam / scam',
+                                                onPress: () => runDisable(BAN_REASON_TEMPLATES[2]),
+                                              },
+                                              {
+                                                text: 'More…',
+                                                onPress: () => {
+                                                  Alert.alert('Ban reason', '', [
+                                                    { text: 'Cancel', style: 'cancel' },
+                                                    {
+                                                      text: 'Underage',
+                                                      onPress: () => runDisable(BAN_REASON_TEMPLATES[3]),
+                                                    },
+                                                    {
+                                                      text: 'Reviewed',
+                                                      onPress: () => runDisable(BAN_REASON_TEMPLATES[4]),
+                                                    },
+                                                  ]);
+                                                },
+                                              },
+                                            ]);
+                                          },
+                                        },
+                                      ]);
+                                    },
+                                  },
+                                ]);
+                              },
+                            },
+                          ]
+                        );
                       }}
                     >
-                      <Text style={styles.actionText}>Disable account</Text>
+                      <Text style={styles.actionText}>Disable + draft note</Text>
                     </TouchableOpacity>
                   )}
 
@@ -2279,6 +2402,24 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     textAlignVertical: 'top',
     fontSize: 13,
+  },
+  templateRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  templateChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#e0f2fe',
+  },
+  templateChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369a1',
   },
   badge: {
     marginTop: 8,

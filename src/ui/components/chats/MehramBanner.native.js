@@ -45,18 +45,24 @@ export function MehramBanner({ mehram, isGirl, otherName }) {
       : 'Your Mehram can view this conversation.';
   } else {
     body = canReply
-      ? `${girlName}'s Mehram can view and participate in this conversation.`
-      : `${girlName}'s Mehram can view this conversation.`;
+      ? 'A trusted guardian may be present and can take part in this conversation.'
+      : 'A trusted guardian may be present in this conversation.';
   }
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>🛡️ Mehram supervision is active</Text>
+      <Text style={styles.title}>
+        {isGirl ? '🛡️ Mehram supervision is active' : '🛡️ A trusted guardian may be present'}
+      </Text>
       <Text style={styles.body}>{body}</Text>
-      {mehram.sessionActive ? (
+      {isGirl && mehram.sessionActive ? (
         <Text style={styles.live}>● Mehram is viewing now</Text>
-      ) : lastSeen && isGirl ? (
+      ) : null}
+      {isGirl && !mehram.sessionActive && lastSeen ? (
         <Text style={styles.lastSeen}>Mehram last seen {lastSeen}</Text>
+      ) : null}
+      {!isGirl && mehram.sessionActive ? (
+        <Text style={styles.live}>● Guardian is viewing now</Text>
       ) : null}
     </View>
   );

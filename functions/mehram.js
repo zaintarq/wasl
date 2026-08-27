@@ -119,6 +119,7 @@ async function syncMatchMehram(matchId, access, accessId) {
         girlDisplayName: String(access.girlDisplayName || 'Her'),
         sessionActive: !!access.sessionActive,
         lastAccessedAt: access.lastAccessedAt || null,
+        expiresAt: access.expiresAt || null,
         grantedAt: access.createdAt || admin.firestore.FieldValue.serverTimestamp(),
       },
     },
@@ -298,10 +299,13 @@ async function createAccessRecord({ matchId, girlUid, guyUid, girlDisplayName, p
     girlDisplayName: String(girlDisplayName || 'Her'),
   };
 
-  await db.collection(MEHRAM_COL).doc(accessId).set(payload);
+  await db.collection(MEHRAM_COL).doc(accessId).set({
+    ...payload,
+    inviteUrl: buildInviteUrl(rawToken),
+  });
   await syncMatchMehram(matchId, payload, accessId);
 
-  return { accessId, rawToken, expiresAt, permission: perm };
+  return { accessId, rawToken, expiresAt, permission: perm, inviteUrl: buildInviteUrl(rawToken) };
 }
 
 function assertMehramAuth(context) {
@@ -351,7 +355,7 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
 
     await assertChatDuration(matchId, match);
 
-    const { rawToken, expiresAt, permission: perm } = await createAccessRecord({
+    const created = await createAccessRecord({
       matchId,
       girlUid: uid,
       guyUid,
@@ -360,9 +364,9 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
     });
 
     return {
-      inviteUrl: buildInviteUrl(rawToken),
-      permission: perm,
-      expiresAt: expiresAt.toMillis(),
+      inviteUrl: created.inviteUrl || buildInviteUrl(created.rawToken),
+      permission: created.permission,
+      expiresAt: created.expiresAt.toMillis(),
     };
   });
 
@@ -387,7 +391,7 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
 
     await assertChatDuration(matchId, match);
 
-    const { rawToken, expiresAt, permission: perm } = await createAccessRecord({
+    const created = await createAccessRecord({
       matchId,
       girlUid: uid,
       guyUid,
@@ -396,9 +400,47 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
     });
 
     return {
-      inviteUrl: buildInviteUrl(rawToken),
-      permission: perm,
-      expiresAt: expiresAt.toMillis(),
+      inviteUrl: created.inviteUrl || buildInviteUrl(created.rawToken),
+      permission: created.permission,
+      expiresAt: created.expiresAt.toMillis(),
+    };
+  });
+
+  /** Girl-only: return the current active invite URL without rotating the token. */
+  exports.getMehramInviteReminder = region.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+    const matchId = String(data?.matchId || '').trim();
+    if (!matchId) throw new functions.https.HttpsError('invalid-argument', 'Missing matchId.');
+
+    const uid = context.auth.uid;
+    await assertGirlParticipant(uid, matchId);
+
+    const q = await db
+      .collection(MEHRAM_COL)
+      .where('matchId', '==', matchId)
+      .where('girlUserId', '==', uid)
+      .where('status', '==', 'active')
+      .limit(1)
+      .get();
+
+    if (q.empty) {
+      throw new functions.https.HttpsError('failed-precondition', 'No active Mehram invite for this chat.');
+    }
+    const docSnap = q.docs[0];
+    const access = docSnap.data() || {};
+    const inviteUrl = String(access.inviteUrl || '').trim();
+    if (!inviteUrl) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'This invite was created before remind-support. Create a new link once, then you can resend it.'
+      );
+    }
+    return {
+      inviteUrl,
+      accessId: docSnap.id,
+      permission: access.permission === 'reply' ? 'reply' : 'view',
+      expiresAt: access.expiresAt?.toMillis?.() || null,
+      sessionActive: !!access.sessionActive,
     };
   });
 

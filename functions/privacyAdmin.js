@@ -637,6 +637,8 @@ exports.reportCrash = functions.region('us-central1').https.onCall(async (data, 
           lastUid: uid,
           lastDeviceHash: deviceHash || null,
           sampleLogIds: [logRef.id],
+          status: 'open',
+          assignedTo: null,
           firstSeenAt: now,
           lastSeenAt: now,
           updatedAt: now,
@@ -645,6 +647,7 @@ exports.reportCrash = functions.region('us-central1').https.onCall(async (data, 
         const prev = gSnap.data() || {};
         const samples = Array.isArray(prev.sampleLogIds) ? prev.sampleLogIds.slice(0, 9) : [];
         samples.unshift(logRef.id);
+        const wasResolved = String(prev.status || '') === 'resolved';
         tx.set(
           groupRef,
           {
@@ -658,6 +661,14 @@ exports.reportCrash = functions.region('us-central1').https.onCall(async (data, 
             lastUid: uid,
             lastDeviceHash: deviceHash || null,
             sampleLogIds: samples.slice(0, 10),
+            status: 'open',
+            ...(wasResolved
+              ? {
+                  reopenedAt: now,
+                  resolvedAt: null,
+                  resolvedBy: null,
+                }
+              : {}),
             lastSeenAt: now,
             updatedAt: now,
           },
@@ -956,6 +967,21 @@ exports.exportUserDataPacket = functions
       )
       .catch(() => {});
 
+    await db()
+      .collection('dsarExportLogs')
+      .add({
+        targetUid: requestedUid,
+        exportedBy: callerUid,
+        asAdmin: isAdmin && requestedUid !== callerUid,
+        bytes: jsonBuf.length,
+        zipBytes: zipBuf.length,
+        jsonPath,
+        zipPath,
+        expiresAt: admin.firestore.Timestamp.fromMillis(expires),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      .catch(() => {});
+
     return {
       ok: true,
       uid: requestedUid,
@@ -1006,9 +1032,7 @@ exports.sendReportOutcomeEmail = functions.region('us-central1').https.onCall(as
   const to = String(reporterSnap.data()?.email || report.reporterEmail || '')
     .trim()
     .toLowerCase();
-  if (!to) {
-    throw new functions.https.HttpsError('failed-precondition', 'Reporter has no email on file.');
-  }
+  const pushToken = String(reporterSnap.data()?.expoPushToken || '').trim();
 
   const subject = String(data?.subject || 'Wasl: update on your report').trim().slice(0, 200);
   const safeBody =
@@ -1016,20 +1040,80 @@ exports.sendReportOutcomeEmail = functions.region('us-central1').https.onCall(as
     `— Wasl safety team\n` +
     `(This note does not share what action, if any, was taken with the other person.)`;
 
-  const transporter = getOtpEmailTransporter();
-  await transporter.sendMail({
-    from: OTP_FROM,
-    to,
-    subject,
-    text: safeBody,
-    html: `<p>${safeBody.replace(/\n/g, '<br/>')}</p>`,
-  });
+  let emailSent = false;
+  if (to) {
+    try {
+      const transporter = getOtpEmailTransporter();
+      await transporter.sendMail({
+        from: OTP_FROM,
+        to,
+        subject,
+        text: safeBody,
+        html: `<p>${safeBody.replace(/\n/g, '<br/>')}</p>`,
+      });
+      emailSent = true;
+    } catch (mailErr) {
+      console.error('[sendReportOutcomeEmail] mail', mailErr?.message || mailErr);
+    }
+  }
+
+  let notificationId = null;
+  try {
+    const notifRef = await db()
+      .collection('users')
+      .doc(reporterUid)
+      .collection('notifications')
+      .add({
+        toUid: reporterUid,
+        fromUid: String(context.auth.uid),
+        type: 'report_outcome',
+        title: 'Update on your report',
+        body: customMessage.slice(0, 400),
+        reportId,
+        status: 'unread',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    notificationId = notifRef.id;
+  } catch (notifErr) {
+    console.warn('[sendReportOutcomeEmail] notification', notifErr?.message || notifErr);
+  }
+
+  let pushSent = false;
+  if (pushToken.startsWith('ExponentPushToken[') || pushToken.startsWith('ExpoPushToken[')) {
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify([
+          {
+            to: pushToken,
+            sound: 'default',
+            title: 'Update on your report',
+            body: customMessage.slice(0, 180),
+            data: { type: 'report_outcome', reportId },
+          },
+        ]),
+      });
+      pushSent = true;
+    } catch (pushErr) {
+      console.warn('[sendReportOutcomeEmail] push', pushErr?.message || pushErr);
+    }
+  }
+
+  if (!emailSent && !notificationId && !pushSent) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Could not reach the reporter by email or in-app notification.'
+    );
+  }
 
   await reportRef.set(
     {
-      outcomeEmailSent: true,
+      outcomeEmailSent: emailSent,
+      outcomeNotificationSent: Boolean(notificationId),
+      outcomePushSent: pushSent,
       outcomeEmailAt: admin.firestore.FieldValue.serverTimestamp(),
-      outcomeEmailTo: to,
+      outcomeEmailTo: to || null,
       outcomeEmailPreview: customMessage.slice(0, 500),
       outcomeEmailBy: context.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1039,10 +1123,13 @@ exports.sendReportOutcomeEmail = functions.region('us-central1').https.onCall(as
 
   await writeAudit(context.auth.uid, 'send_report_outcome_email', reporterUid, {
     reportId,
-    to,
+    to: to || null,
+    emailSent,
+    notificationId,
+    pushSent,
   });
 
-  return { ok: true, to };
+  return { ok: true, to: to || null, emailSent, notificationId, pushSent };
 });
 
 /** Create a GitHub issue (or return a prefilled new-issue URL) from a crash group. */
@@ -1183,4 +1270,82 @@ exports.createCrashTrackerIssue = functions.region('us-central1').https.onCall(a
     url: prefillUrl,
     message: 'Set GITHUB_TOKEN (+ GITHUB_REPO) or LINEAR_API_KEY (+ LINEAR_TEAM_ID) to create issues automatically.',
   };
+});
+
+/** Admin: assign / resolve / reopen a crash group. Resolved groups stay hidden until a new hit reopens them. */
+exports.updateCrashGroup = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+  }
+
+  const fingerprint = String(data?.fingerprint || data?.groupId || '').trim();
+  const action = String(data?.action || '').trim().toLowerCase();
+  if (!fingerprint) {
+    throw new functions.https.HttpsError('invalid-argument', 'fingerprint required.');
+  }
+  if (!['resolve', 'reopen', 'assign', 'unassign'].includes(action)) {
+    throw new functions.https.HttpsError('invalid-argument', 'action must be resolve|reopen|assign|unassign.');
+  }
+
+  const ref = db().collection('crashGroups').doc(fingerprint);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Crash group not found.');
+  }
+
+  const adminUid = String(context.auth.uid);
+  const assignTo = String(data?.assignTo || adminUid).trim();
+  const note = String(data?.note || '').trim().slice(0, 500);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  if (action === 'resolve') {
+    await ref.set(
+      {
+        status: 'resolved',
+        resolvedAt: now,
+        resolvedBy: adminUid,
+        resolveNote: note || null,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  } else if (action === 'reopen') {
+    await ref.set(
+      {
+        status: 'open',
+        resolvedAt: null,
+        resolvedBy: null,
+        reopenedAt: now,
+        reopenedBy: adminUid,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  } else if (action === 'assign') {
+    await ref.set(
+      {
+        assignedTo: assignTo,
+        assignedAt: now,
+        assignedBy: adminUid,
+        status: String(snap.data()?.status || 'open') === 'resolved' ? 'open' : snap.data()?.status || 'open',
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  } else if (action === 'unassign') {
+    await ref.set(
+      {
+        assignedTo: null,
+        assignedAt: null,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  }
+
+  await writeAudit(adminUid, 'update_crash_group', null, { fingerprint, action, assignTo: assignTo || null });
+  return { ok: true, fingerprint, action };
 });

@@ -135,6 +135,15 @@ export const mehramService = {
     }
   },
 
+  async getInviteReminder(matchId) {
+    try {
+      const { data } = await fn('getMehramInviteReminder')({ matchId: String(matchId) });
+      return { data, error: null };
+    } catch (e) {
+      return { data: null, error: e?.message || String(e) };
+    }
+  },
+
   async updatePermission(matchId, permission) {
     try {
       const { data } = await fn('updateMehramPermission')({

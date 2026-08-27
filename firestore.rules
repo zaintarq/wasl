@@ -779,6 +779,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /dsarExportLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Admin collection (separate collection for admins and staff)
     match /admin/{userId} {
       // Users can read their own admin record to check their role

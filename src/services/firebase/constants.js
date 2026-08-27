@@ -19,6 +19,7 @@ export const COL = {
   deletionRequests: 'deletionRequests',
   crashLogs: 'crashLogs',
   crashGroups: 'crashGroups',
+  dsarExportLogs: 'dsarExportLogs',
   appeals: 'appeals',
 };
 

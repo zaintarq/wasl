@@ -66,8 +66,10 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
   const [deletionRequests, setDeletionRequests] = useState([]);
   const [crashGroups, setCrashGroups] = useState([]);
   const [crashSource, setCrashSource] = useState('groups');
+  const [showResolvedCrashes, setShowResolvedCrashes] = useState(false);
   const [expandedCrashId, setExpandedCrashId] = useState('');
   const [emailDrafts, setEmailDrafts] = useState({});
+  const [dsarLogs, setDsarLogs] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,8 +86,12 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
           if (logsRes.error) Alert.alert('Crash logs', logsRes.error);
         }
       } else {
-        const res = await privacyAdminService.listDeletionRequests({ limitCount: 80 });
+        const [res, dsarRes] = await Promise.all([
+          privacyAdminService.listDeletionRequests({ limitCount: 80 }),
+          privacyAdminService.listDsarExportLogs({ limitCount: 40 }),
+        ]);
         setDeletionRequests(res.data || []);
+        setDsarLogs(dsarRes.data || []);
         if (res.error) Alert.alert('Deletion requests', res.error);
       }
     } finally {
@@ -230,22 +236,33 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
   }
 
   if (mode === 'crashes') {
+    const visible = crashGroups.filter((g) =>
+      showResolvedCrashes ? true : String(g.status || 'open') !== 'resolved'
+    );
     return (
       <View style={styles.wrap}>
         <Text style={styles.hint}>
           Same stack fingerprint → one card with a count
-          {crashSource === 'client' ? ' (grouped on device from recent logs).' : '.'} Expand a card for
-          the sample stack.
+          {crashSource === 'client' ? ' (grouped on device from recent logs).' : '.'} Mark fixed to hide
+          until a new hit reopens it.
         </Text>
         <RetroButton variant="gray" title="Refresh crash groups" onPress={load} style={styles.fullBtn} />
-        {!crashGroups.length ? (
-          <Text style={styles.empty}>No crash groups yet.</Text>
+        <RetroButton
+          variant="outline"
+          title={showResolvedCrashes ? 'Hide resolved' : 'Show resolved'}
+          onPress={() => setShowResolvedCrashes((v) => !v)}
+          style={styles.fullBtn}
+        />
+        {!visible.length ? (
+          <Text style={styles.empty}>No open crash groups.</Text>
         ) : (
-          crashGroups.map((g) => {
+          visible.map((g) => {
             const expanded = expandedCrashId === g.id;
+            const resolved = String(g.status || '') === 'resolved';
             return (
-              <View key={g.id} style={styles.card}>
+              <View key={g.id} style={[styles.card, resolved ? styles.cardDone : null]}>
                 <Text style={styles.title}>
+                  {resolved ? 'FIXED · ' : ''}
                   {g.isFatal ? 'FATAL · ' : ''}
                   {g.name || 'Error'} · ×{g.count || 1}
                 </Text>
@@ -254,7 +271,7 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
                   {g.platform || '—'} · v{g.appVersion || '?'}
                 </Text>
                 <Text style={styles.meta}>
-                  last uid: {g.lastUid || 'signed-out'} · device: {g.lastDeviceHash || '—'}
+                  last uid: {g.lastUid || 'signed-out'} · assigned: {g.assignedTo || '—'}
                 </Text>
                 <Text style={styles.body} numberOfLines={expanded ? 12 : 3}>
                   {g.message}
@@ -268,6 +285,46 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
                 {expanded && g.stack ? (
                   <Text style={styles.stack}>{String(g.stack).slice(0, 1200)}</Text>
                 ) : null}
+                <View style={styles.btnRow}>
+                  <RetroButton
+                    variant="gray"
+                    title={busyId === `assign-${g.id}` ? '…' : g.assignedTo ? 'Reassign me' : 'Assign me'}
+                    onPress={async () => {
+                      setBusyId(`assign-${g.id}`);
+                      const res = await privacyAdminService.updateCrashGroup({
+                        fingerprint: g.fingerprint || g.id,
+                        action: 'assign',
+                      });
+                      setBusyId('');
+                      if (res.error) Alert.alert('Assign failed', res.error);
+                      else load();
+                    }}
+                    style={styles.flexBtn}
+                    disabled={Boolean(busyId)}
+                  />
+                  <RetroButton
+                    variant={resolved ? 'outline' : 'danger'}
+                    title={
+                      busyId === `resolve-${g.id}`
+                        ? '…'
+                        : resolved
+                          ? 'Reopen'
+                          : 'Mark fixed'
+                    }
+                    onPress={async () => {
+                      setBusyId(`resolve-${g.id}`);
+                      const res = await privacyAdminService.updateCrashGroup({
+                        fingerprint: g.fingerprint || g.id,
+                        action: resolved ? 'reopen' : 'resolve',
+                      });
+                      setBusyId('');
+                      if (res.error) Alert.alert('Update failed', res.error);
+                      else load();
+                    }}
+                    style={styles.flexBtn}
+                    disabled={Boolean(busyId)}
+                  />
+                </View>
                 <RetroButton
                   variant="gray"
                   title={
@@ -449,6 +506,26 @@ export function AdminPrivacyDesk({ mode = 'deletions' }) {
             style={styles.fullBtn}
             disabled={Boolean(busyId) || !item.uid}
           />
+        </View>
+      ))}
+
+      <Text style={styles.sectionLabel}>DSAR export log ({dsarLogs.length})</Text>
+      <Text style={styles.hint}>Who exported whose packet, and when download links expire.</Text>
+      {!dsarLogs.length ? <Text style={styles.empty}>No exports logged yet.</Text> : null}
+      {dsarLogs.slice(0, 25).map((log) => (
+        <View key={log.id} style={styles.card}>
+          <Text style={styles.title}>
+            {log.asAdmin ? 'Admin export' : 'Self export'} · ~{Math.round((log.bytes || 0) / 1024)} KB
+          </Text>
+          <Text style={styles.meta}>
+            target {log.targetUid} · by {log.exportedBy}
+          </Text>
+          <Text style={styles.meta}>
+            {formatTs(log.createdAt)}
+            {log.expiresAt
+              ? ` · links ${Date.now() > log.expiresAt ? 'expired' : `until ${formatTs(log.expiresAt)}`}`
+              : ''}
+          </Text>
         </View>
       ))}
     </View>

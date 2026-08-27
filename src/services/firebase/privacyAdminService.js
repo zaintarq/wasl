@@ -28,6 +28,7 @@ const _exportUserDataPacket = callable('exportUserDataPacket');
 const _selfWipeAccount = callable('selfWipeAccount');
 const _sendReportOutcomeEmail = callable('sendReportOutcomeEmail');
 const _createCrashTrackerIssue = callable('createCrashTrackerIssue');
+const _updateCrashGroup = callable('updateCrashGroup');
 
 export const privacyAdminService = {
   async submitDeletionRequest({ type = 'account', details = '' } = {}) {
@@ -191,6 +192,40 @@ export const privacyAdminService = {
       return { data: res?.data || null, error: null };
     } catch (error) {
       return { data: null, error: error?.message || 'Failed to create tracker issue.' };
+    }
+  },
+
+  async updateCrashGroup({ fingerprint = '', groupId = '', action = 'resolve', assignTo = '', note = '' } = {}) {
+    if (!_updateCrashGroup) return { error: 'Crash update unavailable.' };
+    try {
+      const res = await _updateCrashGroup({ fingerprint, groupId, action, assignTo, note });
+      return { data: res?.data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to update crash group.' };
+    }
+  },
+
+  async listDsarExportLogs({ limitCount = 40 } = {}) {
+    try {
+      const qRef = query(
+        collection(db, COL.dsarExportLogs),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount || 40)
+      );
+      const snap = await getDocs(qRef);
+      const data = snap.docs.map((d) => {
+        const x = d.data() || {};
+        return {
+          id: d.id,
+          ...x,
+          createdAt: x.createdAt?.toMillis?.() ?? x.createdAt?.seconds * 1000 ?? null,
+          expiresAt: x.expiresAt?.toMillis?.() ?? x.expiresAt?.seconds * 1000 ?? null,
+        };
+      });
+      return { data, error: null };
+    } catch (error) {
+      console.error('[privacyAdminService] listDsarExportLogs', error);
+      return { data: [], error: error.message };
     }
   },
 
