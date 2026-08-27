@@ -406,6 +406,4 @@ const styles = StyleSheet.create({
   actionUnshadow: { backgroundColor: '#0f766e' },
   actionExport: { backgroundColor: '#1d4ed8' },
   actionBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-});  actionUnshadow: { backgroundColor: '#0f766e' },
-  actionBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });
