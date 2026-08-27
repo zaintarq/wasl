@@ -145,6 +145,7 @@ async function wipeUserAccount(uid) {
     matchesTouched: 0,
     storageFiles: 0,
     authDeleted: false,
+    mehramRevoked: 0,
   };
 
   summary.subdocs = await deleteUserSubcollections(targetUid);
@@ -182,6 +183,35 @@ async function wipeUserAccount(uid) {
       .catch(() => {});
   }
 
+  // Mehram invites / Auth supervisors tied to this user
+  try {
+    const mehramAsGirl = await db().collection('mehramAccess').where('girlUserId', '==', targetUid).limit(50).get();
+    const mehramAsGuy = await db().collection('mehramAccess').where('guyUserId', '==', targetUid).limit(50).get();
+    const seen = new Set();
+    for (const snap of [...mehramAsGirl.docs, ...mehramAsGuy.docs]) {
+      if (seen.has(snap.id)) continue;
+      seen.add(snap.id);
+      await snap.ref
+        .set(
+          {
+            status: 'revoked',
+            revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+            sessionActive: false,
+            revokedReason: 'account_wipe',
+          },
+          { merge: true }
+        )
+        .catch(() => {});
+      await admin.auth().deleteUser(`mehram_${snap.id}`).catch(() => {});
+      summary.mehramRevoked = (summary.mehramRevoked || 0) + 1;
+    }
+    summary.subdocs += await deleteDocsByQuery(
+      db().collection('users').doc(targetUid).collection('mehramSessionHistory')
+    );
+  } catch (mehramErr) {
+    console.warn('[privacyAdmin] mehram wipe', mehramErr?.message);
+  }
+
   summary.storageFiles = await deleteStoragePrefixes(targetUid);
   await db().collection('users').doc(targetUid).delete().catch(() => {});
 
@@ -194,6 +224,95 @@ async function wipeUserAccount(uid) {
 
   return { email, username, summary };
 }
+
+/**
+ * Play-friendly self-serve wipe: caller must re-auth recently, then confirm DELETE.
+ * Runs the same wipe as admin processDeletionRequest for context.auth.uid.
+ */
+exports.selfWipeAccount = functions
+  .region('us-central1')
+  .runWith({ timeoutSeconds: 300, memory: '1GB' })
+  .https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+    }
+    const uid = String(context.auth.uid);
+    if (uid.startsWith('mehram_')) {
+      throw new functions.https.HttpsError('permission-denied', 'Mehram sessions cannot delete dating accounts.');
+    }
+
+    const confirm = String(data?.confirm || '').trim().toUpperCase();
+    if (confirm !== 'DELETE') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Type DELETE to confirm permanent account deletion.'
+      );
+    }
+
+    const authTimeSec = Number(context.auth.token?.auth_time || 0);
+    const ageSec = Math.floor(Date.now() / 1000) - authTimeSec;
+    if (!authTimeSec || ageSec > 10 * 60) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'Please confirm your password again, then retry. Recent sign-in is required.'
+      );
+    }
+
+    let wipeResult;
+    try {
+      wipeResult = await wipeUserAccount(uid);
+    } catch (error) {
+      console.error('[selfWipeAccount]', error);
+      throw new functions.https.HttpsError('internal', error?.message || 'Failed to delete account.');
+    }
+
+    const openSnap = await db().collection('deletionRequests').where('uid', '==', uid).limit(30).get();
+    const batch = db().batch();
+    openSnap.docs.forEach((d) => {
+      if (String(d.data()?.status || '') === 'done') return;
+      batch.set(
+        d.ref,
+        {
+          status: 'done',
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          processedBy: uid,
+          selfWiped: true,
+          wipeSummary: wipeResult?.summary || null,
+        },
+        { merge: true }
+      );
+    });
+    if (!openSnap.empty) await batch.commit().catch(() => {});
+
+    const toEmail = String(wipeResult?.email || '').trim().toLowerCase();
+    let emailSent = false;
+    if (toEmail) {
+      try {
+        const transporter = getOtpEmailTransporter();
+        const bodyText =
+          'Hello,\n\nYour Wasl (HUZZ) account and associated personal data have been deleted at your request.\n\nYou will no longer be able to sign in with this account.\n\n— Wasl / HUZZ';
+        await transporter.sendMail({
+          from: OTP_FROM,
+          to: toEmail,
+          subject: 'Wasl: your account has been deleted',
+          text: bodyText,
+          html: `<p>${bodyText.replace(/\n/g, '<br/>')}</p>`,
+        });
+        emailSent = true;
+      } catch (mailErr) {
+        console.error('[selfWipeAccount] email', mailErr?.message || mailErr);
+      }
+    }
+
+    await writeAudit(uid, 'self_wipe_account', uid, {
+      emailSent,
+      summary: wipeResult?.summary || null,
+    });
+
+    return { ok: true, emailSent, email: toEmail || null, summary: wipeResult?.summary || null };
+  });
+
 
 exports.submitDeletionRequest = functions.region('us-central1').https.onCall(async (data, context) => {
   if (!context.auth?.uid) {

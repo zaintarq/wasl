@@ -234,6 +234,12 @@ service cloud.firestore {
       match /storySeen/{authorUid} {
         allow read, write: if isOwner(uid);
       }
+
+      // Mehram supervision visit history (written by Cloud Functions only)
+      match /mehramSessionHistory/{historyId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if false;
+      }
     }
 
     // Ephemeral user stories (24h). Online users post via app; all signed-in users can read active stories.
@@ -485,6 +491,13 @@ service cloud.firestore {
         || (isMehramAuth() && mehramAccessIdFromAuth() == accessId);
       allow list: if false;
       allow create, update, delete: if false;
+
+      match /sessions/{sessionId} {
+        allow read: if isAdmin()
+          || (isSignedIn() && get(/databases/$(database)/documents/mehramAccess/$(accessId)).data.girlUserId == request.auth.uid)
+          || (isMehramAuth() && mehramAccessIdFromAuth() == accessId);
+        allow write: if false;
+      }
     }
 
     match /reports/{reportId} {

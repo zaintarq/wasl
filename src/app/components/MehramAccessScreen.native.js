@@ -63,6 +63,9 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
   const [permission, setPermission] = useState(sessionProp?.permission || 'view');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [visits, setVisits] = useState([]);
+  const [localHistory, setLocalHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const listRef = useRef(null);
 
   useEffect(() => {
@@ -123,6 +126,23 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
     return () => clearInterval(id);
   }, [session?.accessId]);
 
+  useEffect(() => {
+    if (!session?.accessId) return undefined;
+    let cancelled = false;
+    (async () => {
+      const [{ data }, local] = await Promise.all([
+        mehramService.listSessionHistory({ limit: 20 }),
+        mehramService.loadLocalHistory(),
+      ]);
+      if (cancelled) return;
+      setVisits(Array.isArray(data) ? data : []);
+      setLocalHistory(Array.isArray(local) ? local.slice(0, 12) : []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.accessId]);
+
   const canReply = permission === 'reply';
 
   const headerLine = useMemo(() => {
@@ -156,12 +176,22 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
         text: 'Leave',
         style: 'destructive',
         onPress: async () => {
+          if (session) {
+            await mehramService.appendLocalHistory({
+              accessId: session.accessId,
+              matchId: session.matchId,
+              girlDisplayName: session.girlDisplayName,
+              guyDisplayName: session.guyDisplayName,
+              permission: session.permission,
+              event: 'left',
+            });
+          }
           await mehramService.signOutMehram();
           onExit?.();
         },
       },
     ]);
-  }, [onExit]);
+  }, [onExit, session]);
 
   const handleReport = useCallback(() => {
     Alert.alert(
@@ -256,6 +286,39 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
           <Text style={styles.headerTitle}>Supervising conversation</Text>
           <Text style={styles.headerSub}>{session.girlDisplayName}'s conversation</Text>
           <Text style={styles.participants}>{headerLine}</Text>
+          <HuzzPressable style={styles.historyToggle} onPress={() => setShowHistory((v) => !v)} haptic="light">
+            <Text style={styles.historyToggleText}>
+              {showHistory ? 'Hide session history' : 'Session history'}
+            </Text>
+          </HuzzPressable>
+          {showHistory ? (
+            <View style={styles.historyBox}>
+              <Text style={styles.historyHeading}>Visits on this invite</Text>
+              {!visits.length ? (
+                <Text style={styles.historyEmpty}>This is your first visit on this link.</Text>
+              ) : (
+                visits.map((v) => (
+                  <Text key={v.id} style={styles.historyLine}>
+                    {v.status === 'active' ? '● Now' : '○'}{' '}
+                    {v.startedAt ? new Date(v.startedAt).toLocaleString() : '—'}
+                    {v.endedAt ? ` → ${new Date(v.endedAt).toLocaleString()}` : ''}
+                    {v.endReason ? ` (${v.endReason})` : ''}
+                  </Text>
+                ))
+              )}
+              {localHistory.length ? (
+                <>
+                  <Text style={[styles.historyHeading, { marginTop: 10 }]}>On this device</Text>
+                  {localHistory.map((h, idx) => (
+                    <Text key={`${h.accessId}-${idx}`} style={styles.historyLine}>
+                      {h.event || 'opened'} · {h.girlDisplayName || 'Her'} ↔ {h.guyDisplayName || 'User'}
+                      {h.recordedAt ? ` · ${new Date(h.recordedAt).toLocaleDateString()}` : ''}
+                    </Text>
+                  ))}
+                </>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <FlatList
@@ -388,6 +451,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: tokens.colors.textOnBrand,
     marginTop: 8,
+  },
+  historyToggle: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(43,36,32,0.06)',
+  },
+  historyToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.textOnBrand,
+  },
+  historyBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(43,36,32,0.08)',
+    gap: 4,
+  },
+  historyHeading: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: tokens.colors.textOnBrand,
+    marginBottom: 2,
+  },
+  historyEmpty: {
+    fontSize: 12,
+    color: tokens.colors.textMutedOnBrand,
+  },
+  historyLine: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: tokens.colors.textMutedOnBrand,
   },
   listContent: {
     padding: 16,

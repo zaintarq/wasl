@@ -12,6 +12,7 @@ import {
 
 const MEHRAM_COL = 'mehramAccess';
 const MEHRAM_SESSION_KEY = '@huzz/mehram_session_v1';
+const MEHRAM_HISTORY_KEY = '@huzz/mehram_session_history_v1';
 
 function fn(name) {
   const functions = getFunctions(app, 'us-central1');
@@ -42,6 +43,34 @@ export const mehramService = {
     await AsyncStorage.removeItem(MEHRAM_SESSION_KEY);
   },
 
+  async appendLocalHistory(entry) {
+    try {
+      const raw = await AsyncStorage.getItem(MEHRAM_HISTORY_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      const next = [
+        {
+          ...entry,
+          recordedAt: Date.now(),
+        },
+        ...(Array.isArray(list) ? list : []),
+      ].slice(0, 40);
+      await AsyncStorage.setItem(MEHRAM_HISTORY_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  },
+
+  async loadLocalHistory() {
+    try {
+      const raw = await AsyncStorage.getItem(MEHRAM_HISTORY_KEY);
+      if (!raw) return [];
+      const list = JSON.parse(raw);
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  },
+
   /** Open invite link in app — exchanges token and signs in as Mehram supervisor. */
   async signInFromInvite(token) {
     try {
@@ -61,6 +90,14 @@ export const mehramService = {
         expiresAt: data.expiresAt || null,
       };
       await this.persistSession(session);
+      await this.appendLocalHistory({
+        accessId: session.accessId,
+        matchId: session.matchId,
+        girlDisplayName: session.girlDisplayName,
+        guyDisplayName: session.guyDisplayName,
+        permission: session.permission,
+        event: 'opened',
+      });
       return { data: session, error: null };
     } catch (e) {
       return { data: null, error: e?.message || String(e) };
@@ -176,6 +213,17 @@ export const mehramService = {
       return { data, error: null };
     } catch (e) {
       return { data: null, error: e?.message || String(e) };
+    }
+  },
+
+  async listSessionHistory({ matchId = '', limit = 20 } = {}) {
+    try {
+      const payload = { limit };
+      if (matchId) payload.matchId = String(matchId);
+      const { data } = await fn('listMehramSessionHistory')(payload);
+      return { data: data?.sessions || [], error: null };
+    } catch (e) {
+      return { data: [], error: e?.message || String(e) };
     }
   },
 

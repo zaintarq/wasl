@@ -21,6 +21,15 @@ const STEPS = {
   manage: 'manage',
 };
 
+function formatVisit(ms) {
+  if (!ms) return '—';
+  try {
+    return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return '—';
+  }
+}
+
 export function MehramPanel({
   visible,
   onClose,
@@ -35,26 +44,41 @@ export function MehramPanel({
   const [inviteUrl, setInviteUrl] = useState('');
   const [expiresAt, setExpiresAt] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState([]);
 
   const isActive = !!mehram?.active;
+
+  const loadHistory = useCallback(async () => {
+    if (!matchId) return;
+    const { data } = await mehramService.listSessionHistory({ matchId, limit: 12 });
+    setHistory(Array.isArray(data) ? data : []);
+  }, [matchId]);
 
   useEffect(() => {
     if (!visible) return;
     if (isActive) {
       setStep(STEPS.manage);
       setPermission(mehram.permission === 'reply' ? 'reply' : 'view');
+      loadHistory();
     } else {
       setStep(STEPS.intro);
       setPermission('view');
       setInviteUrl('');
       setExpiresAt(null);
+      setHistory([]);
     }
-  }, [visible, isActive, mehram?.permission]);
+  }, [visible, isActive, mehram?.permission, loadHistory]);
 
   const permissionLabel = useMemo(
     () => (permission === 'reply' ? 'Supervision + Reply' : 'Supervision only'),
     [permission]
   );
+
+  const statusLine = useMemo(() => {
+    if (!isActive) return null;
+    if (mehram?.sessionActive) return { label: 'Mehram is viewing now', tone: 'live' };
+    return { label: 'Invite active — waiting for Mehram to open the link', tone: 'wait' };
+  }, [isActive, mehram?.sessionActive]);
 
   const handleCreateInvite = useCallback(async () => {
     if (!matchId) return;
@@ -70,31 +94,48 @@ export function MehramPanel({
     setStep(STEPS.link);
   }, [matchId, permission]);
 
-  const handleRegenerate = useCallback(async () => {
-    if (!matchId) return;
-    setBusy(true);
-    const { data, error } = await mehramService.regenerateInvite(matchId);
-    setBusy(false);
-    if (error) {
-      Alert.alert('Could not regenerate link', error);
-      return;
-    }
-    setInviteUrl(data?.inviteUrl || '');
-    setExpiresAt(data?.expiresAt || null);
-    setStep(STEPS.link);
+  const handleRegenerate = useCallback(() => {
+    Alert.alert(
+      'Create a new invite link?',
+      'The previous link stops working immediately. Only share the new one.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'New link',
+          style: 'destructive',
+          onPress: async () => {
+            if (!matchId) return;
+            setBusy(true);
+            const { data, error } = await mehramService.regenerateInvite(matchId);
+            setBusy(false);
+            if (error) {
+              Alert.alert('Could not regenerate link', error);
+              return;
+            }
+            setInviteUrl(data?.inviteUrl || '');
+            setExpiresAt(data?.expiresAt || null);
+            setStep(STEPS.link);
+          },
+        },
+      ]
+    );
   }, [matchId]);
 
   const handleCopy = useCallback(async () => {
     if (!inviteUrl) return;
     await Clipboard.setStringAsync(inviteUrl);
-    Alert.alert('Copied', 'Mehram link copied to clipboard.');
+    Alert.alert('Copied', 'Mehram link copied. Send it privately (WhatsApp, SMS, etc.).');
   }, [inviteUrl]);
 
   const handleShare = useCallback(async () => {
     if (!inviteUrl) return;
     try {
       await Share.share({
-        message: `You're invited to supervise my Huzz conversation.\n\nInstall or open the Huzz app, then tap this link:\n\n${inviteUrl}`,
+        message:
+          `You're invited to supervise my Wasl conversation as my Mehram.\n\n` +
+          `1) Install or open the Wasl / Huzz app\n` +
+          `2) Tap this private link (works only in the app):\n\n${inviteUrl}\n\n` +
+          `Do not forward this link.`,
       });
     } catch {
       /* ignore */
@@ -140,24 +181,29 @@ export function MehramPanel({
       <Text style={styles.heroEmoji}>🛡️</Text>
       <Text style={styles.title}>Add a Mehram</Text>
       <Text style={styles.subtitle}>
-        Keep someone you trust in the conversation when you want them to be.
+        Invite someone you trust to supervise this chat. They open a private link in the Wasl app —
+        no separate dating account.
       </Text>
-      {!canAddMehram ? (
-        <Text style={styles.hint}>{chatDurationHint}</Text>
-      ) : null}
+      <View style={styles.stepsBox}>
+        <Text style={styles.stepItem}>1. Choose view-only or reply</Text>
+        <Text style={styles.stepItem}>2. Copy or share the private link</Text>
+        <Text style={styles.stepItem}>3. They open it in Wasl / Huzz to supervise</Text>
+      </View>
+      {!canAddMehram ? <Text style={styles.hint}>{chatDurationHint}</Text> : null}
       <HuzzPressable
         style={[styles.primaryBtn, !canAddMehram && styles.btnDisabled]}
         disabled={!canAddMehram}
         onPress={() => setStep(STEPS.permission)}
         haptic="light"
       >
-        <Text style={styles.primaryBtnText}>Add Mehram</Text>
+        <Text style={styles.primaryBtnText}>Continue</Text>
       </HuzzPressable>
     </View>
   );
 
   const renderPermission = () => (
     <View style={styles.section}>
+      <Text style={styles.kicker}>Step 1 of 2</Text>
       <Text style={styles.title}>How involved should they be?</Text>
       <HuzzPressable
         style={[styles.option, permission === 'view' && styles.optionActive]}
@@ -166,7 +212,7 @@ export function MehramPanel({
       >
         <Text style={styles.optionTitle}>👁 Supervision only</Text>
         <Text style={styles.optionBody}>
-          They can view the conversation and use safety controls. They cannot send messages.
+          They can view the conversation and use Block / Report. They cannot send messages.
         </Text>
       </HuzzPressable>
       <HuzzPressable
@@ -183,7 +229,7 @@ export function MehramPanel({
         {busy ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.primaryBtnText}>Generate Mehram Link</Text>
+          <Text style={styles.primaryBtnText}>Generate invite link</Text>
         )}
       </HuzzPressable>
     </View>
@@ -191,50 +237,86 @@ export function MehramPanel({
 
   const renderLink = () => (
     <View style={styles.section}>
-      <Text style={styles.title}>Your Mehram link is ready</Text>
-      <Text style={styles.subtitle}>Send this private link to the person you trust.</Text>
+      <Text style={styles.kicker}>Step 2 of 2</Text>
+      <Text style={styles.title}>Share this private link</Text>
+      <Text style={styles.subtitle}>
+        Send it only to your Mehram. They must open it in the Wasl / Huzz app (not a browser).
+      </Text>
       <View style={styles.linkBox}>
         <Text style={styles.linkText} selectable>
           {inviteUrl}
         </Text>
       </View>
       {expiresAt ? (
-        <Text style={styles.hint}>Access expires: {mehramService.formatExpiresAt(expiresAt)}</Text>
+        <Text style={styles.hint}>Link expires: {mehramService.formatExpiresAt(expiresAt)}</Text>
       ) : null}
+      <View style={styles.checklist}>
+        <Text style={styles.checkItem}>✓ They have Wasl / Huzz installed (or will install it)</Text>
+        <Text style={styles.checkItem}>✓ You trust them with this conversation</Text>
+        <Text style={styles.checkItem}>✓ You will not post the link publicly</Text>
+      </View>
       <HuzzPressable style={styles.primaryBtn} onPress={handleCopy} haptic="light">
-        <Text style={styles.primaryBtnText}>Copy Link</Text>
+        <Text style={styles.primaryBtnText}>Copy link</Text>
       </HuzzPressable>
       <HuzzPressable style={styles.secondaryBtn} onPress={handleShare} haptic="light">
-        <Text style={styles.secondaryBtnText}>Share Link</Text>
+        <Text style={styles.secondaryBtnText}>Share via apps</Text>
+      </HuzzPressable>
+      <HuzzPressable style={styles.secondaryBtn} onPress={() => setStep(STEPS.manage)} haptic="light">
+        <Text style={styles.secondaryBtnText}>Done — manage access</Text>
       </HuzzPressable>
     </View>
   );
 
   const renderManage = () => (
     <View style={styles.section}>
-      <Text style={styles.title}>Mehram Supervision</Text>
+      <Text style={styles.title}>Mehram supervision</Text>
       <View style={styles.statusRow}>
-        <Text style={styles.statusDot}>●</Text>
-        <Text style={styles.statusText}>Active</Text>
+        <Text style={[styles.statusDot, statusLine?.tone === 'live' ? styles.dotLive : styles.dotWait]}>
+          ●
+        </Text>
+        <Text style={[styles.statusText, statusLine?.tone === 'live' ? styles.live : null]}>
+          {statusLine?.label || 'Active'}
+        </Text>
       </View>
-      <Text style={styles.subtitle}>Your Mehram currently has access to this conversation.</Text>
       <View style={styles.metaBox}>
         <Text style={styles.metaLabel}>Permission</Text>
         <Text style={styles.metaValue}>{permissionLabel}</Text>
       </View>
-      {mehram?.sessionActive ? (
-        <Text style={styles.live}>Mehram is viewing now</Text>
-      ) : null}
       <HuzzPressable style={styles.secondaryBtn} onPress={handleChangePermission} disabled={busy} haptic="light">
         <Text style={styles.secondaryBtnText}>
           {permission === 'reply' ? 'Switch to supervision only' : 'Allow Mehram to reply'}
         </Text>
       </HuzzPressable>
       <HuzzPressable style={styles.secondaryBtn} onPress={handleRegenerate} disabled={busy} haptic="light">
-        <Text style={styles.secondaryBtnText}>Share link again</Text>
+        <Text style={styles.secondaryBtnText}>
+          {inviteUrl ? 'Create a new invite link' : 'Share / recreate invite link'}
+        </Text>
       </HuzzPressable>
       <HuzzPressable style={styles.dangerBtn} onPress={handleRevoke} disabled={busy} haptic="light">
         <Text style={styles.dangerBtnText}>Revoke access</Text>
+      </HuzzPressable>
+
+      <Text style={styles.historyTitle}>Supervision visits</Text>
+      <Text style={styles.hint}>When your Mehram opened or left this chat.</Text>
+      {!history.length ? (
+        <Text style={styles.hint}>No visits yet — share the link to get started.</Text>
+      ) : (
+        history.map((row) => (
+          <View key={row.id} style={styles.historyRow}>
+            <Text style={styles.historyMain}>
+              {row.status === 'active' ? 'Viewing now' : row.endReason === 'mehram_block' ? 'Ended (block)' : 'Visit'}
+              {' · '}
+              {row.permission === 'reply' ? 'reply' : 'view'}
+            </Text>
+            <Text style={styles.historyMeta}>
+              {formatVisit(row.startedAt)}
+              {row.endedAt ? ` → ${formatVisit(row.endedAt)}` : ''}
+            </Text>
+          </View>
+        ))
+      )}
+      <HuzzPressable style={styles.secondaryBtn} onPress={loadHistory} haptic="light">
+        <Text style={styles.secondaryBtnText}>Refresh visits</Text>
       </HuzzPressable>
     </View>
   );
@@ -279,6 +361,14 @@ const styles = StyleSheet.create({
     fontSize: 40,
     textAlign: 'center',
   },
+  kicker: {
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.blue,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   title: {
     fontSize: 22,
     fontWeight: '700',
@@ -290,6 +380,26 @@ const styles = StyleSheet.create({
     color: tokens.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  stepsBox: {
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: tokens.colors.bgSecondary,
+    gap: 8,
+  },
+  stepItem: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tokens.colors.text,
+  },
+  checklist: {
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  checkItem: {
+    fontSize: 13,
+    color: tokens.colors.textSecondary,
+    lineHeight: 18,
   },
   hint: {
     ...tokens.typography.caption,
@@ -374,12 +484,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statusDot: {
-    color: tokens.colors.green,
     fontSize: 14,
   },
+  dotLive: { color: tokens.colors.green },
+  dotWait: { color: '#d97706' },
   statusText: {
     fontWeight: '700',
-    color: tokens.colors.green,
+    color: '#d97706',
+    textAlign: 'center',
+    flexShrink: 1,
   },
   metaBox: {
     padding: 12,
@@ -396,8 +509,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   live: {
+    color: tokens.colors.green,
+  },
+  historyTitle: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '700',
+    color: tokens.colors.text,
     textAlign: 'center',
-    color: tokens.colors.accent,
-    fontWeight: '600',
+  },
+  historyRow: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: tokens.colors.surface,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  historyMain: {
+    fontWeight: '700',
+    color: tokens.colors.text,
+    fontSize: 13,
+  },
+  historyMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: tokens.colors.textMuted,
   },
 });

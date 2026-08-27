@@ -125,18 +125,118 @@ async function syncMatchMehram(matchId, access, accessId) {
   );
 }
 
-async function revokeActiveForMatch(matchId, exceptId = null) {
+async function revokeActiveForMatch(matchId, exceptId = null, reason = 'revoked') {
   const q = await db.collection(MEHRAM_COL).where('matchId', '==', String(matchId)).where('status', '==', 'active').get();
   const batch = db.batch();
+  const ended = [];
   q.docs.forEach((docSnap) => {
     if (exceptId && docSnap.id === exceptId) return;
+    const data = docSnap.data() || {};
     batch.update(docSnap.ref, {
       status: 'revoked',
       revokedAt: admin.firestore.FieldValue.serverTimestamp(),
       sessionActive: false,
+      revokedReason: reason,
     });
+    ended.push({ accessId: docSnap.id, access: data });
   });
   if (!q.empty) await batch.commit();
+  for (const item of ended) {
+    await endMehramSessionVisit(item.accessId, item.access, reason).catch(() => {});
+  }
+}
+
+async function startMehramSessionVisit(accessId, access, extras = {}) {
+  const girlUid = String(access.girlUserId || '');
+  const matchId = String(access.matchId || '');
+  const sessRef = db.collection(MEHRAM_COL).doc(String(accessId)).collection('sessions').doc();
+  const payload = {
+    accessId: String(accessId),
+    matchId,
+    girlUserId: girlUid,
+    guyUserId: String(access.guyUserId || ''),
+    girlDisplayName: String(access.girlDisplayName || extras.girlDisplayName || 'Her'),
+    guyDisplayName: String(extras.guyDisplayName || 'User'),
+    permission: access.permission === 'reply' ? 'reply' : 'view',
+    status: 'active',
+    startedAt: admin.firestore.FieldValue.serverTimestamp(),
+    endedAt: null,
+    endReason: null,
+  };
+  await sessRef.set(payload);
+  await db
+    .collection(MEHRAM_COL)
+    .doc(String(accessId))
+    .set(
+      {
+        currentSessionId: sessRef.id,
+        inviteOpenedAt: admin.firestore.FieldValue.serverTimestamp(),
+        inviteStatus: 'viewing',
+        lastAccessedAt: admin.firestore.FieldValue.serverTimestamp(),
+        sessionActive: true,
+      },
+      { merge: true }
+    );
+
+  if (girlUid) {
+    await db
+      .collection(USERS)
+      .doc(girlUid)
+      .collection('mehramSessionHistory')
+      .doc(`${accessId}_${sessRef.id}`)
+      .set(
+        {
+          ...payload,
+          sessionDocId: sessRef.id,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+      .catch(() => {});
+  }
+  return sessRef.id;
+}
+
+async function endMehramSessionVisit(accessId, access, reason = 'left') {
+  const currentId = String(access?.currentSessionId || '').trim();
+  const girlUid = String(access?.girlUserId || '');
+  const endPatch = {
+    status: 'ended',
+    endedAt: admin.firestore.FieldValue.serverTimestamp(),
+    endReason: String(reason || 'left').slice(0, 80),
+  };
+
+  if (currentId) {
+    await db
+      .collection(MEHRAM_COL)
+      .doc(String(accessId))
+      .collection('sessions')
+      .doc(currentId)
+      .set(endPatch, { merge: true })
+      .catch(() => {});
+    if (girlUid) {
+      await db
+        .collection(USERS)
+        .doc(girlUid)
+        .collection('mehramSessionHistory')
+        .doc(`${accessId}_${currentId}`)
+        .set(endPatch, { merge: true })
+        .catch(() => {});
+    }
+  }
+
+  await db
+    .collection(MEHRAM_COL)
+    .doc(String(accessId))
+    .set(
+      {
+        currentSessionId: null,
+        sessionActive: false,
+        inviteStatus: reason === 'revoked' || reason === 'account_wipe' ? 'revoked' : 'opened',
+      },
+      { merge: true }
+    )
+    .catch(() => {});
 }
 
 async function createAccessRecord({ matchId, girlUid, guyUid, girlDisplayName, permission }) {
@@ -156,11 +256,14 @@ async function createAccessRecord({ matchId, girlUid, guyUid, girlDisplayName, p
     tokenHash,
     permission: perm,
     status: 'active',
+    inviteStatus: 'waiting',
     createdAt: now,
     expiresAt,
     revokedAt: null,
     lastAccessedAt: null,
+    inviteOpenedAt: null,
     sessionActive: false,
+    currentSessionId: null,
     girlDisplayName: String(girlDisplayName || 'Her'),
   };
 
@@ -326,7 +429,8 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
       );
     }
 
-    const { access, ref, accessId } = loaded;
+    let access = loaded.access;
+    const { ref, accessId } = loaded;
     const matchSnap = await db.collection(MATCHES).doc(String(access.matchId)).get();
     if (!matchSnap.exists || matchSnap.data()?.isBlocked) {
       throw new functions.https.HttpsError('failed-precondition', 'This conversation is no longer available.');
@@ -357,6 +461,15 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
       sessionActive: true,
     });
 
+    const girlDisplayName = String(access.girlDisplayName || girlSnap.data()?.name || 'Her');
+    const guyDisplayName = String(guySnap.data()?.name || 'User');
+    if (access.currentSessionId && access.sessionActive) {
+      await endMehramSessionVisit(accessId, access, 'reopened').catch(() => {});
+      const refreshed = await ref.get();
+      access = { ...(refreshed.data() || access), girlDisplayName, guyDisplayName };
+    }
+    await startMehramSessionVisit(accessId, access, { girlDisplayName, guyDisplayName });
+
     await syncMatchMehram(access.matchId, { ...access, sessionActive: true }, accessId);
 
     return {
@@ -366,8 +479,8 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
       permission: access.permission === 'reply' ? 'reply' : 'view',
       girlUserId: String(access.girlUserId),
       guyUserId: String(access.guyUserId),
-      girlDisplayName: String(access.girlDisplayName || girlSnap.data()?.name || 'Her'),
-      guyDisplayName: String(guySnap.data()?.name || 'User'),
+      girlDisplayName,
+      guyDisplayName,
       expiresAt: access.expiresAt?.toMillis?.() || null,
     };
   });
@@ -391,8 +504,9 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
     const ref = db.collection(MEHRAM_COL).doc(accessId);
     const snap = await ref.get();
     if (snap.exists) {
-      await ref.update({ sessionActive: false });
-      await syncMatchMehram(matchId, { ...snap.data(), sessionActive: false }, accessId);
+      const access = snap.data() || {};
+      await endMehramSessionVisit(accessId, access, 'left');
+      await syncMatchMehram(matchId, { ...access, sessionActive: false }, accessId);
     }
     return { left: true };
   });
@@ -461,13 +575,13 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
     if (!snap.exists || snap.data()?.status !== 'active') {
       throw new functions.https.HttpsError('permission-denied', 'Mehram access has ended.');
     }
-    const guyUid = String(snap.data()?.guyUserId || '');
+    const access = snap.data() || {};
+    const guyUid = String(access.guyUserId || '');
     if (!guyUid) throw new functions.https.HttpsError('failed-precondition', 'Invalid session.');
 
     await blockGuyAsGirl(girlUserId, guyUid, matchId);
-
+    await endMehramSessionVisit(accessId, access, 'mehram_block');
     await snap.ref.update({
-      sessionActive: false,
       status: 'revoked',
       revokedAt: admin.firestore.FieldValue.serverTimestamp(),
       revokedReason: 'mehram_block',
@@ -504,4 +618,66 @@ exports.createMehramInvite = region.https.onCall(async (data, context) => {
     });
 
     return { reported: true };
+  });
+
+  /** Girl: history for a match. Mehram: visits for their accessId. */
+  exports.listMehramSessionHistory = region.https.onCall(async (data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+    }
+
+    const matchId = String(data?.matchId || '').trim();
+    const limitCount = Math.min(40, Math.max(1, Number(data?.limit) || 20));
+
+    if (context.auth.token?.mehram) {
+      const accessId = String(context.auth.token.mehramAccessId || '');
+      if (!accessId) {
+        throw new functions.https.HttpsError('permission-denied', 'Mehram session required.');
+      }
+      const snap = await db
+        .collection(MEHRAM_COL)
+        .doc(accessId)
+        .collection('sessions')
+        .orderBy('startedAt', 'desc')
+        .limit(limitCount)
+        .get();
+      return {
+        sessions: snap.docs.map((d) => {
+          const x = d.data() || {};
+          return {
+            id: d.id,
+            ...x,
+            startedAt: x.startedAt?.toMillis?.() || null,
+            endedAt: x.endedAt?.toMillis?.() || null,
+          };
+        }),
+      };
+    }
+
+    if (!matchId) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing matchId.');
+    }
+    const uid = String(context.auth.uid);
+    await assertGirlParticipant(uid, matchId);
+
+    const snap = await db
+      .collection(USERS)
+      .doc(uid)
+      .collection('mehramSessionHistory')
+      .where('matchId', '==', matchId)
+      .orderBy('startedAt', 'desc')
+      .limit(limitCount)
+      .get();
+
+    return {
+      sessions: snap.docs.map((d) => {
+        const x = d.data() || {};
+        return {
+          id: d.id,
+          ...x,
+          startedAt: x.startedAt?.toMillis?.() || null,
+          endedAt: x.endedAt?.toMillis?.() || null,
+        };
+      }),
+    };
   });

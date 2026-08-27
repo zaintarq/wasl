@@ -1,5 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  TextInput,
+  Pressable,
+} from 'react-native';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,10 +38,10 @@ async function openUrl(url) {
 async function submitInAppDeletion(type) {
   const label = type === 'partial' ? 'data deletion' : 'account deletion';
   Alert.alert(
-    type === 'partial' ? 'Request data deletion' : 'Delete your Wasl account',
+    type === 'partial' ? 'Request data deletion' : 'Ask admins to delete account',
     type === 'partial'
       ? 'We will send this request to Wasl admins. You can keep your account. You will get an email when it is done.'
-      : 'We will send this request to Wasl admins. After they process it, your account and personal data are removed and you cannot sign in again.',
+      : 'Prefer instant delete? Use Delete account now (password required). This option queues an admin request instead (processed within 30 days).',
     [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -84,7 +94,7 @@ function requestDataDeletion() {
   submitInAppDeletion('partial');
 }
 
-function requestAccountDeletion() {
+function requestAccountDeletionQueue() {
   submitInAppDeletion('account');
 }
 
@@ -128,6 +138,10 @@ export function SettingsScreen({ onNavigate }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,6 +174,82 @@ export function SettingsScreen({ onNavigate }) {
       cancelled = true;
     };
   }, []);
+
+  const openSelfDelete = () => {
+    Alert.alert(
+      'Delete account permanently?',
+      'This removes your login and personal data now (after password confirmation). You cannot undo this.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            setDeletePassword('');
+            setDeleteConfirm('');
+            setDeleteOpen(true);
+          },
+        },
+        {
+          text: 'Ask admins instead',
+          onPress: requestAccountDeletionQueue,
+        },
+      ]
+    );
+  };
+
+  const runSelfWipe = async () => {
+    const user = authService.getCurrentUser();
+    const email = String(user?.email || '').trim();
+    if (!email) {
+      Alert.alert('Missing email', 'This account has no email/password sign-in. Use “Ask admins instead” or email support.');
+      return;
+    }
+    if (!deletePassword) {
+      Alert.alert('Password required', 'Enter your password to confirm it is you.');
+      return;
+    }
+    if (String(deleteConfirm || '').trim().toUpperCase() !== 'DELETE') {
+      Alert.alert('Confirm', 'Type DELETE in capitals to confirm.');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const { error: reauthError } = await authService.reauthenticateWithEmailPassword(email, deletePassword);
+      if (reauthError) {
+        Alert.alert('Could not verify', reauthError);
+        return;
+      }
+      try {
+        await user.getIdToken(true);
+      } catch {
+        /* continue with existing token */
+      }
+
+      const res = await privacyAdminService.selfWipeAccount({ confirm: 'DELETE' });
+      if (res.error) {
+        Alert.alert('Deletion failed', res.error);
+        return;
+      }
+
+      setDeleteOpen(false);
+      Alert.alert(
+        'Account deleted',
+        res.data?.emailSent
+          ? 'Your account was wiped. We sent a confirmation email.'
+          : 'Your account was wiped.'
+      );
+      try {
+        await authService.signOutUser();
+      } catch {
+        /* auth user may already be gone */
+      }
+      onNavigate('welcome');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const goBack = () => {
     if (isAdmin) onNavigate('admin');
@@ -258,16 +348,71 @@ export function SettingsScreen({ onNavigate }) {
           />
           <RetroButton
             variant="danger"
-            title="Delete account"
-            onPress={requestAccountDeletion}
+            title="Delete account now"
+            onPress={openSelfDelete}
+            style={styles.fullBtn}
+          />
+          <RetroButton
+            variant="outline"
+            title="Ask admins to delete (queue)"
+            onPress={requestAccountDeletionQueue}
             style={styles.fullBtn}
           />
         </View>
         <Text style={styles.dataFootnote}>
-          Download my data builds a DSAR packet (JSON/ZIP). Data deletion keeps your account. Account
-          deletion removes your login and associated personal data (processed within 30 days).
+          Delete account now re-checks your password and wipes data immediately. The admin queue is a
+          backup (ack email, processed within 30 days). Download my data builds a DSAR JSON/ZIP packet.
         </Text>
       </View>
+
+      <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => !deleting && setDeleteOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => !deleting && setDeleteOpen(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e?.stopPropagation?.()}>
+            <Text style={styles.modalTitle}>Confirm account deletion</Text>
+            <Text style={styles.modalBody}>
+              Enter your password, then type DELETE. This permanently removes your Wasl login and
+              personal data.
+            </Text>
+            <Text style={styles.modalLabel}>Password</Text>
+            <TextInput
+              style={styles.modalInput}
+              secureTextEntry
+              autoCapitalize="none"
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              editable={!deleting}
+              placeholder="Your password"
+              placeholderTextColor={tokens.colors.textMuted}
+            />
+            <Text style={styles.modalLabel}>Type DELETE</Text>
+            <TextInput
+              style={styles.modalInput}
+              autoCapitalize="characters"
+              value={deleteConfirm}
+              onChangeText={setDeleteConfirm}
+              editable={!deleting}
+              placeholder="DELETE"
+              placeholderTextColor={tokens.colors.textMuted}
+            />
+            <View style={styles.modalActions}>
+              <RetroButton
+                variant="outline"
+                title="Cancel"
+                onPress={() => setDeleteOpen(false)}
+                style={styles.modalBtn}
+                disabled={deleting}
+              />
+              <RetroButton
+                variant="danger"
+                title={deleting ? 'Deleting…' : 'Wipe my account'}
+                onPress={runSelfWipe}
+                style={styles.modalBtn}
+                disabled={deleting}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <View style={styles.card}>
         <View style={styles.sectionHead}>
@@ -402,4 +547,48 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: tokens.colors.textMutedOnBrand,
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 18,
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#64748b',
+    marginBottom: 6,
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginTop: 4,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#0f172a',
+    backgroundColor: '#f8fafc',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  modalBtn: { flex: 1 },
 });

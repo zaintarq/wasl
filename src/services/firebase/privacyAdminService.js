@@ -24,6 +24,7 @@ const _sendDeletionNoticeEmail = callable('sendDeletionNoticeEmail');
 const _reportCrash = callable('reportCrash');
 const _getDeletionWipePreview = callable('getDeletionWipePreview');
 const _exportUserDataPacket = callable('exportUserDataPacket');
+const _selfWipeAccount = callable('selfWipeAccount');
 
 export const privacyAdminService = {
   async submitDeletionRequest({ type = 'account', details = '' } = {}) {
@@ -157,6 +158,16 @@ export const privacyAdminService = {
       return { data: res?.data || null, error: null };
     } catch (error) {
       return { data: null, error: error?.message || 'Failed to report crash.' };
+    }
+  },
+
+  async selfWipeAccount({ confirm = 'DELETE' } = {}) {
+    if (!_selfWipeAccount) return { error: 'Account deletion unavailable.' };
+    try {
+      const res = await _selfWipeAccount({ confirm });
+      return { data: res?.data || null, error: null };
+    } catch (error) {
+      return { data: null, error: error?.message || 'Failed to delete account.' };
     }
   },
 };
