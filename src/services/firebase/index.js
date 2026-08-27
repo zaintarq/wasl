@@ -20,6 +20,7 @@ export { deviceBanService } from './deviceBanService';
 export { appUpdateService } from './appUpdateService';
 export { checkUserRoleFromAdminCollection } from './roles';
 export { adminService } from './adminService';
+export { privacyAdminService } from './privacyAdminService';
 export { contactBlockService } from './contactBlockService';
 export { contactUploadService } from './contactUploadService';
 export { photoUploadService } from './photoUploadService';

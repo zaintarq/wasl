@@ -14,6 +14,7 @@ import { db } from '../../services/firebase';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 import { AdminUserDirectory } from './AdminUserDirectory.native';
+import { AdminPrivacyDesk } from './AdminPrivacyDesk.native';
 
 const cardShadow =
   Platform.OS === 'ios'
@@ -93,7 +94,7 @@ export function AdminScreen({ onNavigate }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [reports, setReports] = useState([]);
   const [verifs, setVerifs] = useState([]);
-  const [tab, setTab] = useState('reports'); // 'reports' | 'safety' | 'verifications' | 'users' | 'vulgar' | 'update'
+  const [tab, setTab] = useState('reports'); // 'reports' | 'safety' | 'verifications' | 'users' | 'vulgar' | 'update' | 'deletions' | 'crashes'
   const [vulgarAttempts, setVulgarAttempts] = useState([]);
   const [vulgarLoading, setVulgarLoading] = useState(false);
   const [usersById, setUsersById] = useState({});
@@ -790,8 +791,54 @@ export function AdminScreen({ onNavigate }) {
             >
               <Text style={styles.tabText}>App update</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabBtn, tab === 'deletions' ? styles.tabBtnOn : null]}
+              onPress={() => setTab('deletions')}
+            >
+              <Text style={styles.tabText}>Deletions</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabBtn, tab === 'crashes' ? styles.tabBtnOn : null]}
+              onPress={() => setTab('crashes')}
+            >
+              <Text style={styles.tabText}>Crashes</Text>
+            </TouchableOpacity>
           </View>
           </View>
+
+          {tab === 'deletions' && (
+            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+              <View style={styles.sectionHead}>
+                <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
+                  <Text style={styles.sectionEmoji}>🗑️</Text>
+                </View>
+                <View style={styles.sectionHeadText}>
+                  <Text style={styles.sectionTitle}>Deletion requests</Text>
+                  <Text style={styles.sectionHint}>
+                    Process account/data removal and email users from the OTP mailbox.
+                  </Text>
+                </View>
+              </View>
+              <AdminPrivacyDesk mode="deletions" />
+            </View>
+          )}
+
+          {tab === 'crashes' && (
+            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+              <View style={styles.sectionHead}>
+                <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
+                  <Text style={styles.sectionEmoji}>💥</Text>
+                </View>
+                <View style={styles.sectionHeadText}>
+                  <Text style={styles.sectionTitle}>Crash logs</Text>
+                  <Text style={styles.sectionHint}>
+                    Device-reported fatals and errors for debugging.
+                  </Text>
+                </View>
+              </View>
+              <AdminPrivacyDesk mode="crashes" />
+            </View>
+          )}
 
           {tab === 'update' && (
             <View style={[styles.card, styles.sectionEmerald, cardShadow]}>

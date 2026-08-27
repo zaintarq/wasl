@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Platform, ActivityIndicator, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Shield, LogOut, Users, FileMinus } from 'lucide-react-native';
 
-import { authService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { authService, checkUserRoleFromAdminCollection, privacyAdminService } from '../../services/firebaseService';
 import { tokens, brandShellGradientSoft } from '../../ui/tokens';
 import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
@@ -25,54 +25,65 @@ async function openUrl(url) {
   }
 }
 
-function requestDataDeletion() {
-  const email = authService.getCurrentUser()?.email || '';
+async function submitInAppDeletion(type) {
+  const label = type === 'partial' ? 'data deletion' : 'account deletion';
   Alert.alert(
-    'Request data deletion',
-    'You can ask us to delete some or all of your personal data without deleting your whole account. We will email you when it is done.\n\nOpen the request page, or email support from the address on your account.',
+    type === 'partial' ? 'Request data deletion' : 'Delete your Wasl account',
+    type === 'partial'
+      ? 'We will send this request to Wasl admins. You can keep your account. You will get an email when it is done.'
+      : 'We will send this request to Wasl admins. After they process it, your account and personal data are removed and you cannot sign in again.',
     [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Open request page',
-        onPress: () => openUrl(DELETE_DATA_URL),
+        text: 'Submit request',
+        style: type === 'partial' ? 'default' : 'destructive',
+        onPress: async () => {
+          const res = await privacyAdminService.submitDeletionRequest({ type });
+          if (res.error) {
+            Alert.alert('Request failed', res.error);
+            return;
+          }
+          Alert.alert(
+            'Request submitted',
+            res.data?.alreadyOpen
+              ? `You already have an open ${label} request. Admins will process it.`
+              : `Your ${label} request is in the admin queue. You will be emailed when it is complete.`
+          );
+        },
+      },
+      {
+        text: 'Open web page',
+        onPress: () => openUrl(type === 'partial' ? DELETE_DATA_URL : DELETE_ACCOUNT_URL),
       },
       {
         text: 'Email support',
-        onPress: () =>
-          openUrl(
-            `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Wasl data deletion request')}&body=${encodeURIComponent(
-              `Please delete the following personal data from my Wasl account (keep my account open):\n\nAccount email: ${email}\nWhat to delete: (describe photos, chats, profile fields, etc.)\n`
-            )}`
-          ),
+        onPress: () => {
+          const email = authService.getCurrentUser()?.email || '';
+          if (type === 'partial') {
+            openUrl(
+              `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Wasl data deletion request')}&body=${encodeURIComponent(
+                `Please delete the following personal data from my Wasl account (keep my account open):\n\nAccount email: ${email}\nWhat to delete: (describe photos, chats, profile fields, etc.)\n`
+              )}`
+            );
+          } else {
+            openUrl(
+              `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Wasl account deletion request')}&body=${encodeURIComponent(
+                `Please delete my Wasl account and associated data.\n\nAccount email: ${email}\nUsername: \n`
+              )}`
+            );
+          }
+        },
       },
     ]
   );
 }
 
+function requestDataDeletion() {
+  submitInAppDeletion('partial');
+}
+
 function requestAccountDeletion() {
-  const email = authService.getCurrentUser()?.email || '';
-  Alert.alert(
-    'Delete your Wasl account',
-    'This permanently deletes your account and associated personal data (safety records may be kept for a limited time). You will not be able to sign in again.\n\nContinue to the deletion page for full steps, or email support from your account address.',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Open deletion page',
-        style: 'destructive',
-        onPress: () => openUrl(DELETE_ACCOUNT_URL),
-      },
-      {
-        text: 'Email support',
-        style: 'destructive',
-        onPress: () =>
-          openUrl(
-            `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Wasl account deletion request')}&body=${encodeURIComponent(
-              `Please delete my Wasl account and associated data.\n\nAccount email: ${email}\nUsername: \n`
-            )}`
-          ),
-      },
-    ]
-  );
+  submitInAppDeletion('account');
 }
 
 export function SettingsScreen({ onNavigate }) {

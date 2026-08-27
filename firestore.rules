@@ -732,6 +732,23 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // User-submitted account / data deletion requests (admin processes)
+    match /deletionRequests/{requestId} {
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'open';
+      allow get, list: if isAdmin()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // Client crash reports for admin vitals desk
+    match /crashLogs/{logId} {
+      allow create: if isSignedIn();
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
     // Admin collection (separate collection for admins and staff)
     match /admin/{userId} {
       // Users can read their own admin record to check their role
