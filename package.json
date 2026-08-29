@@ -19,10 +19,11 @@
     "remove-mascot-bg": "node scripts/remove-mascot-white-bg.js",
     "fill-mascot-holes": "node scripts/fill-mascot-interior-holes.js",
     "remove-wrong-password-bg": "node scripts/remove-wrong-password-bg.js",
-    "games:build": "cd games/client && npm run build",
+    "games:build": "cd games/client && npm ci && npm run build",
     "games:server": "cd games/server && npm start",
     "games:worker:dev": "cd games/worker && npm run dev",
     "games:worker:deploy": "bash scripts/deploy-games-worker.sh",
+    "games:pages:deploy": "bash scripts/deploy-games-pages.sh",
     "games:dev": "cd games/client && npm run dev",
     "games:smoke": "cd games/client && node ../scripts/smoke-games.js"
   },

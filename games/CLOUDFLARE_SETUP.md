@@ -6,7 +6,7 @@
 2. Select repo: **zaintarq/wasl**
 3. **Build settings:**
    - **Production branch:** `master`
-   - **Build command:** `npm ci && npm run games:build`
+   - **Build command:** `bash scripts/pages-games-build.sh`
    - **Build output directory:** `games/server/public`
    - **Root directory:** `/` (repo root)
 4. **Environment variables** (optional for build): none required
@@ -18,11 +18,13 @@
 
 ## B. Worker — live multiplayer (WebSocket)
 
-Must run **once on your Mac** (requires browser login):
+Must run **once on your Mac** (opens **Microsoft Edge** for Cloudflare login):
 
 ```bash
 bash scripts/deploy-games-worker.sh
 ```
+
+> Uses Edge instead of your default browser. If Edge isn't installed, it falls back to the system default.
 
 That script:
 1. Opens Cloudflare login in your browser (`wrangler login`)
