@@ -7,7 +7,7 @@ import appConfig from './app.config.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '..', '..', '.env') });
 
-const port = Number(process.env.COLYSEUS_PORT || 2567);
+const port = Number(process.env.PORT || process.env.COLYSEUS_PORT || 2567);
 
 listen(appConfig, port).then(() => {
   console.log(`🎮 Huzz Games — Colyseus 0.17 on port ${port}`);

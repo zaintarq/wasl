@@ -52,15 +52,28 @@ export async function joinColyseusRoom(launch) {
     return null;
   }
 
-  const client = new Client(toHttpEndpoint(launch.wsUrl));
+  const httpEndpoint = toHttpEndpoint(launch.wsUrl);
+  if (!httpEndpoint) {
+    throw new Error('Game server URL is not configured.');
+  }
+
+  const client = new Client(httpEndpoint);
   const roomName = resolveColyseusRoom(launch.gameId);
-  const room = await client.joinOrCreate(roomName, {
-    inviteRoomId: launch.roomId,
-    token: launch.token,
-    uid: launch.uid,
-    name: launch.name,
-  });
-  return room;
+  try {
+    const room = await client.joinOrCreate(roomName, {
+      inviteRoomId: launch.roomId,
+      token: launch.token,
+      uid: launch.uid,
+      name: launch.name,
+    });
+    return room;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/fetch|network|load failed|failed to fetch|ECONNREFUSED/i.test(msg)) {
+      throw new Error('Game server is offline. Try again in a minute.');
+    }
+    throw err;
+  }
 }
 
 export function bindRoomHud(room, launch) {

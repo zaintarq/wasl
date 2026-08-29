@@ -9,7 +9,7 @@ module.exports = {
       ...appJson.expo.extra,
       liveKitUrl: process.env.EXPO_PUBLIC_LIVEKIT_URL || '',
       gamesClientUrl: process.env.EXPO_PUBLIC_GAMES_CLIENT_URL || '',
-      colyseusWsUrl: process.env.EXPO_PUBLIC_COLYSEUS_WS_URL || '',
+      gamesWsUrl: process.env.EXPO_PUBLIC_GAMES_WS_URL || process.env.EXPO_PUBLIC_COLYSEUS_WS_URL || '',
       zoiVeraApiKey: process.env.EXPO_PUBLIC_ZOIVERA_API_KEY || '',
       zoiVeraAudience: process.env.EXPO_PUBLIC_ZOIVERA_AUDIENCE || 'https://zaintarq.github.io',
       ageVerifyHostUrl:

@@ -1,88 +1,87 @@
-# Huzz Games — Colyseus 0.17 + Phaser
+# Huzz Games — Cloudflare Pages + Workers (free tier)
 
-Built on official Colyseus open-source patterns:
-
-| Source | What we use |
-|--------|-------------|
-| [turnbased-cards-demo](https://github.com/colyseus/turnbased-cards-demo) | Turn order, `StateView` hidden hands, `play_card` messages, turn deadlines |
-| [tutorial-phaser](https://github.com/colyseus/tutorial-phaser) | Phaser ↔ Colyseus via `Callbacks.onAdd` / `listen` |
-| [colyseus/vite](https://github.com/colyseus/vite) | `defineServer` + `defineRoom` server layout |
-
-**Stack:** Colyseus **0.17** · `@colyseus/schema` **v4** · `@colyseus/sdk` client · Phaser 3
+**Pages** hosts the Phaser client (`https://huzz-games.pages.dev`).  
+**Workers + Durable Objects** host live multiplayer rooms (WebSockets).
 
 ```
-HUZZ APP (WebView)
-       │
-       ▼
-  Social → Games Hub
-       │
-  ┌────┼────┐
-  ▼    ▼    ▼
-Chess Ludo Cards   ← Phaser (games/client)
-       │
-       ▼
- Colyseus 0.17     ← games/server (TypeScript)
-       │
-   Player A ↔ Player B
+App WebView → Pages (Phaser UI)
+                 ↓ WebSocket
+         huzz-games-api (Worker)
+                 ↓
+         GameRoom (Durable Object per match)
 ```
 
-## Server layout (matches official demos)
+## 1. Build the client
 
+```bash
+npm run games:build
 ```
-games/server/src/
-  index.ts              ← @colyseus/tools listen()
-  app.config.ts         ← defineServer + filterBy inviteRoomId
-  schema/gameState.ts   ← schema() DSL (v4)
-  rooms/
-    ChessRoom.ts
-    LudoRoom.ts
-    CardsRoom.ts        ← StateView for private hands
-  logic/chess.ts
-  logic/cards.ts
+
+Upload `games/server/public/` to **Cloudflare Pages** (or connect GitHub → build command `npm run games:build`, output `games/server/public`).
+
+## 2. Deploy the multiplayer Worker
+
+```bash
+cd games/worker
+npm install
+npx wrangler login
+npx wrangler secret put GAME_SESSION_SECRET   # same value as Firebase / root .env
+npm run deploy
+```
+
+Note the Worker URL (e.g. `https://huzz-games-api.<your-subdomain>.workers.dev`).
+
+## 3. Configure Firebase + app
+
+Root `.env` and `functions/.env.huzz-10264`:
+
+```bash
+GAMES_CLIENT_URL=https://huzz-games.pages.dev
+GAMES_WS_URL=wss://huzz-games-api.<your-subdomain>.workers.dev
+EXPO_PUBLIC_GAMES_CLIENT_URL=https://huzz-games.pages.dev
+EXPO_PUBLIC_GAMES_WS_URL=wss://huzz-games-api.<your-subdomain>.workers.dev
+GAME_SESSION_SECRET=your-long-random-secret
+```
+
+Redeploy Cloud Functions:
+
+```bash
+cd functions && firebase deploy --only functions:getGameLaunchSession
+```
+
+## 4. Test
+
+1. User A opens **Social → Ludo** with a match  
+2. User B opens the same game invite (same `roomId` from match)  
+3. Both connect to the same Durable Object — dice rolls sync in real time  
+
+Health check: `GET https://huzz-games-api.<subdomain>.workers.dev/health`
+
+## Local dev
+
+Terminal 1 — Worker:
+
+```bash
+npm run games:worker:dev
+# default ws://localhost:8787
+```
+
+Terminal 2 — Phaser client:
+
+```bash
+npm run games:dev
+# open with ?game=ludo&roomId=test&token=...&wsUrl=ws://localhost:8787
 ```
 
 ## Games
 
-| Game | Room | Features |
-|------|------|----------|
-| **Chess** | `chess` | Legal moves, king capture, 90s turn timeout |
-| **Ludo** | `ludo` | Server dice, need 6 to start, auto-roll on timeout |
-| **Hearts/Cards** | `cards` | 5-card tricks, **StateView** (only you see your hand), 15s timeout |
+| Game | Live multiplayer |
+|------|------------------|
+| Ludo | ✅ Worker + DO |
+| Chess | 🔜 same pattern |
+| Hearts/Cards | 🔜 |
+| Solitaire, Puzzle, Snake | Solo (no Worker) |
 
-## Quick start
+## Optional: legacy Colyseus server
 
-1. Root `.env`:
-
-```bash
-GAME_SESSION_SECRET=your-long-random-secret
-GAMES_CLIENT_URL=http://YOUR_LAN_IP:2567
-COLYSEUS_WS_URL=ws://YOUR_LAN_IP:2567
-EXPO_PUBLIC_GAMES_CLIENT_URL=http://YOUR_LAN_IP:2567
-EXPO_PUBLIC_COLYSEUS_WS_URL=ws://YOUR_LAN_IP:2567
-COLYSEUS_PORT=2567
-```
-
-2. Build + run:
-
-```bash
-npm run games:build
-npm run games:server
-```
-
-3. Smoke test (2-player chess sync):
-
-```bash
-GAME_SESSION_SECRET=... npm run games:smoke
-```
-
-4. Deploy Firebase `getGameLaunchSession` with same env vars.
-
-5. **Social → play with match → pick game**
-
-## Auth flow
-
-Firebase callable signs token → WebView opens Phaser with `?game=…&roomId=…&token=…` → `@colyseus/sdk` `joinOrCreate(room, { inviteRoomId, token })` → server `onAuth` verifies HMAC.
-
-## Production
-
-Host `games/server` on Railway / Fly.io / VPS with **HTTPS + wss://**. Set Firebase `GAMES_CLIENT_URL` and `COLYSEUS_WS_URL` to that host.
+`games/server` (Node/Colyseus) is kept for local dev only. Production uses Cloudflare Workers.

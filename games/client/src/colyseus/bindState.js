@@ -1,39 +1,32 @@
-import { Callbacks } from '@colyseus/sdk';
 import { HUZZ } from '../ui/huzzTheme.js';
 
-/** Wire Colyseus 0.17 room state → Phaser (tutorial-phaser + turnbased-cards-demo). */
+/** Wire live room state → Phaser (Cloudflare DO or legacy Colyseus). */
 export function bindRoomState(room, _scene, handlers = {}) {
-  if (!room?.state) return;
-
-  const cb = Callbacks.get(room);
+  if (!room) return;
 
   const onChange = () => {
-    handlers.onState?.(room.state);
-    if (handlers.onPhase) handlers.onPhase(room.state.phase);
-    if (handlers.onMessage) handlers.onMessage(room.state.message);
-    if (handlers.onTurn) handlers.onTurn(room.state.currentTurnSessionId);
-    if (handlers.onBoard) handlers.onBoard(room.state.board);
-    if (handlers.onDice) handlers.onDice(room.state.dice);
-    if (handlers.onWinner) handlers.onWinner(room.state.winnerSessionId);
+    const s = room.state;
+    if (!s) return;
+    handlers.onState?.(s);
+    if (handlers.onPhase) handlers.onPhase(s.phase);
+    if (handlers.onMessage) handlers.onMessage(s.message);
+    if (handlers.onTurn) handlers.onTurn(s.currentTurnSessionId);
+    if (handlers.onBoard) handlers.onBoard(s.board);
+    if (handlers.onDice) handlers.onDice(s.dice);
+    if (handlers.onWinner) handlers.onWinner(s.winnerSessionId);
     if (handlers.onTable) {
-      handlers.onTable(room.state.tableCardA, room.state.tableCardB, room.state.round);
+      handlers.onTable(s.tableCardA, s.tableCardB, s.round);
     }
-    if (handlers.onDeadline) handlers.onDeadline(room.state.turnDeadline);
+    if (handlers.onDeadline) handlers.onDeadline(s.turnDeadline);
+    if (handlers.onPlayerChange && s.players?.forEach) {
+      s.players.forEach((player, sessionId) => handlers.onPlayerChange(player, sessionId));
+    }
   };
 
-  room.onStateChange(onChange);
-
-  if (room.state.players) {
-    cb.onAdd('players', (player, sessionId) => {
-      cb.listen(player, () => handlers.onPlayerChange?.(player, sessionId));
-      handlers.onPlayerAdd?.(player, sessionId);
-      onChange();
-    });
-
-    cb.onRemove('players', (_player, sessionId) => {
-      handlers.onPlayerRemove?.(sessionId);
-      onChange();
-    });
+  if (typeof room.onStateChange === 'function') {
+    room.onStateChange(onChange);
+  } else if (typeof room.onStateChange === 'undefined' && room.onMessage) {
+    /* legacy colyseus */
   }
 
   onChange();

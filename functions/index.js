@@ -2365,6 +2365,26 @@ exports.clearAppUpdateAlert = functions.region('us-central1').https.onCall(async
   return { cleared: true };
 });
 
+exports.adminListUsers = functions.region('us-central1').https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+  }
+  if (!(await isAdminCaller(context.auth.uid))) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin only.');
+  }
+
+  const cap = Math.min(Math.max(Number(data?.limit) || 200, 1), 500);
+  let snap;
+  try {
+    snap = await db.collection('users').orderBy('createdAt', 'desc').limit(cap).get();
+  } catch {
+    snap = await db.collection('users').limit(cap).get();
+  }
+
+  const users = snap.docs.map((d) => ({ id: d.id, uid: d.id, ...d.data() }));
+  return { users };
+});
+
 const GAME_IDS = new Set(['ludo', 'chess', 'solitaire', 'hearts', 'puzzle', 'snake']);
 
 const MULTIPLAYER_GAME_IDS = new Set(['chess', 'ludo', 'cards', 'hearts']);
@@ -2372,8 +2392,17 @@ const SOLO_GAME_IDS = new Set(['solitaire', 'puzzle', 'snake']);
 
 function getGamesClientConfig() {
   const clientUrl = String(process.env.GAMES_CLIENT_URL || process.env.EXPO_PUBLIC_GAMES_CLIENT_URL || '').trim();
-  const wsUrl = String(process.env.COLYSEUS_WS_URL || process.env.EXPO_PUBLIC_COLYSEUS_WS_URL || '').trim();
-  return { clientUrl: clientUrl.replace(/\/+$/, ''), wsUrl };
+  let wsUrl = String(
+    process.env.GAMES_WS_URL ||
+      process.env.EXPO_PUBLIC_GAMES_WS_URL ||
+      process.env.COLYSEUS_WS_URL ||
+      process.env.EXPO_PUBLIC_COLYSEUS_WS_URL ||
+      ''
+  ).trim();
+  if (!wsUrl && clientUrl && !clientUrl.includes('pages.dev')) {
+    wsUrl = clientUrl.replace(/^http/i, 'ws');
+  }
+  return { clientUrl: clientUrl.replace(/\/+$/, ''), wsUrl: wsUrl.replace(/\/+$/, '') };
 }
 
 function signGameSessionToken(payload, secret) {
@@ -2470,6 +2499,7 @@ exports.getGameLaunchSession = functions.region('us-central1').https.onCall(asyn
   if (wsUrl) params.set('wsUrl', wsUrl);
   if (opponentName) params.set('opponentName', opponentName);
   if (isSolo) params.set('solo', '1');
+  else if (!wsUrl && MULTIPLAYER_GAME_IDS.has(gameId)) params.set('solo', '1');
 
   return {
     demoMode: false,
@@ -2490,3 +2520,9 @@ Object.assign(exports, require('./zoivera'));
 Object.assign(exports, require('./webClient'));
 Object.assign(exports, require('./likes'));
 Object.assign(exports, require('./privacyAdmin'));
+Object.assign(exports, require('./pushNotifications'));
+Object.assign(exports, require('./videoDates'));
+Object.assign(exports, require('./panicSOS'));
+Object.assign(exports, require('./chatStreaks'));
+Object.assign(exports, require('./clubEvents'));
+Object.assign(exports, require('./successStories'));

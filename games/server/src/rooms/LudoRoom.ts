@@ -6,6 +6,7 @@ const HOME = 27;
 
 export class LudoRoom extends Room<{ state: LudoRoomStateType }> {
   private turnTimeout?: ReturnType<typeof setTimeout>;
+  private botFillTimeout?: ReturnType<typeof setTimeout>;
 
   async onAuth(_client: Client, options: Record<string, unknown>) {
     return verifyRoomAuth('ludo', options);
@@ -38,6 +39,7 @@ export class LudoRoom extends Room<{ state: LudoRoomStateType }> {
 
     if (this.state.players.size < this.maxClients) {
       this.state.message = `Waiting for opponent (${this.state.players.size}/${this.maxClients})…`;
+      this.scheduleBotFill();
       return;
     }
 
@@ -58,6 +60,28 @@ export class LudoRoom extends Room<{ state: LudoRoomStateType }> {
 
   onDispose() {
     clearTimeout(this.turnTimeout);
+    clearTimeout(this.botFillTimeout);
+  }
+
+  /** If no friend joins within a few seconds, start vs CPU so solo play always works. */
+  private scheduleBotFill() {
+    clearTimeout(this.botFillTimeout);
+    this.botFillTimeout = setTimeout(() => {
+      if (this.state.phase !== 'waiting' || this.state.players.size >= this.maxClients) return;
+      const botSessionId = `bot_${this.roomId}`;
+      const bot = new PlayerSchema();
+      bot.uid = 'cpu';
+      bot.name = 'CPU';
+      bot.sessionId = botSessionId;
+      bot.seat = 1;
+      bot.color = 'blue';
+      bot.ludoPos = -1;
+      bot.connected = true;
+      bot.isBot = true;
+      this.state.players.set(botSessionId, bot);
+      this.state.message = 'Playing vs CPU — roll to start!';
+      this.startGame();
+    }, 4000);
   }
 
   private startGame() {
@@ -112,6 +136,16 @@ export class LudoRoom extends Room<{ state: LudoRoomStateType }> {
     this.state.currentTurnSessionId = next;
     this.state.message = `${np?.name || 'Opponent'}'s turn — roll dice`;
     this.scheduleTurn(true);
+    if (np?.isBot) {
+      setTimeout(() => this.handleBotRoll(next), 800);
+    }
+  }
+
+  private handleBotRoll(botSessionId: string) {
+    if (this.state.phase !== 'playing' || this.state.winnerSessionId) return;
+    if (this.state.currentTurnSessionId !== botSessionId) return;
+    const fakeClient = { sessionId: botSessionId } as Client;
+    this.handleRoll(fakeClient);
   }
 
   private scheduleTurn(autoRoll: boolean) {

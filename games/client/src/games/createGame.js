@@ -158,6 +158,7 @@ export class LudoScene extends Phaser.Scene {
     this.room = room;
     this.localSessionId = room?.sessionId;
     this.tokenSprites = new Map();
+    this.local = null;
   }
 
   create() {
@@ -178,9 +179,13 @@ export class LudoScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(51);
 
     this.diceBtn.on('pointerdown', () => {
-      if (this.room?.state?.currentTurnSessionId !== this.localSessionId) return;
-      if (this.room?.state?.phase !== 'playing') return;
-      this.room.send('roll');
+      if (this.room) {
+        if (this.room?.state?.currentTurnSessionId !== this.localSessionId) return;
+        if (this.room?.state?.phase !== 'playing') return;
+        this.room.send('roll');
+      } else if (this.local?.turn === 'me' && this.local?.phase === 'playing') {
+        this.localRoll('me');
+      }
       this.diceBtn.setScale(0.95);
       this.time.delayedCall(100, () => this.diceBtn.setScale(1));
     });
@@ -201,7 +206,114 @@ export class LudoScene extends Phaser.Scene {
           this.winOverlay = createWinOverlay(this, this.room.state.message);
         },
       });
+    } else {
+      this.startLocalLudo();
     }
+  }
+
+  startLocalLudo() {
+    const opp = String(this.launch?.opponentName || 'CPU').trim() || 'CPU';
+    const meName = String(this.launch?.name || 'You').trim() || 'You';
+    this.local = {
+      phase: 'playing',
+      turn: 'me',
+      dice: 0,
+      winner: null,
+      home: 27,
+      players: {
+        me: { id: 'me', name: meName, color: 'red', seat: 0, ludoPos: -1 },
+        cpu: { id: 'cpu', name: opp.split(' ')[0], color: 'blue', seat: 1, ludoPos: -1 },
+      },
+    };
+    this.waiting.hide();
+    this.hud.setStatus(`Local game vs ${opp.split(' ')[0]} — roll to start!`);
+    this.hud.setTurn('Your roll', true);
+    this.syncLocalTokens();
+  }
+
+  localRoll(who) {
+    if (!this.local || this.local.phase !== 'playing' || this.local.winner) return;
+    if (this.local.turn !== who) return;
+
+    const player = this.local.players[who];
+    if (!player) return;
+
+    const roll = 1 + Math.floor(Math.random() * 6);
+    this.local.dice = roll;
+    this.diceLabel.setText(`🎲 ${roll}`);
+
+    if (player.ludoPos < 0) {
+      if (roll !== 6) {
+        this.hud.setStatus(`${player.name} rolled ${roll} — need 6 to start`);
+        this.passLocalTurn();
+        return;
+      }
+      player.ludoPos = 0;
+      this.hud.setStatus(`${player.name} rolled 6 and entered!`);
+    } else {
+      const nextPos = player.ludoPos + roll;
+      if (nextPos > this.local.home) {
+        this.hud.setStatus(`${player.name} rolled ${roll} — too far`);
+      } else {
+        player.ludoPos = nextPos;
+        this.hud.setStatus(`${player.name} rolled ${roll} → space ${nextPos + 1}`);
+        if (player.ludoPos >= this.local.home) {
+          this.local.winner = who;
+          this.local.phase = 'finished';
+          this.winOverlay = createWinOverlay(this, `${player.name} wins Ludo! 🎉`);
+          this.syncLocalTokens();
+          return;
+        }
+      }
+    }
+
+    this.syncLocalTokens();
+    this.passLocalTurn();
+  }
+
+  passLocalTurn() {
+    if (!this.local || this.local.winner) return;
+    this.local.turn = this.local.turn === 'me' ? 'cpu' : 'me';
+    const next = this.local.players[this.local.turn];
+    const mine = this.local.turn === 'me';
+    this.hud.setTurn(mine ? 'Your roll' : `${next?.name || 'CPU'}'s roll`, mine);
+    this.diceBtn.setAlpha(mine ? 1 : 0.45);
+    if (this.local.turn === 'cpu') {
+      this.time.delayedCall(900, () => this.localRoll('cpu'));
+    }
+  }
+
+  syncLocalTokens() {
+    if (!this.local?.players || !this.trackCenter) return;
+    const { cx, cy, r } = this.trackCenter;
+    Object.entries(this.local.players).forEach(([id, player]) => {
+      let sprite = this.tokenSprites.get(id);
+      const color = player.color === 'red' ? 0xdb2777 : 0xf7f1e8;
+      const angle =
+        player.ludoPos < 0
+          ? player.seat === 0
+            ? -Math.PI / 2
+            : Math.PI / 2
+          : (player.ludoPos / 27) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r;
+      if (!sprite) {
+        sprite = this.add.circle(x, y, 16, color).setStrokeStyle(3, 0x2b2420).setDepth(20);
+        const label = this.add.text(x, y + 22, player.name?.split(' ')[0] || '?', {
+          fontSize: '10px',
+          color: HUZZ.cream,
+          fontFamily: 'system-ui, sans-serif',
+        })
+          .setOrigin(0.5)
+          .setDepth(21);
+        sprite.label = label;
+        this.tokenSprites.set(id, sprite);
+      }
+      sprite.x = x;
+      sprite.y = y;
+      sprite.label.x = x;
+      sprite.label.y = y + 22;
+    });
   }
 
   drawTrack() {
