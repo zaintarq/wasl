@@ -10,6 +10,7 @@ async function boot() {
     overlayMsg.textContent = launch.solo ? 'Loading game…' : 'Connecting to Huzz Games…';
   }
 
+  const expectsOpponent = !!(launch.opponentName || launch.opponentUid);
   let room = null;
   try {
     if (isMultiplayerGame(launch.gameId) && !launch.solo) {
@@ -22,7 +23,7 @@ async function boot() {
     new Phaser.Game(createGameConfig(launch, room));
   } catch (err) {
     console.error('[Huzz Games]', err);
-    if (isMultiplayerGame(launch.gameId)) {
+    if (isMultiplayerGame(launch.gameId) && !expectsOpponent) {
       try {
         launch.solo = true;
         hideOverlay();
@@ -33,7 +34,12 @@ async function boot() {
         console.error('[Huzz Games] local fallback failed', fallbackErr);
       }
     }
-    showOverlayError(err?.message || 'Failed to connect to game server.');
+    showOverlayError(
+      err?.message ||
+        (expectsOpponent
+          ? 'Could not connect to the live game server. Ask your match to try again, or check your connection.'
+          : 'Failed to connect to game server.')
+    );
   }
 }
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -7,10 +8,10 @@ import {
   TextInput,
   Platform,
   Alert,
-  Keyboard,
   Image,
   Modal,
   ActivityIndicator,
+  AppState,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -30,8 +31,9 @@ import {
   translationService,
   aiSuggestionService,
   checkUserRoleFromAdminCollection,
+  videoDateService,
+  panicService,
 } from '../../services/firebaseService';
-import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
 import { mehramService } from '../../services/mehramService';
 import { MehramBanner } from '../../ui/components/chats/MehramBanner.native';
 import { MehramPanel } from '../../ui/components/chats/MehramPanel.native';
@@ -40,7 +42,12 @@ import { tokens } from '../../ui/tokens';
 import { SkeletonBox } from '../../ui/components/SkeletonBox.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { ScreenBackHeader } from '../../ui/components/ScreenBackHeader.native';
-import { KeyboardAwareLayout } from './KeyboardAwareLayout.native';
+import {
+  ChatScreenShell,
+  ChatMessageList,
+  WhatsAppChatComposer,
+  useChatDockHeight,
+} from '../../ui/components/chat/index.native';
 import * as Haptics from 'expo-haptics';
 import { useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import * as Clipboard from 'expo-clipboard';
@@ -187,9 +194,25 @@ function MessageBubbleRow({
           >
             {reply ? (
               <View style={st.replyPreview}>
-                <Text style={st.replyPreviewText}>
-                  Replying to: {String(reply?.text || '').slice(0, 80)}
-                </Text>
+                {reply.kind === 'story' ? (
+                  <View style={st.storyReplyRow}>
+                    {reply.mediaType !== 'video' && reply.mediaUrl ? (
+                      <Image source={{ uri: String(reply.mediaUrl) }} style={st.storyReplyThumb} />
+                    ) : (
+                      <View style={st.storyReplyThumbFallback}>
+                        <Text style={st.storyReplyPlay}>▶</Text>
+                      </View>
+                    )}
+                    <Text style={st.replyPreviewText}>
+                      Replied to {reply.authorName ? `${reply.authorName}'s` : 'a'}{' '}
+                      {reply.mediaType === 'video' ? 'video ' : ''}story
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={st.replyPreviewText}>
+                    Replying to: {String(reply?.text || '').slice(0, 80)}
+                  </Text>
+                )}
               </View>
             ) : null}
             {isVoice ? (
@@ -297,6 +320,10 @@ export function ChatScreen({ onNavigate, matchId }) {
   const [roleCheck, setRoleCheck] = useState(null);
   const [pendingUpgradeError, setPendingUpgradeError] = useState(null);
   const [mehramPanelOpen, setMehramPanelOpen] = useState(false);
+  const [videoSessions, setVideoSessions] = useState([]);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [panicBusy, setPanicBusy] = useState(false);
+  const { dockHeight, onDockLayout } = useChatDockHeight(72);
 
   useEffect(() => {
     let cancelled = false;
@@ -336,14 +363,124 @@ export function ChatScreen({ onNavigate, matchId }) {
     };
   }, [meUid]);
 
-  useEffect(() => {
-    if (!meUid || myProfile === null) return;
-    if (blockIfAgeNotVerified(myProfile, onNavigate, roleCheck)) {
-      onNavigate('matches');
-    }
-  }, [meUid, myProfile, roleCheck, onNavigate]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!meUid) return;
+      userService
+        .getUserById(meUid)
+        .then((res) => setMyProfile(res?.data || null))
+        .catch(() => {});
+    }, [meUid])
+  );
 
-  // Legacy pending matches from older builds — open chat immediately without approval.
+  // Tell the server we're actively viewing this chat (skip push). Clear on leave/background.
+  useEffect(() => {
+    if (!matchId || !meUid) return undefined;
+
+    const markActive = () => {
+      userService
+        .updateUser(meUid, { activeChatMatchId: matchId, activeChatAt: Date.now() })
+        .catch(() => {});
+    };
+    const markInactive = () => {
+      userService.updateUser(meUid, { activeChatMatchId: null }).catch(() => {});
+    };
+
+    markActive();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') markActive();
+      else markInactive();
+    });
+
+    return () => {
+      sub.remove();
+      markInactive();
+    };
+  }, [matchId, meUid]);
+
+  useEffect(() => {
+    if (!matchId) return undefined;
+    return videoDateService.listenMatchVideoSessions(matchId, ({ data }) => {
+      setVideoSessions(Array.isArray(data) ? data : []);
+    });
+  }, [matchId]);
+
+  const toMs = useCallback((value) => {
+    if (!value) return 0;
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'number') return value;
+    return 0;
+  }, []);
+
+  const activeVideoSession = useMemo(() => {
+    return (
+      (videoSessions || []).find((s) =>
+        ['pending', 'accepted', 'active'].includes(String(s?.status || ''))
+      ) || null
+    );
+  }, [videoSessions]);
+
+  const handleRespondVideoDate = useCallback(async (sessionId, accept) => {
+    setVideoBusy(true);
+    try {
+      const { error } = await videoDateService.respondVideoDate(sessionId, accept);
+      if (error) Alert.alert('Video date', error);
+    } finally {
+      setVideoBusy(false);
+    }
+  }, []);
+
+  const handleJoinVideoDate = useCallback(
+    async (sessionId) => {
+      setVideoBusy(true);
+      try {
+        const { status, error } = await videoDateService.activateVideoDate(sessionId);
+        if (error) {
+          Alert.alert('Video date', error);
+          return;
+        }
+        if (status === 'active') {
+          onNavigate('matchVideoDate', { matchId, sessionId });
+        }
+      } finally {
+        setVideoBusy(false);
+      }
+    },
+    [matchId, onNavigate]
+  );
+
+  const handlePanicSOS = useCallback(() => {
+    Alert.alert(
+      'Trigger SOS?',
+      'This logs a safety incident, freezes this chat, and alerts your Mehram if supervision is active. Only use if you feel unsafe.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send SOS',
+          style: 'destructive',
+          onPress: async () => {
+            setPanicBusy(true);
+            try {
+              const { ok, error } = await panicService.triggerSOS(matchId);
+              if (error || !ok) {
+                Alert.alert('SOS failed', error || 'Could not send SOS. Try again or call emergency services.');
+                return;
+              }
+              Alert.alert(
+                'SOS sent',
+                'This chat is frozen for safety review. If you are in immediate danger, contact local emergency services.'
+              );
+            } finally {
+              setPanicBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [matchId]);
+
+  // Legacy pending matches — upgrade before messaging (Firestore requires active status).
   useEffect(() => {
     if (!matchId || !meUid || String(match?.status || '') !== 'pending') {
       setPendingUpgradeError(null);
@@ -375,8 +512,8 @@ export function ChatScreen({ onNavigate, matchId }) {
     if (String(match?.status || '') !== 'pending') return;
     const timer = setTimeout(() => {
       setLoading(false);
-      setPendingUpgradeError((prev) => prev || 'This chat is still pending. Go back to Matches and try again.');
-    }, 15000);
+      setPendingUpgradeError((prev) => prev || 'Still opening this chat — pull back and try again.');
+    }, 8000);
     return () => clearTimeout(timer);
   }, [match?.status]);
   const mehramMeta = match?.mehram && match.mehram.active ? match.mehram : null;
@@ -386,6 +523,54 @@ export function ChatScreen({ onNavigate, matchId }) {
     const name = mehramMeta.girlDisplayName || myProfile?.name || 'Her';
     return `👤 ${name}'s Mehram`;
   }, [mehramMeta, myProfile?.name]);
+
+  const chatStreakCount = Number(match?.chatStreak?.count || 0);
+
+  const handleScheduleVideoDate = useCallback(() => {
+    const options = videoDateService.buildScheduleOptions();
+    const scheduleWithMehram = async (opt, inviteMehram) => {
+      setVideoBusy(true);
+      try {
+        const { error } = await videoDateService.proposeVideoDate(matchId, opt.ms, {
+          mehramInvited: inviteMehram,
+        });
+        if (error) Alert.alert('Could not schedule', error);
+        else {
+          Alert.alert(
+            'Invite sent',
+            inviteMehram
+              ? 'Your match will be notified. Your Mehram can join as chaperone when the call starts.'
+              : 'Your match will be notified to accept the video date.'
+          );
+        }
+      } finally {
+        setVideoBusy(false);
+      }
+    };
+
+    const pickMehramThenSchedule = (opt) => {
+      if (isGirl && mehramMeta?.accessId) {
+        Alert.alert('Include Mehram?', 'Your Mehram can listen in as a chaperone (camera off).', [
+          { text: 'No', onPress: () => scheduleWithMehram(opt, false) },
+          { text: 'Yes, chaperone', onPress: () => scheduleWithMehram(opt, true) },
+        ]);
+        return;
+      }
+      scheduleWithMehram(opt, false);
+    };
+
+    Alert.alert(
+      'Schedule video date',
+      'Pick a 15-minute video call slot. Both of you must accept before it is confirmed.',
+      [
+        ...options.map((opt) => ({
+          text: opt.label,
+          onPress: () => pickMehramThenSchedule(opt),
+        })),
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [matchId, isGirl, mehramMeta?.accessId]);
 
   const canAddMehram = useMemo(() => {
     if (!isGirl || !match) return false;
@@ -509,20 +694,50 @@ export function ChatScreen({ onNavigate, matchId }) {
     };
   }, [matchId, meUid]);
 
-  // Keep latest messages visible above keyboard: scroll to bottom (offset 0 when inverted) when keyboard shows
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const sub = Keyboard.addListener(showEvent, () => {
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
-      });
-    });
-    return () => sub?.remove?.();
-  }, []);
-
   const canSend = useMemo(() => String(text || '').trim().length > 0, [text]);
   const hasActiveRecording = recorderState.isRecording || (recorderState.canRecord && (recorderState.durationMillis ?? 0) > 0);
-  const isActive = useMemo(() => String(match?.status || 'active') === 'active', [match?.status]);
+  const isActive = useMemo(
+    () => String(match?.status || 'active') === 'active' && !match?.chatFrozen,
+    [match?.status, match?.chatFrozen]
+  );
+  const chatFrozen = !!match?.chatFrozen;
+
+  const handlePlayLudo = useCallback(() => {
+    if (!otherUser?.id || chatFrozen || !matchId) return;
+    onNavigate('gamePlay', {
+      gameId: 'ludo',
+      matchId,
+      opponentUid: otherUser.id,
+      opponentName: otherUser.name || otherUser.username || 'Match',
+    });
+  }, [otherUser, chatFrozen, matchId, onNavigate]);
+
+  const videoDateBannerBody = useMemo(() => {
+    if (!activeVideoSession) return '';
+    const status = String(activeVideoSession.status || '');
+    const accepted = (activeVideoSession.acceptedUids || []).map(String);
+    const meAccepted = accepted.includes(String(meUid));
+    const iProposed = String(activeVideoSession.proposedBy) === String(meUid);
+
+    if (status === 'pending') {
+      if (!meAccepted && !iProposed) {
+        return `${otherUser?.name || 'Your match'} invited you to a 15-min video call.`;
+      }
+      return `Waiting for ${otherUser?.name || 'your match'} to accept the video date invite.`;
+    }
+    if (status === 'accepted') {
+      return `Scheduled for ${new Date(toMs(activeVideoSession.scheduledAt)).toLocaleString()}`;
+    }
+    if (status === 'active') {
+      return activeVideoSession.mehramInvited
+        ? 'Your 15-minute video room is open. Mehram chaperone invited.'
+        : 'Your 15-minute video room is open.';
+    }
+    if (status === 'accepted' && activeVideoSession.mehramInvited) {
+      return `Scheduled — Mehram chaperone will be invited when the call starts.`;
+    }
+    return '';
+  }, [activeVideoSession, meUid, otherUser?.name, toMs]);
   const showAiStarterTools = useMemo(
     () => isActive && !loading && Array.isArray(messages) && messages.length === 0,
     [isActive, loading, messages]
@@ -541,6 +756,55 @@ export function ChatScreen({ onNavigate, matchId }) {
   }, [match?.typing, otherUid]);
 
   const fmtSec = (ms) => `${Math.max(0, Math.round(ms / 1000))}s`;
+
+  const handleSendMessage = useCallback(async () => {
+    try {
+      if (!isActive) return;
+      const uid = authService.getCurrentUser()?.uid;
+      if (!uid) return;
+      try {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {}
+      setShowEmoji(false);
+      await messageService.setTyping(matchId, uid, false);
+      if (editing?.id) {
+        const toxicEdit = await messageService.checkMessageToxicity(matchId, text);
+        if (toxicEdit?.toxic) {
+          Alert.alert(
+            'Message blocked',
+            toxicEdit.message ||
+              `This message was flagged (strike ${toxicEdit.strikeCount || 1} in 24h). Please change it before sending.`,
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        const { error } = await messageService.editMessage(matchId, editing.id, uid, text);
+        if (!error) setEditing(null);
+        if (error) Alert.alert('Error', error);
+        else setText('');
+        return;
+      }
+      const toxic = await messageService.checkMessageToxicity(matchId, text);
+      if (toxic?.toxic) {
+        Alert.alert(
+          'Message blocked',
+          toxic.message ||
+            `This message was flagged (strike ${toxic.strikeCount || 1} in 24h). Please change it before sending.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      const { error } = await messageService.sendMessage(matchId, uid, text, { replyTo });
+      if (error) Alert.alert('Error', error);
+      else {
+        setText('');
+        setReplyTo(null);
+        listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+      }
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to send.');
+    }
+  }, [isActive, matchId, editing, text, replyTo]);
 
   const startRecording = async () => {
     if (!isActive) return;
@@ -834,17 +1098,38 @@ export function ChatScreen({ onNavigate, matchId }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <KeyboardAwareLayout>
-        <View style={styles.header}>
+      <ChatScreenShell
+        onDockLayout={onDockLayout}
+        header={
+        <View style={styles.headerWrap}>
           <ScreenBackHeader
             title={otherUser?.name || 'Chat'}
             onBack={() => onNavigate('matches')}
             backLabel="Back"
+            light
             rightSlot={
-              <HuzzPressable
-                style={styles.headerBtn}
-                onPress={() => {
+              <View style={styles.headerActions}>
+                <HuzzPressable
+                  style={[styles.sosBtn, panicBusy && styles.sosBtnDisabled]}
+                  onPress={handlePanicSOS}
+                  haptic="medium"
+                  disabled={panicBusy || chatFrozen}
+                  accessibilityLabel="Safety SOS"
+                >
+                  <Text style={styles.sosBtnText}>SOS</Text>
+                </HuzzPressable>
+                <HuzzPressable
+                  style={styles.headerBtn}
+                  onPress={() => {
                   Alert.alert('Options', 'What do you want to do?', [
+                    {
+                      text: 'Schedule video date',
+                      onPress: handleScheduleVideoDate,
+                    },
+                    {
+                      text: 'Play Ludo',
+                      onPress: handlePlayLudo,
+                    },
                     {
                       text: 'Plan Together',
                       onPress: () => {
@@ -904,9 +1189,86 @@ export function ChatScreen({ onNavigate, matchId }) {
               >
                 <Text style={styles.headerBtnText}>⋯</Text>
               </HuzzPressable>
+              </View>
             }
           />
+          {chatFrozen ? (
+            <View style={styles.frozenBanner}>
+              <Text style={styles.frozenBannerTitle}>Chat paused for safety</Text>
+              <Text style={styles.frozenBannerBody}>
+                Messaging is frozen while our team reviews this conversation. If you are in danger, contact local
+                emergency services.
+              </Text>
+            </View>
+          ) : null}
+          {activeVideoSession ? (
+            <View style={styles.videoDateBanner}>
+              <Text style={styles.videoDateTitle}>
+                {String(activeVideoSession.status) === 'pending'
+                  ? 'Video date invite'
+                  : String(activeVideoSession.status) === 'accepted'
+                    ? 'Video date confirmed'
+                    : 'Video date live'}
+              </Text>
+              <Text style={styles.videoDateBody}>{videoDateBannerBody}</Text>
+              <View style={styles.videoDateActions}>
+                {String(activeVideoSession.status) === 'pending' &&
+                !(activeVideoSession.acceptedUids || []).map(String).includes(String(meUid)) &&
+                String(activeVideoSession.proposedBy) !== String(meUid) ? (
+                  <>
+                    <HuzzPressable
+                      style={styles.videoDateBtn}
+                      onPress={() => handleRespondVideoDate(activeVideoSession.id, true)}
+                      disabled={videoBusy}
+                      haptic="light"
+                    >
+                      <Text style={styles.videoDateBtnText}>Accept</Text>
+                    </HuzzPressable>
+                    <HuzzPressable
+                      style={[styles.videoDateBtn, styles.videoDateBtnOutline]}
+                      onPress={() => handleRespondVideoDate(activeVideoSession.id, false)}
+                      disabled={videoBusy}
+                      haptic="light"
+                    >
+                      <Text style={[styles.videoDateBtnText, styles.videoDateBtnTextOutline]}>Decline</Text>
+                    </HuzzPressable>
+                  </>
+                ) : null}
+                {['accepted', 'active'].includes(String(activeVideoSession.status)) ? (
+                  <HuzzPressable
+                    style={styles.videoDateBtn}
+                    onPress={() => handleJoinVideoDate(activeVideoSession.id)}
+                    disabled={videoBusy}
+                    haptic="light"
+                  >
+                    <Text style={styles.videoDateBtnText}>
+                      {String(activeVideoSession.status) === 'active' ? 'Join now' : 'Enter room'}
+                    </Text>
+                  </HuzzPressable>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+          {!chatFrozen && otherUser?.id ? (
+            <View style={styles.gameBanner}>
+              <View style={styles.gameBannerText}>
+                <Text style={styles.gameBannerTitle}>Play together</Text>
+                <Text style={styles.gameBannerBody}>Break the ice with a quick Ludo match.</Text>
+              </View>
+              <HuzzPressable style={styles.gameBtn} onPress={handlePlayLudo} haptic="light">
+                <Text style={styles.gameBtnText}>🎲 Ludo</Text>
+              </HuzzPressable>
+            </View>
+          ) : null}
           <View style={styles.headerMeta}>
+            {chatStreakCount >= 2 ? (
+              <View style={styles.streakPill}>
+                <Text style={styles.streakText}>
+                  🔥 {chatStreakCount}-day streak
+                  {chatStreakCount >= 7 ? ' · MashaAllah' : ''}
+                </Text>
+              </View>
+            ) : null}
             <Text
               style={[
                 styles.subtitle,
@@ -935,8 +1297,9 @@ export function ChatScreen({ onNavigate, matchId }) {
             </HuzzPressable>
           </View>
         </View>
-
-        <View style={{ flex: 1, minHeight: 0 }}>
+        }
+        list={
+        <>
         {pendingUpgradeError ? (
           <View style={styles.pendingBox}>
             <Text style={styles.pendingTitle}>Chat unavailable</Text>
@@ -945,16 +1308,15 @@ export function ChatScreen({ onNavigate, matchId }) {
               <Text style={styles.headerBtnText}>Back to chats</Text>
             </HuzzPressable>
           </View>
-        ) : null}
-        <FlatList
+        ) : (
+        <View style={styles.listWrap}>
+        <ChatMessageList
           ref={listRef}
           style={styles.list}
           contentContainerStyle={styles.listContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
+          composerInset={dockHeight}
           data={chatData}
           keyExtractor={(item) => String(item?.id)}
-          inverted
           extraData={{ otherIsTyping, translationById, chatTranslateLang }}
           ListFooterComponent={
             mehramMeta ? (
@@ -987,13 +1349,6 @@ export function ChatScreen({ onNavigate, matchId }) {
           windowSize={10}
           maxToRenderPerBatch={12}
           updateCellsBatchingPeriod={16}
-          removeClippedSubviews={false}
-          // Index 0 = newest row in inverted list. Using 1 skipped the latest bubble and caused
-          // the other person's view to clip new messages under the composer / last row.
-          maintainVisibleContentPosition={{
-            minIndexForVisible: 0,
-            autoscrollToTopThreshold: 100,
-          }}
           renderItem={({ item }) => {
             if (item?._type === 'day') {
               return (
@@ -1072,8 +1427,24 @@ export function ChatScreen({ onNavigate, matchId }) {
             );
           }}
         />
+        {showScrollToBottom ? (
+          <HuzzPressable
+            style={styles.scrollToBottomBtn}
+            onPress={() => {
+              listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+              setShowScrollToBottom(false);
+            }}
+            haptic="light"
+          >
+            <Text style={styles.scrollToBottomText}>↓</Text>
+          </HuzzPressable>
+        ) : null}
         </View>
-
+        )}
+        </>
+        }
+        dock={
+        <>
         {showEmoji ? (
           <View style={styles.emojiPanel}>
             {['😀', '😂', '😍', '🥹', '😮', '😡', '👍', '🙏', '🔥', '💯', '❤️', '✨'].map((e) => (
@@ -1153,130 +1524,51 @@ export function ChatScreen({ onNavigate, matchId }) {
           </View>
         ) : null}
 
-        <View style={styles.composer}>
-          <HuzzPressable
-            style={styles.iconBtn}
-            onPress={() => setShowEmoji((v) => !v)}
-            haptic="light"
-          >
-            <Text style={styles.iconBtnText}>{showEmoji ? '⌨️' : '😊'}</Text>
-          </HuzzPressable>
-
-          {recorderState.isRecording || (recorderState.canRecord && (recorderState.durationMillis ?? 0) > 0) ? (
-            <View style={styles.recordingRow}>
-              <HuzzPressable style={styles.recordingCancelBtn} onPress={cancelRecording} haptic="light">
-                <Text style={styles.recordingCancelText}>✕</Text>
-              </HuzzPressable>
-              <Text style={styles.recordingTimer}>
-                {recorderState.isRecording ? '🔴 ' : '⏸ '}
-                {fmtSec(recorderState.durationMillis ?? 0)}
-              </Text>
-              {typeof recorder.pause === 'function' && recorderState.isRecording ? (
-                <HuzzPressable style={styles.recordingControlBtn} onPress={pauseRecording} haptic="light">
-                  <Text style={styles.recordingControlText}>Pause</Text>
-                </HuzzPressable>
-              ) : null}
-              {!recorderState.isRecording && (recorderState.durationMillis ?? 0) > 0 && typeof recorder.record === 'function' ? (
-                <HuzzPressable style={styles.recordingControlBtn} onPress={resumeRecording} haptic="light">
-                  <Text style={styles.recordingControlText}>Resume</Text>
-                </HuzzPressable>
-              ) : null}
-              <HuzzPressable
-                style={[styles.recordingControlBtn, styles.recordingStopBtn]}
-                onPress={() => stopRecording(false)}
-                haptic="medium"
-              >
-                <Text style={styles.recordingControlText}>Stop & Send</Text>
-              </HuzzPressable>
-            </View>
-          ) : (
-            <HuzzPressable style={styles.iconBtn} onPress={startRecording} haptic="light">
-              <VoiceIcon size={22} color="#654321" />
+        {hasActiveRecording ? (
+          <View style={styles.recordingRow}>
+            <HuzzPressable style={styles.recordingCancelBtn} onPress={cancelRecording} haptic="light">
+              <Text style={styles.recordingCancelText}>✕</Text>
             </HuzzPressable>
-          )}
-
-          {!hasActiveRecording ? (
-            <>
-              <TextInput
-                style={[styles.input, { height: Math.max(40, Math.min(120, inputH)) }]}
-                placeholder="Message..."
-                value={text}
-                onChangeText={(v) => setText(v)}
-                editable={isActive}
-                multiline
-                onContentSizeChange={(e) => setInputH(e?.nativeEvent?.contentSize?.height || 40)}
-              />
-              <HuzzPressable
-                style={[styles.sendBtn, { opacity: canSend ? 1 : 0.5 }]}
-                disabled={!canSend || !isActive}
-                onPress={async () => {
-                  try {
-                    if (!isActive) return;
-                    const uid = authService.getCurrentUser()?.uid;
-                    if (!uid) return;
-                    try {
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    } catch {}
-                    setShowEmoji(false);
-                    await messageService.setTyping(matchId, uid, false);
-                    if (editing?.id) {
-                      const toxicEdit = await messageService.checkMessageToxicity(matchId, text);
-                      if (toxicEdit?.toxic) {
-                        Alert.alert(
-                          'Message blocked',
-                          toxicEdit.message ||
-                            `This message was flagged (strike ${toxicEdit.strikeCount || 1} in 24h). Please change it before sending.`,
-                          [{ text: 'OK' }]
-                        );
-                        return;
-                      }
-                      const { error } = await messageService.editMessage(matchId, editing.id, uid, text);
-                      if (!error) setEditing(null);
-                      if (error) Alert.alert('Error', error);
-                      else setText('');
-                      return;
-                    }
-                    const toxic = await messageService.checkMessageToxicity(matchId, text);
-                    if (toxic?.toxic) {
-                      Alert.alert(
-                        'Message blocked',
-                        toxic.message ||
-                          `This message was flagged (strike ${toxic.strikeCount || 1} in 24h). Please change it before sending.`,
-                        [{ text: 'OK' }]
-                      );
-                      return;
-                    }
-                    const { error } = await messageService.sendMessage(matchId, uid, text, { replyTo });
-                    if (error) Alert.alert('Error', error);
-                    else {
-                      setText('');
-                      setReplyTo(null);
-                      listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
-                    }
-                  } catch (e) {
-                    Alert.alert('Error', e?.message || 'Failed to send.');
-                  }
-                }}
-                haptic="light"
-              >
-                <Text style={styles.sendText}>Send</Text>
+            <Text style={styles.recordingTimer}>
+              {recorderState.isRecording ? '🔴 ' : '⏸ '}
+              {fmtSec(recorderState.durationMillis ?? 0)}
+            </Text>
+            {typeof recorder.pause === 'function' && recorderState.isRecording ? (
+              <HuzzPressable style={styles.recordingControlBtn} onPress={pauseRecording} haptic="light">
+                <Text style={styles.recordingControlText}>Pause</Text>
               </HuzzPressable>
-            </>
-          ) : null}
-        </View>
-
-        {showScrollToBottom ? (
-          <HuzzPressable
-            style={styles.scrollToBottomBtn}
-            onPress={() => {
-              listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
-              setShowScrollToBottom(false);
-            }}
-            haptic="light"
-          >
-            <Text style={styles.scrollToBottomText}>↓</Text>
-          </HuzzPressable>
-        ) : null}
+            ) : null}
+            {!recorderState.isRecording && (recorderState.durationMillis ?? 0) > 0 && typeof recorder.record === 'function' ? (
+              <HuzzPressable style={styles.recordingControlBtn} onPress={resumeRecording} haptic="light">
+                <Text style={styles.recordingControlText}>Resume</Text>
+              </HuzzPressable>
+            ) : null}
+            <HuzzPressable
+              style={[styles.recordingControlBtn, styles.recordingStopBtn]}
+              onPress={() => stopRecording(false)}
+              haptic="medium"
+            >
+              <Text style={styles.recordingControlText}>Stop & Send</Text>
+            </HuzzPressable>
+          </View>
+        ) : (
+          <WhatsAppChatComposer
+            value={text}
+            onChangeText={setText}
+            editable={isActive}
+            inputHeight={inputH}
+            showEmojiKeyboard={showEmoji}
+            onToggleEmoji={() => setShowEmoji((v) => !v)}
+            onContentSizeChange={(e) => setInputH(e?.nativeEvent?.contentSize?.height || 40)}
+            canSend={canSend}
+            sendDisabled={!canSend || !isActive}
+            onSend={handleSendMessage}
+            onStartRecording={startRecording}
+          />
+        )}
+        </>
+        }
+      />
 
         <Modal visible={langModalOpen} animationType="fade" transparent onRequestClose={() => setLangModalOpen(false)}>
           <View style={styles.langModalBackdrop}>
@@ -1334,34 +1626,26 @@ export function ChatScreen({ onNavigate, matchId }) {
           canAddMehram={canAddMehram}
           chatDurationHint={chatDurationHint}
         />
-      </KeyboardAwareLayout>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: tokens.colors.bg },
-  list: { flex: 1, minHeight: 0 },
+  list: { flex: 1, minHeight: 0, backgroundColor: tokens.colors.bg },
+  listWrap: { flex: 1, minHeight: 0 },
   listContent: {
-    padding: tokens.spacing.screenHorizontal,
-    paddingBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: tokens.spacing.screenHorizontal,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surface,
-    gap: 8,
+    paddingBottom: 8,
+  },
+  headerWrap: {
+    backgroundColor: tokens.colors.bg,
   },
   headerBtn: {
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.colors.surfaceElevated,
+    backgroundColor: tokens.colors.surfaceOverlay,
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
@@ -1373,9 +1657,95 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   headerBtnText: { ...tokens.typography.label, color: tokens.colors.text },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sosBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.danger,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sosBtnDisabled: { opacity: 0.5 },
+  sosBtnText: { ...tokens.typography.label, color: '#FFFFFF', fontWeight: '800' },
+  frozenBanner: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.filterBgRose,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderRose,
+  },
+  frozenBannerTitle: { ...tokens.typography.label, color: tokens.colors.danger, marginBottom: 4 },
+  frozenBannerBody: { ...tokens.typography.caption, color: tokens.colors.textSecondary },
+  videoDateBanner: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.filterBgSky,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderSky,
+  },
+  videoDateTitle: { ...tokens.typography.label, color: tokens.colors.text, marginBottom: 4 },
+  videoDateBody: { ...tokens.typography.caption, color: tokens.colors.textSecondary, marginBottom: 8 },
+  videoDateActions: { flexDirection: 'row', gap: 8 },
+  videoDateBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.brandPink,
+  },
+  videoDateBtnOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  videoDateBtnText: { ...tokens.typography.caption, color: '#FFFFFF', fontWeight: '700' },
+  videoDateBtnTextOutline: { color: tokens.colors.text },
+  gameBanner: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.filterBgViolet,
+    borderWidth: 1,
+    borderColor: tokens.colors.filterBorderViolet,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  gameBannerText: { flex: 1, minWidth: 0 },
+  gameBannerTitle: { ...tokens.typography.label, color: tokens.colors.text },
+  gameBannerBody: { ...tokens.typography.caption, color: tokens.colors.textSecondary, marginTop: 2 },
+  gameBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.brandPink,
+  },
+  gameBtnText: { ...tokens.typography.caption, color: '#FFFFFF', fontWeight: '800' },
   title: { ...tokens.typography.titleSmall, color: tokens.colors.text },
   subtitle: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
   subtitleOnline: { color: '#22c55e', fontWeight: '700' },
+  streakPill: {
+    alignSelf: 'center',
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.full,
+    backgroundColor: 'rgba(251, 191, 36, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.45)',
+  },
+  streakText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.colors.text,
+  },
   langChip: {
     marginTop: 2,
     alignSelf: 'center',
@@ -1521,13 +1891,18 @@ const styles = StyleSheet.create({
   bubbleAnimatedWrapMine: { alignSelf: 'flex-end' },
   bubble: {
     maxWidth: '80%',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     borderWidth: 0,
   },
-  bubbleMine: { alignSelf: 'flex-end', backgroundColor: '#8B5CF6' },
-  bubbleTheirs: { alignSelf: 'flex-start', backgroundColor: tokens.colors.surfaceOverlay },
+  bubbleMine: { alignSelf: 'flex-end', backgroundColor: '#D9FDD3' },
+  bubbleTheirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E9EDEF',
+  },
   bubbleMehram: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(14, 165, 233, 0.14)',
@@ -1570,8 +1945,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
   },
-  bubbleTextMine: { color: '#FFFFFF' },
-  bubbleTextTheirs: { color: tokens.colors.text },
+  bubbleTextMine: { color: '#111B21' },
+  bubbleTextTheirs: { color: '#111B21' },
   timeInline: {
     fontSize: 12,
     lineHeight: 16,
@@ -1587,11 +1962,11 @@ const styles = StyleSheet.create({
   },
   metaRow: { marginTop: 2, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 },
   timeText: { fontSize: 12, fontWeight: '500', color: tokens.colors.textMuted },
-  timeTextMine: { color: '#FFFFFF' },
+  timeTextMine: { color: '#667781' },
   editedText: { ...tokens.typography.caption, color: tokens.colors.textMuted },
   readReceipt: { fontSize: 12, fontWeight: '500' },
-  readReceiptDelivered: { color: 'rgba(255,255,255,0.85)' },
-  readReceiptRead: { color: '#FFFFFF' },
+  readReceiptDelivered: { color: '#667781' },
+  readReceiptRead: { color: '#53BDEB' },
   reactions: { marginTop: 2, ...tokens.typography.bodySmall, fontSize: 13 },
   replyPreview: {
     marginBottom: 4,
@@ -1603,14 +1978,25 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.surfaceOverlay,
   },
   replyPreviewText: { ...tokens.typography.caption, color: tokens.colors.text },
+  storyReplyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  storyReplyThumb: { width: 28, height: 42, borderRadius: 4, backgroundColor: tokens.colors.border },
+  storyReplyThumbFallback: {
+    width: 28,
+    height: 42,
+    borderRadius: 4,
+    backgroundColor: tokens.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storyReplyPlay: { fontSize: 12, color: tokens.colors.text },
   replyBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: tokens.colors.surface,
-    borderTopWidth: 1,
+    backgroundColor: tokens.colors.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.colors.border,
   },
   replyBarTitle: { ...tokens.typography.caption, color: tokens.colors.textSecondary },
@@ -1753,6 +2139,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginHorizontal: 8,
+    marginVertical: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: tokens.radius.sm,
@@ -1780,8 +2168,8 @@ const styles = StyleSheet.create({
   recordingStopBtn: { backgroundColor: tokens.colors.blue },
   scrollToBottomBtn: {
     position: 'absolute',
-    bottom: 100,
     right: 16,
+    bottom: 12,
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -1789,6 +2177,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
+    zIndex: 2,
   },
   scrollToBottomText: { fontSize: 20, fontWeight: '600', color: '#FFFFFF' },
   input: {
@@ -1809,9 +2198,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 6,
-    backgroundColor: tokens.colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: tokens.colors.border,
+    backgroundColor: tokens.colors.bg,
   },
   emojiBtn: {
     width: 42,

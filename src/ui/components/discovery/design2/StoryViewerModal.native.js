@@ -6,17 +6,20 @@ import {
   StyleSheet,
   Pressable,
   useWindowDimensions,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Settings2 } from 'lucide-react-native';
+import { X, Settings2, Send } from 'lucide-react-native';
 import { PhotoProgressBars } from './PhotoProgressBars.native';
 import { HuzzPressable } from '../../HuzzPressable.native';
 import { StoryManageSheet } from './StoryManageSheet.native';
-import {
-  formatStoryTiming,
-  recordStoryView,
-} from '../../../../services/storyService';
+import { StoryMediaContent } from './StoryMediaContent.native';
+import { formatStoryTiming, recordStoryView, sendStoryReply, setStoryReaction, STORY_REACTION_EMOJIS } from '../../../../services/storyService';
+import { tokens } from '../../../tokens';
 
 export function StoryViewerModal({
   visible,
@@ -30,6 +33,7 @@ export function StoryViewerModal({
   onClose,
   onFinished,
   onStoriesChanged,
+  onReplySent,
 }) {
   const insets = useSafeAreaInsets();
   const { height: winH } = useWindowDimensions();
@@ -37,13 +41,22 @@ export function StoryViewerModal({
   const [index, setIndex] = useState(0);
   const [timing, setTiming] = useState({ ageLabel: '', leftLabel: '' });
   const [manageOpen, setManageOpen] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+  const [myReaction, setMyReaction] = useState(null);
+  const [reacting, setReacting] = useState(false);
 
   const active = list[index];
+  const storyAuthorUid = authorUid || (isOwnStory ? viewerUid : null);
 
   useEffect(() => {
     if (!visible) return;
     setIndex(Math.min(Math.max(0, initialIndex), Math.max(0, list.length - 1)));
     setManageOpen(false);
+    setReplyText('');
+    setSendingReply(false);
+    setMyReaction(null);
+    setReacting(false);
   }, [visible, initialIndex, list.length]);
 
   useEffect(() => {
@@ -73,14 +86,70 @@ export function StoryViewerModal({
     if (index > 0) setIndex((i) => i - 1);
   }, [index]);
 
+  const handleSendReply = useCallback(async () => {
+    const text = String(replyText || '').trim();
+    if (!text || !viewerUid || !storyAuthorUid || isOwnStory || !active?.id) return;
+
+    setSendingReply(true);
+    try {
+      const { matchId, error } = await sendStoryReply({
+        fromUid: viewerUid,
+        toUid: storyAuthorUid,
+        storyId: active.id,
+        storyMediaUrl: active.mediaUrl,
+        storyMediaType: active.mediaType,
+        authorName: userName,
+        text,
+      });
+      if (error) {
+        Alert.alert('Could not send', error);
+        return;
+      }
+      setReplyText('');
+      onReplySent?.({ matchId, userId: storyAuthorUid, text });
+    } finally {
+      setSendingReply(false);
+    }
+  }, [
+    replyText,
+    viewerUid,
+    storyAuthorUid,
+    isOwnStory,
+    active,
+    userName,
+    onReplySent,
+  ]);
+
+  const handleStoryReaction = useCallback(
+    async (emoji) => {
+      if (!viewerUid || !active?.id || isOwnStory || reacting) return;
+      setReacting(true);
+      try {
+        const { error } = await setStoryReaction(active.id, viewerUid, viewerName, emoji);
+        if (error) {
+          Alert.alert('Could not react', error);
+          return;
+        }
+        setMyReaction(emoji);
+      } finally {
+        setReacting(false);
+      }
+    },
+    [viewerUid, active?.id, isOwnStory, viewerName, reacting]
+  );
+
   if (!visible || list.length === 0) return null;
 
-  const imgH = Math.max(240, winH - insets.top - insets.bottom - (isOwnStory ? 100 : 88));
+  const mediaH = Math.max(240, winH - insets.top - insets.bottom - (isOwnStory ? 100 : 140));
+  const showReplyBar = !isOwnStory && !manageOpen;
 
   return (
     <>
       <Modal visible={visible} animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-        <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <KeyboardAvoidingView
+          style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View style={styles.topBar}>
             <PhotoProgressBars total={list.length} activeIndex={index} />
             <View style={styles.timerPill}>
@@ -92,6 +161,7 @@ export function StoryViewerModal({
             <View style={styles.topMeta}>
               <Text style={styles.userName} numberOfLines={1}>
                 {userName}
+                {String(active?.mediaType || '') === 'video' ? ' · Video' : ''}
               </Text>
               <View style={styles.topActions}>
                 {isOwnStory ? (
@@ -111,13 +181,8 @@ export function StoryViewerModal({
             </View>
           </View>
 
-          <View style={[styles.mediaWrap, { height: imgH }]}>
-            <Image
-              source={{ uri: String(active.mediaUrl) }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={180}
-            />
+          <View style={[styles.mediaWrap, { height: mediaH }]}>
+            <StoryMediaContent story={active} active={visible && !manageOpen} />
             <Pressable style={styles.tapLeft} onPress={goPrev} accessibilityLabel="Previous story" />
             <Pressable style={styles.tapRight} onPress={goNext} accessibilityLabel="Next story" />
           </View>
@@ -132,12 +197,57 @@ export function StoryViewerModal({
             </HuzzPressable>
           ) : null}
 
+          {showReplyBar ? (
+            <>
+              <View style={styles.reactionRow}>
+                {STORY_REACTION_EMOJIS.map((emoji) => (
+                  <HuzzPressable
+                    key={emoji}
+                    style={[styles.reactionBtn, myReaction === emoji && styles.reactionBtnActive]}
+                    onPress={() => handleStoryReaction(emoji)}
+                    disabled={reacting}
+                    haptic="light"
+                    accessibilityLabel={`React ${emoji}`}
+                  >
+                    <Text style={styles.reactionEmoji}>{emoji}</Text>
+                  </HuzzPressable>
+                ))}
+              </View>
+            <View style={styles.replyRow}>
+              <TextInput
+                style={styles.replyInput}
+                placeholder={`Reply to ${userName}…`}
+                placeholderTextColor="rgba(255,255,255,0.55)"
+                value={replyText}
+                onChangeText={setReplyText}
+                maxLength={500}
+                returnKeyType="send"
+                onSubmitEditing={handleSendReply}
+                editable={!sendingReply}
+              />
+              <HuzzPressable
+                style={[styles.sendBtn, (!replyText.trim() || sendingReply) && styles.sendBtnDisabled]}
+                onPress={handleSendReply}
+                haptic="light"
+                disabled={!replyText.trim() || sendingReply}
+                accessibilityLabel="Send story reply"
+              >
+                {sendingReply ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Send size={18} color="#FFFFFF" strokeWidth={2.4} />
+                )}
+              </HuzzPressable>
+            </View>
+            </>
+          ) : null}
+
           {manageOpen && isOwnStory ? (
             <StoryManageSheet
               visible
               embedded
               onClose={() => setManageOpen(false)}
-              authorUid={authorUid || viewerUid}
+              authorUid={storyAuthorUid}
               activeStoryId={active?.id}
               myStories={list}
               onStoriesChanged={() => {
@@ -145,7 +255,7 @@ export function StoryViewerModal({
               }}
             />
           ) : null}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -238,5 +348,61 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
     fontWeight: '600',
+  },
+  reactionRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+    marginHorizontal: 12,
+  },
+  reactionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  reactionBtnActive: {
+    backgroundColor: 'rgba(219, 39, 119, 0.45)',
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  reactionEmoji: {
+    fontSize: 22,
+  },
+  replyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    marginHorizontal: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  replyInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 15,
+    paddingVertical: 4,
+    minHeight: 36,
+  },
+  sendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: tokens.colors.brandPink,
+  },
+  sendBtnDisabled: {
+    opacity: 0.45,
   },
 });

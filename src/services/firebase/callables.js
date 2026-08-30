@@ -55,3 +55,12 @@ export const _sendModerationNoticeCallable = (() => {
   }
 })();
 
+export const _adminListUsersCallable = (() => {
+  try {
+    const functions = getFunctions(app, 'us-central1');
+    return httpsCallable(functions, 'adminListUsers');
+  } catch {
+    return null;
+  }
+})();
+

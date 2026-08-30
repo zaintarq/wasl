@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { authService, blockService, contactBlockService, likeService, userService, matchService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { isStoreScreenshotModeActive } from '../../services/storeScreenshotMode';
+import { SCREENSHOT_DEMO_PROFILES } from '../../services/screenshotDemoProfiles';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tokens } from '../../ui/tokens';
 import { welcomeButtonStyles } from '../../ui/styles/welcomeButtonStyles.native';
@@ -19,10 +21,9 @@ import { RetroButton } from '../../ui/components/RetroButton.native';
 import { Routes } from '../navigation/routes';
 import { getProfileImageUrls, hasAtLeastOneProfilePhoto } from '../../utils/profileImages';
 import { getEffectiveGenderPreferences, normalizeProfileGender } from '../../utils/profilePreferences';
-import { hasPassedAgeCheck, blockIfAgeNotVerified, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
+import { hasPassedAgeCheck, blockIfAgeNotVerifiedAsync, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
 import { sortDiscoveryByTab } from '../../utils/discoverySort';
 import { isUserOnline } from '../../utils/presence';
-import * as ImagePicker from 'expo-image-picker';
 import {
   listenActiveStories,
   listenStorySeen,
@@ -31,6 +32,7 @@ import {
   buildStoryRowItems,
   markAuthorStoriesSeen,
 } from '../../services/storyService';
+import { pickStoryMedia } from '../../utils/storyPostFlow.native';
 import { SwipeDeck } from './SwipeDeck.native';
 import { HuzzHeader } from '../../ui/components/discovery/design2/HuzzHeader.native';
 import { StoriesRow } from '../../ui/components/discovery/design2/StoriesRow.native';
@@ -45,6 +47,7 @@ import { LiveTypographyProvider, LiveText, LiveRetroButton } from '../../ui/comp
 import { LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
 import { HomeLobbyHero } from '../../ui/components/home/HomeLobbyHero.native';
 import { HomeSafetyNote } from '../../ui/components/home/HomeSafetyNote.native';
+import { HomeHeaderMenu } from '../../ui/components/home/HomeHeaderMenu.native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
 
@@ -84,6 +87,7 @@ function filterDiscoveryCandidates({
   includePreviouslySwiped = false,
   skipGenderFilter = false,
   allowMissingGender = false,
+  skipCountryFilter = false,
 }) {
   const targetCountry = String(matchCountry || '').trim();
   const myGender = normalizeProfileGender(meProfile?.gender);
@@ -134,7 +138,9 @@ function filterDiscoveryCandidates({
     }
 
     const candidateCountry = String(u?.country || u?.countryOfResidence || '').trim();
-    if (targetCountry && candidateCountry && candidateCountry !== targetCountry) return false;
+    if (!skipCountryFilter && targetCountry && candidateCountry && candidateCountry !== targetCountry) {
+      return false;
+    }
     return true;
   });
 }
@@ -170,6 +176,16 @@ function resolveDiscoveryCandidates(args) {
   });
   if (anyone.length > 0) return { candidates: anyone, mode: 'anyone' };
 
+  const worldwide = filterDiscoveryCandidates({
+    ...args,
+    skipMutualPreference: true,
+    includePreviouslySwiped: true,
+    skipGenderFilter: true,
+    allowMissingGender: true,
+    skipCountryFilter: true,
+  });
+  if (worldwide.length > 0) return { candidates: worldwide, mode: 'worldwide' };
+
   return { candidates: [], mode: 'empty' };
 }
 
@@ -195,6 +211,7 @@ export function HomeScreen({ onNavigate }) {
   const swipeDeckRef = useRef(null);
   const [verifySheetOpen, setVerifySheetOpen] = useState(false);
   const [verifySheetStep, setVerifySheetStep] = useState(0);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [rawStories, setRawStories] = useState([]);
   const [storySeenMap, setStorySeenMap] = useState({});
   const [storyUsersById, setStoryUsersById] = useState({});
@@ -209,10 +226,12 @@ export function HomeScreen({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
   const [baseCandidates, setBaseCandidates] = useState([]);
-  const candidates = useMemo(
-    () => sortDiscoveryByTab(baseCandidates, 'forYou', me),
-    [baseCandidates, me]
-  );
+  const candidates = useMemo(() => {
+    const sorted = sortDiscoveryByTab(baseCandidates, 'forYou', me);
+    if (sorted.length > 0) return sorted;
+    if (isStoreScreenshotModeActive()) return SCREENSHOT_DEMO_PROFILES;
+    return sorted;
+  }, [baseCandidates, me]);
   const [matchCountry, setMatchCountry] = useState('');
   const [discoveryError, setDiscoveryError] = useState('');
   
@@ -359,8 +378,8 @@ export function HomeScreen({ onNavigate }) {
     }
   }, [loading, candidates.length]);
 
-  /** Full lobby only when discovery returned nobody — not while swiping. */
-  const showDiscoveryLobby = !loading && candidates.length === 0;
+  /** Full lobby only when discovery returned nobody — not while swiping or in screenshot demo. */
+  const showDiscoveryLobby = !loading && candidates.length === 0 && !isStoreScreenshotModeActive();
 
   const onHeaderHuzzPress = useCallback(() => {
     setDeckRefreshKey((k) => k + 1);
@@ -440,31 +459,19 @@ export function HomeScreen({ onNavigate }) {
       return;
     }
 
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Photos', 'Allow photo access to post a story.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType?.Images ? [ImagePicker.MediaType.Images] : 'images',
-      allowsEditing: true,
-      aspect: [9, 16],
-      quality: 0.85,
-    });
-
-    if (result.canceled || !result.assets?.[0]?.uri) return;
+    const media = await pickStoryMedia();
+    if (!media?.uri) return;
 
     setPostingStory(true);
     try {
-      const { error } = await createStory(uid, result.assets[0].uri);
+      const { error } = await createStory(uid, media);
       if (error) {
         const blocked =
           error.includes('not allowed') ||
           error.includes('inappropriate') ||
           error.includes("couldn't verify");
         Alert.alert(
-          blocked ? 'Photo not allowed' : 'Story failed',
+          blocked ? 'Media not allowed' : 'Story failed',
           error
         );
       }
@@ -551,11 +558,11 @@ export function HomeScreen({ onNavigate }) {
 
         // Check role from admin collection FIRST
         const roleCheck = await checkUserRoleFromAdminCollection(authUser.uid);
-        if (roleCheck.isAdmin) {
+        if (!isStoreScreenshotModeActive() && roleCheck.isAdmin) {
           if (__DEV__) console.log('[HomeScreen] Admin detected, redirecting to admin screen');
           if (!cancelled) onNavigate('admin');
           return;
-        } else if (roleCheck.isStaff) {
+        } else if (!isStoreScreenshotModeActive() && roleCheck.isStaff) {
           if (__DEV__) console.log('[HomeScreen] Staff detected, redirecting to staff screen');
           if (!cancelled) onNavigate('staff');
           return;
@@ -678,13 +685,8 @@ export function HomeScreen({ onNavigate }) {
   }, [matchCountry, navigation]);
 
   const openHeaderMenu = useCallback(() => {
-    Alert.alert('Menu', undefined, [
-      { text: 'Profile', onPress: () => onNavigate('myProfile') },
-      { text: 'Filters', onPress: openFilters },
-      { text: 'Settings', onPress: () => onNavigate('settings') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [onNavigate, openFilters]);
+    setHeaderMenuOpen(true);
+  }, []);
 
   const handleDirectMessage = async (target) => {
     const authUser = authService.getCurrentUser();
@@ -693,7 +695,14 @@ export function HomeScreen({ onNavigate }) {
       return false;
     }
 
-    if (blockIfAgeNotVerified(me, navigation, roleCheck)) {
+    if (
+      await blockIfAgeNotVerifiedAsync(me, navigation, roleCheck, authUser.uid, (id) =>
+        userService.getUserById(id)
+      ).then(({ blocked, profile }) => {
+        if (profile && profile !== me) setMe((prev) => ({ ...(prev || {}), ...profile }));
+        return blocked;
+      })
+    ) {
       return false;
     }
 
@@ -770,7 +779,14 @@ export function HomeScreen({ onNavigate }) {
       return;
     }
 
-    if (blockIfAgeNotVerified(me, navigation, roleCheck)) {
+    if (
+      await blockIfAgeNotVerifiedAsync(me, navigation, roleCheck, authUser.uid, (id) =>
+        userService.getUserById(id)
+      ).then(({ blocked, profile }) => {
+        if (profile && profile !== me) setMe((prev) => ({ ...(prev || {}), ...profile }));
+        return blocked;
+      })
+    ) {
       return;
     }
 
@@ -785,6 +801,11 @@ export function HomeScreen({ onNavigate }) {
 
     const targetId = target?.id ?? target?.uid;
     if (!targetId) {
+      return;
+    }
+
+    if (String(targetId).startsWith('screenshot-demo-')) {
+      if (shouldAdvance) advanceCard();
       return;
     }
 
@@ -840,10 +861,24 @@ export function HomeScreen({ onNavigate }) {
             if (likeResult?.matched && likeResult?.matchId && !likeResult?.error) {
               try {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                showCuteAlert('match', 'Connected!', 'Open Chats to message them');
-              } catch (matchError) {
-                if (__DEV__) console.warn('[Swipe] Match alert error:', matchError);
-              }
+              } catch {}
+              const matchName = target?.name || target?.username || 'them';
+              Alert.alert(
+                "It's a match!",
+                `You and ${matchName} liked each other.`,
+                [
+                  { text: 'Later', style: 'cancel' },
+                  {
+                    text: 'Say hi',
+                    onPress: () =>
+                      onNavigate('chat', { matchId: likeResult.matchId, userId: targetId }),
+                  },
+                  {
+                    text: 'All chats',
+                    onPress: () => onNavigate('matches'),
+                  },
+                ]
+              );
               if (shouldAdvance) advanceCard();
             } else if (likeResult?.error) {
               try {
@@ -1099,12 +1134,24 @@ export function HomeScreen({ onNavigate }) {
           userName={storyViewer.userName}
           initialIndex={storyViewer.startIndex}
           isOwnStory={!!meUid && String(storyViewer.userId) === String(meUid)}
-          authorUid={meUid}
+          authorUid={storyViewer.userId}
           viewerUid={authService.getCurrentUser()?.uid || meUid}
           viewerName={me?.name || authService.getCurrentUser()?.displayName || 'User'}
           onClose={() => setStoryViewer((s) => ({ ...s, open: false }))}
           onFinished={(latestId) => handleStoryFinished(latestId)}
           onStoriesChanged={() => setDeckRefreshKey((k) => k + 1)}
+          onReplySent={({ matchId, userId }) => {
+            setStoryViewer((s) => ({ ...s, open: false }));
+            onNavigate('chat', { matchId, userId });
+          }}
+        />
+
+        <HomeHeaderMenu
+          visible={headerMenuOpen}
+          onClose={() => setHeaderMenuOpen(false)}
+          onProfile={() => onNavigate('myProfile')}
+          onFilters={openFilters}
+          onSettings={() => onNavigate('settings')}
         />
 
         <VerificationBottomSheet

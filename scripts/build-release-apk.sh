@@ -14,7 +14,7 @@ cd android
 ./gradlew assembleRelease --no-daemon
 
 APK_SRC="app/build/outputs/apk/release/app-release.apk"
-APK_OUT="$ROOT/dist/huzz-release.apk"
+APK_OUT="$ROOT/dist/wasl-release.apk"
 mkdir -p "$ROOT/dist"
 cp "$APK_SRC" "$APK_OUT"
 

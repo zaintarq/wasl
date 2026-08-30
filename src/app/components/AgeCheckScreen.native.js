@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -16,7 +17,7 @@ import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import { authService, userService } from '../../services/firebaseService';
 import { ageAssuranceService } from '../../services/ageAssuranceService';
 import { getZoiVeraApiKey, getAgeVerifyHostedUrl } from '../../config/ageVerify';
-import { hasPassedAgeCheck } from '../../utils/ageCheck.native';
+import { hasPassedAgeCheck, markAgeVerifiedSession } from '../../utils/ageCheck.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { RetroButton } from '../../ui/components/RetroButton.native';
 import { tokens } from '../../ui/tokens';
@@ -42,8 +43,9 @@ export function AgeCheckScreen({ onNavigate }) {
           return;
         }
         if (uid) await userService.getUserById(uid).catch(() => {});
+        markAgeVerifiedSession(uid);
         Alert.alert("You're verified", 'You can now like, match, chat, go live, and join clubs.', [
-          { text: 'Continue', onPress: () => onNavigate?.('home') },
+          { text: 'Continue', onPress: () => onNavigate?.('matches') },
         ]);
       } finally {
         setBusy(false);
@@ -110,7 +112,7 @@ export function AgeCheckScreen({ onNavigate }) {
       if (hasPassedAgeCheck(snap?.data)) {
         browserPendingRef.current = false;
         Alert.alert("You're verified", 'You can now like, match, chat, go live, and join clubs.', [
-          { text: 'Continue', onPress: () => onNavigate?.('home') },
+          { text: 'Continue', onPress: () => onNavigate?.('matches') },
         ]);
       }
     } catch {
@@ -142,6 +144,15 @@ export function AgeCheckScreen({ onNavigate }) {
       setScanError('Could not open browser for face scan.');
     }
   }, [browserScanUrl]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!uid) return;
+      userService.getUserById(uid).then((res) => {
+        if (hasPassedAgeCheck(res?.data)) onNavigate?.('matches');
+      }).catch(() => {});
+    }, [uid, onNavigate])
+  );
 
   if (!uid) {
     return (

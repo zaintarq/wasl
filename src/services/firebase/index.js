@@ -28,4 +28,8 @@ export { photoUploadService } from './photoUploadService';
 export { storageService } from './storageService';
 export { verificationService } from './verificationService';
 export { datePlanService } from './datePlanService';
+export { videoDateService } from './videoDateService';
+export { panicService } from './panicService';
 export { clubService } from './clubService';
+export { clubEventService, CLUB_EVENT_TOPICS } from './clubEventService';
+export { successStoryService } from './successStoryService';

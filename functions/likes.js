@@ -3,6 +3,7 @@
  */
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const { notifyUser } = require('./notifyUser');
 
 const db = admin.firestore();
 
@@ -105,6 +106,50 @@ exports.recordLike = functions.region('us-central1').https.onCall(async (data, c
       matchId = match.matchId;
       matchStatus = match.status;
     }
+  }
+
+  let senderName = 'Someone';
+  let receiverName = 'Someone';
+  try {
+    const [senderSnap, receiverSnap] = await Promise.all([
+      db.collection('users').doc(from).get(),
+      db.collection('users').doc(to).get(),
+    ]);
+    if (senderSnap.exists) senderName = String(senderSnap.data()?.name || 'Someone').slice(0, 80);
+    if (receiverSnap.exists) receiverName = String(receiverSnap.data()?.name || 'Someone').slice(0, 80);
+  } catch (e) {
+    console.warn('[recordLike] name lookup failed', e?.message || e);
+  }
+
+  try {
+    if (matched && matchId) {
+      await Promise.all([
+        notifyUser(from, {
+          fromUid: to,
+          type: 'match_mutual',
+          title: "It's a match!",
+          body: `You and ${receiverName} liked each other. Open Matches to chat.`,
+          matchId,
+        }),
+        notifyUser(to, {
+          fromUid: from,
+          type: 'match_mutual',
+          title: "It's a match!",
+          body: `${senderName} liked you back. Open Matches to chat.`,
+          matchId,
+        }),
+      ]);
+    } else {
+      await notifyUser(to, {
+        fromUid: from,
+        type: 'like_received',
+        title: 'Someone liked you',
+        body: `${senderName} liked you — swipe to see`,
+        matchId: null,
+      });
+    }
+  } catch (e) {
+    console.warn('[recordLike] notification failed', e?.message || e);
   }
 
   return { matched, matchId, status: matchStatus, error: null };

@@ -1,21 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, TextInput, Platform, Image, Modal } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, TextInput, Platform, Image, Modal, ScrollView } from 'react-native';
 import { HuzzKeyboardAwareScrollView } from '../../ui/components/HuzzKeyboardAwareScrollView.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
-import { tokens, brandShellGradientSoft } from '../../ui/tokens';
-import { adminService, appUpdateService, authService, deviceBanService, moderationNoticeService, privacyAdminService, userService, verificationService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
+import { tokens } from '../../ui/tokens';
+import { cardShadow } from '../../ui/cardShadow';
+import { adminService, appUpdateService, authService, deviceBanService, moderationNoticeService, privacyAdminService, userService, verificationService, checkUserRoleFromAdminCollection, successStoryService } from '../../services/firebaseService';
 import { PLAY_STORE_WEB_URL } from '../../config/appStore';
 import { exportService } from '../../services/exportService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Linking } from 'react-native';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { ArrowLeft, Settings } from 'lucide-react-native';
-import { useFonts, KaushanScript_400Regular } from '@expo-google-fonts/kaushan-script';
+import { ArrowLeft, Settings, Camera, RefreshCw } from 'lucide-react-native';
 import { AdminUserDirectory } from './AdminUserDirectory.native';
 import { AdminPrivacyDesk } from './AdminPrivacyDesk.native';
 import { AdminAppealsDesk } from './AdminAppealsDesk.native';
+import { AdminSuccessStoriesDesk } from './AdminSuccessStoriesDesk.native';
+import {
+  setStoreScreenshotMode,
+  subscribeStoreScreenshotMode,
+} from '../../services/storeScreenshotMode';
 
 const BAN_REASON_TEMPLATES = [
   {
@@ -119,6 +123,19 @@ function inferWarningTemplate({ categories = [], reason = '', fallback = 'harass
   return fallback;
 }
 
+const ADMIN_TABS = [
+  { id: 'reports', label: 'Reports' },
+  { id: 'safety', label: 'Safety' },
+  { id: 'verifications', label: 'Verify' },
+  { id: 'users', label: 'Users' },
+  { id: 'vulgar', label: 'Chat' },
+  { id: 'update', label: 'Updates' },
+  { id: 'deletions', label: 'Privacy' },
+  { id: 'crashes', label: 'Crashes' },
+  { id: 'appeals', label: 'Appeals' },
+  { id: 'stories', label: 'Stories' },
+];
+
 export function AdminScreen({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -160,15 +177,15 @@ export function AdminScreen({ onNavigate }) {
   const [createUserName, setCreateUserName] = useState('');
   const [createUserRole, setCreateUserRole] = useState('user'); // 'user' | 'staff'
   const [creatingUser, setCreatingUser] = useState(false);
-  const [updateAlertTitle, setUpdateAlertTitle] = useState('Update Huzz');
+  const [updateAlertTitle, setUpdateAlertTitle] = useState('Update Wasl');
   const [updateAlertBody, setUpdateAlertBody] = useState(
-    'A new version is available. Update from the Play Store to keep using Huzz.'
+    'A new version is available. Update from the Play Store to keep using Wasl.'
   );
   const [updateAlertMinVersion, setUpdateAlertMinVersion] = useState('');
   const [currentUpdateAlert, setCurrentUpdateAlert] = useState(null);
   const [broadcastingUpdate, setBroadcastingUpdate] = useState(false);
   const [clearingUpdate, setClearingUpdate] = useState(false);
-  const [fontsLoaded] = useFonts({ KaushanScript_400Regular });
+  const [screenshotModeActive, setScreenshotModeActive] = useState(false);
   const insets = useSafeAreaInsets();
   const safetyProfilesByUid = useMemo(
     () =>
@@ -179,6 +196,29 @@ export function AdminScreen({ onNavigate }) {
       ),
     [safetyProfiles]
   );
+
+  useEffect(() => subscribeStoreScreenshotMode((mode) => setScreenshotModeActive(!!mode.active)), []);
+
+  const [pendingStories, setPendingStories] = useState(0);
+
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    const unsub = successStoryService.listenAdminStories(({ data }) => {
+      const count = (data || []).filter((s) => String(s.status) === 'pending').length;
+      setPendingStories(count);
+    });
+    return () => unsub?.();
+  }, [isAdmin]);
+
+  const tabBadgeCount = useMemo(() => {
+    const openReports = (reports || []).filter((r) => String(r?.status || 'open') === 'open').length;
+    const pendingVerifs = (verifs || []).filter((v) => String(v?.status || 'pending') === 'pending').length;
+    return {
+      reports: openReports,
+      verifications: pendingVerifs,
+      stories: pendingStories,
+    };
+  }, [reports, verifs, pendingStories]);
 
   const getUserCardData = (uid) => {
     const userId = String(uid || '').trim();
@@ -669,72 +709,129 @@ export function AdminScreen({ onNavigate }) {
   const renderUserMiniCard = (label, user, { subtle = false } = {}) => {
     if (!user) return null;
     return (
-      <View style={[styles.personRow, subtle ? styles.personRowSubtle : null]}>
-        <Text style={styles.personLabel}>{label}</Text>
-        {user.imageUrl ? (
-          <Image source={{ uri: user.imageUrl }} style={styles.personAvatar} />
-        ) : (
-          <View style={styles.personAvatarFallback}>
-            <Text style={styles.personAvatarLetter}>
-              {String(user.name || '?').trim().charAt(0).toUpperCase() || '?'}
+      <View style={[styles.personBlock, subtle ? styles.personBlockSubtle : null]}>
+        <Text style={styles.personBlockLabel}>{label}</Text>
+        <View style={styles.personBlockMain}>
+          {user.imageUrl ? (
+            <Image source={{ uri: user.imageUrl }} style={styles.personAvatar} />
+          ) : (
+            <View style={styles.personAvatarFallback}>
+              <Text style={styles.personAvatarLetter}>
+                {String(user.name || '?').trim().charAt(0).toUpperCase() || '?'}
+              </Text>
+            </View>
+          )}
+          <View style={styles.personTextWrap}>
+            <Text style={styles.personName} numberOfLines={1}>
+              {user.name}
+            </Text>
+            <Text style={styles.personDetail} numberOfLines={1}>
+              {user.email}
+            </Text>
+            <Text style={styles.personDetail} numberOfLines={1}>
+              Phone: {user.phone}
+            </Text>
+            {user.location ? (
+              <Text style={styles.personDetail} numberOfLines={1}>
+                {user.location}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+        <Text style={styles.personUid} selectable numberOfLines={1}>
+          {user.uid}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderReportMetaRow = (items = []) => {
+    const visible = items.filter((item) => item?.value);
+    if (!visible.length) return null;
+    return (
+      <View style={styles.reportChipRow}>
+        {visible.map((item) => (
+          <View key={item.key} style={styles.reportChip}>
+            <Text style={styles.reportChipLabel}>{item.label}</Text>
+            <Text style={styles.reportChipValue} numberOfLines={2}>
+              {item.value}
             </Text>
           </View>
-        )}
-        <View style={styles.personTextWrap}>
-          <Text style={styles.personName}>{user.name}</Text>
-          <Text style={styles.personDetail} selectable>
-            {user.email}
-          </Text>
-          <Text style={styles.personDetail}>Phone: {user.phone}</Text>
-          {user.location ? <Text style={styles.personDetail}>{user.location}</Text> : null}
-          <Text style={styles.personMeta} selectable>
-            UID: {user.uid}
-          </Text>
-        </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderReportIds = (matchId, reportId) => {
+    if (!matchId && !reportId) return null;
+    return (
+      <View style={styles.reportIdsRow}>
+        {matchId ? (
+          <View style={styles.reportIdChip}>
+            <Text style={styles.reportIdLabel}>Match ID</Text>
+            <Text style={styles.reportIdValue} selectable numberOfLines={1}>
+              {matchId}
+            </Text>
+          </View>
+        ) : null}
+        {reportId ? (
+          <View style={styles.reportIdChip}>
+            <Text style={styles.reportIdLabel}>Report ID</Text>
+            <Text style={styles.reportIdValue} selectable numberOfLines={1}>
+              {reportId}
+            </Text>
+          </View>
+        ) : null}
       </View>
     );
   };
 
   return (
     <View style={styles.root}>
-      <LinearGradient
-        colors={brandShellGradientSoft}
-        locations={[0, 0.45, 1]}
-        style={StyleSheet.absoluteFill}
-      />
       <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
           <View style={styles.headerRow}>
             <HuzzPressable style={styles.headerSideBtn} onPress={() => onNavigate('home')} haptic="light">
               <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.25} />
             </HuzzPressable>
 
-            <View style={styles.headerWordmarkWrap}>
-              <View style={styles.headerBrandBlock}>
-                <Text
-                  style={[
-                    styles.headerHuzzWord,
-                    fontsLoaded && styles.headerHuzzWordFont,
-                  ]}
-                  accessibilityRole="header"
-                >
-                  Huzz
-                </Text>
-                <View style={styles.headerUnderlineTrack}>
-                  <LinearGradient
-                    colors={['#1D4ED8', '#2563EB', '#3B82F6']}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </View>
-              </View>
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle} accessibilityRole="header">
+                Wasl Admin
+              </Text>
+              <Text style={styles.headerSubtitle}>Moderation & operations</Text>
             </View>
 
             <HuzzPressable style={styles.headerSideBtn} onPress={() => onNavigate('settings')} haptic="light">
               <Settings size={22} color={tokens.colors.text} strokeWidth={2.25} />
             </HuzzPressable>
           </View>
+
+          {isAdmin && !loading ? (
+            <View style={styles.quickActions}>
+              <HuzzPressable
+                style={styles.quickActionBtn}
+                onPress={() => onNavigate('storeScreenshots')}
+                haptic="medium"
+              >
+                <Camera size={16} color={tokens.colors.brandPinkDeep} strokeWidth={2.25} />
+                <Text style={styles.quickActionText}>Screenshots</Text>
+              </HuzzPressable>
+              <HuzzPressable style={styles.quickActionBtn} onPress={load} haptic="light">
+                <RefreshCw size={16} color={tokens.colors.brandPinkDeep} strokeWidth={2.25} />
+                <Text style={styles.quickActionText}>Refresh</Text>
+              </HuzzPressable>
+              {screenshotModeActive ? (
+                <HuzzPressable
+                  style={[styles.quickActionBtn, styles.quickActionBtnWarn]}
+                  onPress={() => setStoreScreenshotMode(false)}
+                  haptic="light"
+                >
+                  <Text style={styles.quickActionText}>Exit capture</Text>
+                </HuzzPressable>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
       {loading ? (
@@ -744,7 +841,7 @@ export function AdminScreen({ onNavigate }) {
         </View>
       ) : !isAdmin ? (
         <View style={styles.scrollContent}>
-          <View style={[styles.card, styles.sectionRose, cardShadow]}>
+          <View style={styles.panelCard}>
             <View style={styles.sectionHead}>
               <View style={[styles.sectionIconWrap, styles.iconWrapRose]}>
                 <Text style={styles.sectionEmoji}>!</Text>
@@ -762,89 +859,41 @@ export function AdminScreen({ onNavigate }) {
           </View>
         </View>
       ) : (
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabBarScroll}
+            contentContainerStyle={styles.tabBarContent}
+          >
+            {ADMIN_TABS.map((item) => {
+              const active = tab === item.id;
+              const badge = tabBadgeCount[item.id] || 0;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.tabChip, active ? styles.tabChipOn : null]}
+                  onPress={() => setTab(item.id)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.tabChipText, active ? styles.tabChipTextOn : null]}>{item.label}</Text>
+                  {badge > 0 ? (
+                    <View style={[styles.tabBadge, active ? styles.tabBadgeOn : null]}>
+                      <Text style={[styles.tabBadgeText, active ? styles.tabBadgeTextOn : null]}>{badge}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
         <HuzzKeyboardAwareScrollView
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: tokens.spacing.xl + 96 }]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.card, styles.sectionViolet, cardShadow]}>
-            <View style={styles.sectionHead}>
-              <View style={[styles.sectionIconWrap, styles.iconWrapViolet]}>
-                <Text style={styles.sectionEmoji}>🛡️</Text>
-              </View>
-              <View style={styles.sectionHeadText}>
-                <View style={styles.sectionTitleRow}>
-                  <Text style={styles.sectionTitle}>Admin portal</Text>
-                  <HuzzPressable style={styles.previewPill} onPress={load} haptic="light">
-                    <Text style={styles.previewPillText}>Refresh</Text>
-                  </HuzzPressable>
-                </View>
-                <Text style={styles.sectionHint}>
-                  Reports, repeat-offender safety summaries, verifications, and user management in one place.
-                </Text>
-              </View>
-            </View>
-
-          <View style={styles.tabs}>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'reports' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('reports')}
-            >
-              <Text style={styles.tabText}>Reports</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'safety' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('safety')}
-            >
-              <Text style={styles.tabText}>Safety</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'verifications' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('verifications')}
-            >
-              <Text style={styles.tabText}>Verifications</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'users' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('users')}
-            >
-              <Text style={styles.tabText}>Users</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'vulgar' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('vulgar')}
-            >
-              <Text style={styles.tabText}>Chat safety</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'update' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('update')}
-            >
-              <Text style={styles.tabText}>App update</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'deletions' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('deletions')}
-            >
-              <Text style={styles.tabText}>Deletions</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'crashes' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('crashes')}
-            >
-              <Text style={styles.tabText}>Crashes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'appeals' ? styles.tabBtnOn : null]}
-              onPress={() => setTab('appeals')}
-            >
-              <Text style={styles.tabText}>Appeals</Text>
-            </TouchableOpacity>
-          </View>
-          </View>
-
           {tab === 'appeals' && (
-            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+            <View style={styles.panelCard}>
               <View style={styles.sectionHead}>
                 <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
                   <Text style={styles.sectionEmoji}>⚖️</Text>
@@ -860,8 +909,25 @@ export function AdminScreen({ onNavigate }) {
             </View>
           )}
 
+          {tab === 'stories' && (
+            <View style={styles.panelCard}>
+              <View style={styles.sectionHead}>
+                <View style={[styles.sectionIconWrap, styles.iconWrapRose]}>
+                  <Text style={styles.sectionEmoji}>💕</Text>
+                </View>
+                <View style={styles.sectionHeadText}>
+                  <Text style={styles.sectionTitle}>Success stories</Text>
+                  <Text style={styles.sectionHint}>
+                    Approve anonymous “We met on Wasl” stories for the app and website.
+                  </Text>
+                </View>
+              </View>
+              <AdminSuccessStoriesDesk />
+            </View>
+          )}
+
           {tab === 'deletions' && (
-            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+            <View style={styles.panelCard}>
               <View style={styles.sectionHead}>
                 <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
                   <Text style={styles.sectionEmoji}>🗑️</Text>
@@ -878,7 +944,7 @@ export function AdminScreen({ onNavigate }) {
           )}
 
           {tab === 'crashes' && (
-            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+            <View style={styles.panelCard}>
               <View style={styles.sectionHead}>
                 <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
                   <Text style={styles.sectionEmoji}>💥</Text>
@@ -895,7 +961,7 @@ export function AdminScreen({ onNavigate }) {
           )}
 
           {tab === 'update' && (
-            <View style={[styles.card, styles.sectionEmerald, cardShadow]}>
+            <View style={styles.panelCard}>
               <View style={styles.sectionHead}>
                 <View style={[styles.sectionIconWrap, styles.iconWrapEmerald]}>
                   <Text style={styles.sectionEmoji}>📲</Text>
@@ -985,7 +1051,7 @@ export function AdminScreen({ onNavigate }) {
           )}
 
           {tab === 'users' && (
-            <View style={[styles.card, styles.sectionSky, styles.userManagementBox, cardShadow]}>
+            <View style={styles.panelCard}>
               <View style={styles.sectionHead}>
                 <View style={[styles.sectionIconWrap, styles.iconWrapSky]}>
                   <Text style={styles.sectionEmoji}>👤</Text>
@@ -1110,19 +1176,19 @@ export function AdminScreen({ onNavigate }) {
                   </View>
                 </View>
               )}
-              <AdminUserDirectory cardShadow={cardShadow} />
+              <AdminUserDirectory />
             </View>
           )}
 
           {tab === 'safety' ? (
             safetyLoading ? (
-              <View style={[styles.card, styles.sectionSky, styles.emptyBox, cardShadow]}>
+              <View style={styles.panelCard}>
                 <ActivityIndicator />
                 <Text style={styles.emptyTitle}>Loading safety summaries...</Text>
               </View>
             ) : (
               <>
-                <View style={[styles.card, styles.sectionSky, cardShadow]}>
+                <View style={styles.panelCard}>
                   <View style={styles.sectionHead}>
                     <View style={[styles.sectionIconWrap, styles.iconWrapSky]}>
                       <Text style={styles.sectionEmoji}>🧭</Text>
@@ -1154,7 +1220,7 @@ export function AdminScreen({ onNavigate }) {
                 </View>
 
                 {selectedSafetyProfile ? (
-                  <View style={[styles.reportCard, styles.safetyDetailCard, cardShadow]}>
+                  <View style={styles.reportCard}>
                     <View style={styles.safetyCardHeader}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.reportTitle}>SAFETY DETAIL</Text>
@@ -1334,7 +1400,7 @@ export function AdminScreen({ onNavigate }) {
                     </View>
 
                     {safetyDetailLoading ? (
-                      <View style={[styles.card, styles.sectionSky, { marginTop: 12 }]}>
+                      <View style={[styles.panelCard, { marginTop: 12 }]}>
                         <ActivityIndicator />
                       </View>
                     ) : (
@@ -1387,7 +1453,7 @@ export function AdminScreen({ onNavigate }) {
                 ) : null}
 
                 {safetyProfiles.length === 0 ? (
-                  <View style={[styles.card, styles.sectionSky, styles.emptyBox, cardShadow]}>
+                  <View style={styles.panelCard}>
                     <Text style={styles.emptyTitle}>No flagged users yet</Text>
                     <Text style={styles.emptyText}>Safety profiles will appear here once events are recorded.</Text>
                   </View>
@@ -1395,7 +1461,7 @@ export function AdminScreen({ onNavigate }) {
                   safetyProfiles.map((profile) => {
                     const safetyUser = getUserCardData(profile.uid);
                     return (
-                    <View key={profile.uid || profile.id} style={[styles.reportCard, cardShadow]}>
+                    <View key={profile.uid || profile.id} style={styles.reportCard}>
                       <View style={styles.safetyCardHeader}>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.reportTitle}>USER SAFETY</Text>
@@ -1462,12 +1528,12 @@ export function AdminScreen({ onNavigate }) {
             )
           ) : tab === 'vulgar' ? (
             vulgarLoading ? (
-              <View style={[styles.card, styles.sectionAmber, styles.emptyBox, cardShadow]}>
+              <View style={styles.panelCard}>
                 <ActivityIndicator />
                 <Text style={styles.emptyTitle}>Loading...</Text>
               </View>
             ) : vulgarAttempts.length === 0 ? (
-              <View style={[styles.card, styles.sectionAmber, styles.emptyBox, cardShadow]}>
+              <View style={styles.panelCard}>
                 <Text style={styles.emptyTitle}>No vulgar attempts</Text>
                 <Text style={styles.emptyText}>Blocked chat messages will appear here.</Text>
                 <TouchableOpacity
@@ -1488,12 +1554,8 @@ export function AdminScreen({ onNavigate }) {
                 {vulgarAttempts.map((a) => {
                   const blockedUser = getUserCardData(a.userId);
                   const targetSafety = a.userId ? safetyProfilesByUid[String(a.userId)] : null;
-                  const matchData = a.matchId ? matchesById[String(a.matchId)] : null;
-                  const matchUsers = Array.isArray(matchData?.uids)
-                    ? matchData.uids.map((uid) => getUserCardData(uid)).filter(Boolean)
-                    : [];
                   return (
-                <View key={a.id} style={[styles.reportCard, cardShadow]}>
+                <View key={a.id} style={styles.reportCard}>
                   <View style={styles.safetyCardHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.reportTitle}>BLOCKED MESSAGE</Text>
@@ -1521,15 +1583,10 @@ export function AdminScreen({ onNavigate }) {
                   <View style={styles.relationshipPanel}>
                     {renderUserMiniCard('Blocked user', blockedUser)}
                     {a.matchId ? (
-                      <View style={[styles.personRow, styles.personRowSubtle]}>
-                        <Text style={styles.personLabel}>Match</Text>
-                        <View style={styles.matchContextWrap}>
-                          <Text style={styles.personName}>
-                            {matchUsers.length ? matchUsers.map((user) => user.name).join(' + ') : shortId(a.matchId)}
-                          </Text>
-                          <Text style={styles.personMeta}>Match ID: {shortId(a.matchId)}</Text>
-                        </View>
-                      </View>
+                      <>
+                        <View style={styles.personDivider} />
+                        {renderReportIds(a.matchId, a.id)}
+                      </>
                     ) : null}
                   </View>
                   {targetSafety ? (
@@ -1543,7 +1600,12 @@ export function AdminScreen({ onNavigate }) {
                     </View>
                   ) : null}
                   {a.originalMessage ? (
-                    <Text style={styles.details}>Original: “{String(a.originalMessage).slice(0, 300)}”</Text>
+                    <View style={styles.messageQuoteBox}>
+                      <Text style={styles.messageQuoteBadge}>Blocked message</Text>
+                      <Text style={styles.messageQuoteText} selectable>
+                        “{String(a.originalMessage).slice(0, 300)}”
+                      </Text>
+                    </View>
                   ) : null}
                   {a.createdAt ? (
                     <Text style={styles.timelineMeta}>
@@ -1585,7 +1647,7 @@ export function AdminScreen({ onNavigate }) {
             )
           ) : tab === 'verifications' ? (
             verifs.length === 0 ? (
-              <View style={[styles.card, styles.sectionEmerald, styles.emptyBox, cardShadow]}>
+              <View style={styles.panelCard}>
                 <Text style={styles.emptyTitle}>No verification requests</Text>
                 <Text style={styles.emptyText}>You’re all caught up.</Text>
               </View>
@@ -1593,7 +1655,7 @@ export function AdminScreen({ onNavigate }) {
               verifs.map((v) => {
                 const verUser = getUserCardData(v.uid);
                 return (
-                <View key={v.id} style={[styles.reportCard, cardShadow]}>
+                <View key={v.id} style={styles.reportCard}>
                   <Text style={styles.reportTitle}>VERIFICATION</Text>
                   <Text style={styles.reportMeta}>Submitted: {formatTimestamp(v.createdAt)}</Text>
                   {verUser ? renderUserMiniCard('User', verUser, { subtle: true }) : (
@@ -1673,7 +1735,7 @@ export function AdminScreen({ onNavigate }) {
               })
             )
           ) : reports.length === 0 ? (
-            <View style={[styles.card, styles.sectionRose, styles.emptyBox, cardShadow]}>
+            <View style={styles.panelCard}>
               <Text style={styles.emptyTitle}>No open reports</Text>
               <Text style={styles.emptyText}>You’re all caught up.</Text>
             </View>
@@ -1704,15 +1766,20 @@ export function AdminScreen({ onNavigate }) {
               });
 
               return (
-              <View key={r.id} style={[styles.reportCard, cardShadow]}>
+              <View key={r.id} style={styles.reportCard}>
                 <View style={styles.safetyCardHeader}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.reportTitle}>{String(r.targetType || 'report').toUpperCase()}</Text>
-                    <Text style={styles.reportMeta}>Reported: {formatTimestamp(r.createdAt)}</Text>
-                    <Text style={styles.reportMeta}>Reason: {r.reason || '-'}</Text>
-                    <Text style={styles.reportMeta}>
-                      Categories: {Array.isArray(r.categories) && r.categories.length ? r.categories.join(', ') : '-'}
-                    </Text>
+                    <Text style={styles.reportMeta}>Reported {formatTimestamp(r.createdAt)}</Text>
+                    {renderReportMetaRow([
+                      { key: 'reason', label: 'Reason', value: r.reason || '-' },
+                      {
+                        key: 'categories',
+                        label: 'Categories',
+                        value:
+                          Array.isArray(r.categories) && r.categories.length ? r.categories.join(', ') : '-',
+                      },
+                    ])}
                   </View>
                   {targetSafety ? (
                     <View
@@ -1736,25 +1803,13 @@ export function AdminScreen({ onNavigate }) {
 
                 <View style={styles.relationshipPanel}>
                   {renderUserMiniCard('Reporter', inferredReporterUser)}
+                  <View style={styles.personDivider} />
                   {renderUserMiniCard('Target', inferredTargetUser)}
                   {r.matchId ? (
-                    <View style={[styles.personRow, styles.personRowSubtle]}>
-                      <Text style={styles.personLabel}>Match</Text>
-                      <View style={styles.matchContextWrap}>
-                        {matchUsers.length ? (
-                          matchUsers.map((mu) => (
-                            <View key={mu.uid} style={{ marginBottom: 6 }}>
-                              <Text style={styles.personName}>{mu.name}</Text>
-                              <Text style={styles.personDetail}>{mu.email}</Text>
-                            </View>
-                          ))
-                        ) : (
-                          <Text style={styles.personName}>Match participants loading…</Text>
-                        )}
-                        <Text style={styles.personMeta}>Match ID: {r.matchId}</Text>
-                        <Text style={styles.personMeta}>Report ID: {r.id}</Text>
-                      </View>
-                    </View>
+                    <>
+                      <View style={styles.personDivider} />
+                      {renderReportIds(r.matchId, r.id)}
+                    </>
                   ) : null}
                 </View>
 
@@ -1769,8 +1824,16 @@ export function AdminScreen({ onNavigate }) {
                   </View>
                 ) : null}
 
-                {r.autoFlagged ? <Text style={styles.badge}>AUTO-FLAGGED</Text> : null}
-                {r.details ? <Text style={styles.details}>Message: “{String(r.details)}”</Text> : null}
+                {r.autoFlagged || r.details ? (
+                  <View style={styles.messageQuoteBox}>
+                    {r.autoFlagged ? <Text style={styles.messageQuoteBadge}>Auto-flagged</Text> : null}
+                    {r.details ? (
+                      <Text style={styles.messageQuoteText} selectable>
+                        “{String(r.details)}”
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Text style={styles.timelineMeta}>
                   Opened {formatTimestamp(r.createdAt)}
                   {r.status ? ` · Status: ${String(r.status).toUpperCase()}` : ''}
@@ -2021,6 +2084,7 @@ export function AdminScreen({ onNavigate }) {
             })
           )}
         </HuzzKeyboardAwareScrollView>
+        </>
       )}
     </SafeAreaView>
     <Modal
@@ -2033,7 +2097,7 @@ export function AdminScreen({ onNavigate }) {
         <View style={styles.warningModalCard}>
           <View style={[styles.warningModalHeader, { paddingTop: insets.top + 10 }]}>
             <View style={styles.warningModalHeaderContent}>
-              <Text style={styles.warningModalEyebrow}>HUZZ WARNING</Text>
+              <Text style={styles.warningModalEyebrow}>WASL WARNING</Text>
               <Text style={styles.warningModalTitle}>
                 {warningComposer.targetName || shortId(warningComposer.targetUid)}
               </Text>
@@ -2145,26 +2209,25 @@ export function AdminScreen({ onNavigate }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.colors.filterBgRose,
+    backgroundColor: '#F1F5F9',
   },
   safe: {
     flex: 1,
-    backgroundColor: tokens.colors.surface,
+    backgroundColor: '#F1F5F9',
   },
   header: {
-    backgroundColor: tokens.colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.colors.border,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
     paddingHorizontal: tokens.spacing.screenHorizontal,
-    paddingBottom: 10,
-    minHeight: 60,
+    paddingBottom: 12,
     zIndex: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#0f172a',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.06,
-        shadowRadius: 3,
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
       },
       android: { elevation: 2 },
     }),
@@ -2172,52 +2235,122 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 56,
+    minHeight: 52,
   },
   headerSideBtn: {
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
   },
-  headerWordmarkWrap: {
+  headerCenter: {
     flex: 1,
-    minWidth: 0,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  quickActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
   },
-  headerBrandBlock: {
+  quickActionText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#9D174D',
+  },
+  quickActionBtnWarn: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  tabBarScroll: {
+    flexGrow: 0,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  tabBarContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
     alignItems: 'center',
   },
-  headerHuzzWord: {
-    fontSize: 40,
-    letterSpacing: 0.5,
-    color: '#1c1917',
+  tabChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  tabChipOn: {
+    backgroundColor: '#FDF2F8',
+    borderColor: '#DB2777',
+  },
+  tabChipText: {
+    fontSize: 13,
     fontWeight: '700',
-    fontStyle: 'italic',
-    ...Platform.select({
-      ios: {
-        textShadowColor: 'rgba(28, 25, 23, 0.12)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 2,
-      },
-      android: {},
-    }),
+    color: '#475569',
   },
-  headerHuzzWordFont: {
-    fontFamily: 'KaushanScript_400Regular',
-    fontWeight: '400',
-    fontStyle: 'normal',
+  tabChipTextOn: {
+    color: '#9D174D',
   },
-  headerUnderlineTrack: {
-    marginTop: 4,
-    width: 100,
-    height: 3,
-    borderRadius: 2,
-    overflow: 'hidden',
-    opacity: 0.85,
+  tabBadge: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeOn: {
+    backgroundColor: '#DB2777',
+  },
+  tabBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  tabBadgeTextOn: {
+    color: '#FFFFFF',
+  },
+  panelCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: tokens.spacing.md,
+    ...cardShadow,
   },
   loadingWrap: {
     flex: 1,
@@ -2271,18 +2404,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: tokens.colors.text,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
     letterSpacing: -0.2,
     flex: 1,
   },
   sectionHint: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
-    color: tokens.colors.textMuted,
-    marginTop: 2,
-    lineHeight: 18,
+    color: '#64748B',
+    marginTop: 4,
+    lineHeight: 19,
   },
   sectionViolet: {
     backgroundColor: tokens.colors.filterBgViolet,
@@ -2342,40 +2475,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: tokens.colors.textSecondary,
   },
-  tabs: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 4,
-  },
-  tabBtn: {
-    minWidth: '47%',
-    flexGrow: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    borderRadius: tokens.radius.md,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    alignItems: 'center',
-  },
-  tabBtnOn: {
-    backgroundColor: tokens.colors.accentDim,
-    borderColor: tokens.colors.accent,
-  },
-  tabText: {
-    fontWeight: '700',
-    color: tokens.colors.text,
-    letterSpacing: -0.1,
-    fontSize: 13,
-  },
   reportCard: {
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: tokens.colors.border,
-    borderRadius: tokens.radius.lg,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
+    ...cardShadow,
   },
   reportTitle: {
     fontSize: 12,
@@ -2387,7 +2494,38 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     fontWeight: '600',
-    color: tokens.colors.text,
+    color: '#64748B',
+    lineHeight: 18,
+  },
+  reportChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  reportChip: {
+    minWidth: 96,
+    flexGrow: 1,
+    flexBasis: '45%',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  reportChipLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  reportChipValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
     lineHeight: 18,
   },
   outcomeInput: {
@@ -2438,11 +2576,34 @@ const styles = StyleSheet.create({
   relationshipPanel: {
     marginTop: 12,
     padding: 12,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.colors.surface,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: tokens.colors.border,
-    gap: 10,
+    borderColor: '#E2E8F0',
+    gap: 0,
+  },
+  personBlock: {
+    gap: 8,
+  },
+  personBlockSubtle: {
+    opacity: 0.98,
+  },
+  personBlockLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  personBlockMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  personDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 12,
   },
   personRow: {
     flexDirection: 'row',
@@ -2453,28 +2614,28 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   personLabel: {
-    width: 64,
-    fontSize: 12,
+    width: 72,
+    fontSize: 11,
     fontWeight: '800',
     color: tokens.colors.textMuted,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
   },
   personAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: tokens.colors.surfaceElevated,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
   },
   personAvatarFallback: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: tokens.colors.surfaceElevated,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: tokens.colors.border,
+    borderColor: '#E2E8F0',
   },
   personAvatarLetter: {
     fontSize: 14,
@@ -2502,6 +2663,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: tokens.colors.textMuted,
+  },
+  personUid: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  reportIdsRow: {
+    gap: 8,
+  },
+  reportIdChip: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  reportIdLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  reportIdValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  messageQuoteBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    gap: 6,
+  },
+  messageQuoteBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#BE185D',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  messageQuoteText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0F172A',
+    lineHeight: 22,
   },
   matchContextWrap: {
     flex: 1,

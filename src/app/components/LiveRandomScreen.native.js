@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Shuffle } from 'lucide-react-native';
 import { authService, liveRandomService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
-import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
+import { blockIfAgeNotVerifiedAsync } from '../../utils/ageCheck.native';
 import { tokens } from '../../ui/tokens';
 import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
@@ -44,9 +45,15 @@ export function LiveRandomScreen({ onNavigate }) {
   const sessionRef = useRef(null);
   sessionRef.current = session;
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!meUid) return;
+      userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
+    }, [meUid])
+  );
+
   useEffect(() => {
     if (!meUid) return;
-    userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
     checkUserRoleFromAdminCollection(meUid).then(setRoleCheck).catch(() => {});
   }, [meUid]);
 
@@ -68,7 +75,15 @@ export function LiveRandomScreen({ onNavigate }) {
       onNavigate('onboarding', { mode: 'login' });
       return;
     }
-    if (blockIfAgeNotVerified(myProfile, onNavigate, roleCheck)) return;
+    const { blocked, profile } = await blockIfAgeNotVerifiedAsync(
+      myProfile,
+      onNavigate,
+      roleCheck,
+      meUid,
+      (id) => userService.getUserById(id)
+    );
+    if (profile) setMyProfile(profile);
+    if (blocked) return;
     setError(null);
     setPhase('searching');
     const res = await liveRandomService.enterPool(meUid);

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { NavigationContainer, CommonActions } from '@react-navigation/native';
+import { NavigationContainer, CommonActions, useNavigation } from '@react-navigation/native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AppState, Linking, View, ActivityIndicator, Alert } from 'react-native';
 
@@ -7,8 +8,6 @@ import { Routes } from './routes';
 
 import { WelcomeScreen } from '../components/WelcomeScreen.native';
 import { OnboardingFlow } from '../components/OnboardingFlow.native';
-import { MatchListScreen } from '../components/MatchListScreen.native.js';
-import { ChatScreen } from '../components/ChatScreen.native.js';
 import { SettingsScreen } from '../components/SettingsScreen.native.js';
 import { AdminScreen } from '../components/AdminScreen.native.js';
 import { ContactsBlockScreen } from '../components/ContactsBlockScreen.native.js';
@@ -21,19 +20,24 @@ import { ClubRoomScreen } from '../components/ClubRoomScreen.native.js';
 import { VerificationScreen } from '../components/VerificationScreen.native.js';
 import { AgeCheckScreen } from '../components/AgeCheckScreen.native.js';
 import { DatePlanningScreen } from '../components/DatePlanningScreen.native.js';
+import { MatchVideoDateScreen } from '../components/MatchVideoDateScreen.native.js';
 import { StaffScreen } from '../components/StaffScreen.native.js';
 import { NotificationsScreen } from '../components/NotificationsScreen.native.js';
 import { SocialScreen } from '../components/SocialScreen.native.js';
 import { GamePlayScreen } from '../components/GamePlayScreen.native.js';
 import { MehramAccessScreen } from '../components/MehramAccessScreen.native.js';
+import { SuccessStoriesScreen } from '../components/SuccessStoriesScreen.native.js';
+import { StoreScreenshotStudio } from '../components/StoreScreenshotStudio.native.js';
+import { StoreScreenshotOverlay } from '../components/StoreScreenshotOverlay.native.js';
 import { AccountDisabledAppealGate } from '../components/AccountDisabledAppealGate.native';
 import { HomeStackNavigator } from './HomeStackNavigator.native.js';
+import { MatchesStackNavigator } from './MatchesStackNavigator.native.js';
 import { authService, userService, notificationService, deviceBanService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
 import { hasPassedAgeCheck, shouldSkipAgeCheck } from '../../utils/ageCheck.native';
 import { db } from '../../services/firebase';
 import { collection, query, where, getDocs, doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { detectCountryCity } from '../../services/locationService.native.js';
-import { registerForPushNotificationsAsync, getNotificationListeners, setBadgeCountAsync } from '../../services/pushService.native';
+import { registerForPushNotificationsAsync, getNotificationListeners, setBadgeCountAsync, setPushNotificationUidGetter } from '../../services/pushService.native';
 import { getDeviceHash, collectDeviceSnapshot } from '../../services/deviceService';
 import { PresenceHeartbeat } from '../components/PresenceHeartbeat.native';
 import {
@@ -167,6 +171,7 @@ function PushTokenGate() {
   };
 
   useEffect(() => {
+    setPushNotificationUidGetter(() => authService.getCurrentUser()?.uid || null);
     let mounted = true;
     
     // Wait for auth state to be ready before running
@@ -178,6 +183,12 @@ function PushTokenGate() {
         }, 500);
       }
     });
+
+    const appSub = AppState.addEventListener('change', (state) => {
+      if (mounted && state === 'active') {
+        run();
+      }
+    });
     
     // Don't run immediately on mount - wait for auth state change
     // This prevents running before user is authenticated
@@ -185,6 +196,7 @@ function PushTokenGate() {
     return () => {
       mounted = false;
       unsub && unsub();
+      appSub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -359,9 +371,35 @@ async function handleNotificationTap(data) {
       type === 'match_approved' ||
       type === 'match_pending' ||
       type === 'match_mutual' ||
-      type === 'like_received'
+      type === 'like_received' ||
+      type === 'match_online'
     ) {
       navigationRef.navigate(Routes.TabMatches);
+    } else if (type === 'story_viewed' || type === 'story_reaction') {
+      navigationRef.navigate(Routes.TabHome);
+    } else if (type === 'chat_streak_7' && matchId) {
+      navigationRef.navigate(Routes.TabMatches, {
+        screen: Routes.ChatThread,
+        params: { matchId },
+      });
+    } else if (
+      (type === 'video_date_proposed' ||
+        type === 'video_date_accepted' ||
+        type === 'video_date_live' ||
+        type === 'panic_sos') &&
+      matchId
+    ) {
+      navigationRef.navigate(Routes.TabMatches, {
+        screen: Routes.ChatThread,
+        params: { matchId },
+      });
+    } else if (type === 'game_invite' && (data?.matchId || data?.roomId)) {
+      navigationRef.navigate(Routes.GamePlay, {
+        gameId: data.gameId || 'ludo',
+        matchId: data.matchId || null,
+        roomId: data.roomId || null,
+        opponentUid: data.fromUid || null,
+      });
     } else if ((type === 'message' || type === 'message_new') && matchId) {
       const user = authService.getCurrentUser();
       if (user?.uid) {
@@ -379,7 +417,10 @@ async function handleNotificationTap(data) {
           /* proceed if profile check fails */
         }
       }
-      navigationRef.navigate(Routes.ChatThread, { matchId });
+      navigationRef.navigate(Routes.TabMatches, {
+        screen: Routes.ChatThread,
+        params: { matchId },
+      });
     } else if (type === 'verification') {
       navigationRef.navigate(Routes.Verification);
     } else if (type === 'app_update') {
@@ -521,18 +562,44 @@ function useLegacyOnNavigate(navigation) {
                   opponentUid: arg.opponentUid || null,
                   opponentName: arg.opponentName || null,
                   roomId: arg.roomId || null,
+                  matchId: arg.matchId || null,
                 }
               : { gameId: 'ludo' };
           navigation.navigate(Routes.GamePlay, params);
           return;
         }
         case 'chat':
-          if (matchId) navigation.navigate(Routes.ChatThread, { matchId });
-          else navigation.navigate(Routes.TabMatches);
+          if (matchId) {
+            navigation.navigate(Routes.TabMatches, {
+              screen: Routes.ChatThread,
+              params: {
+                matchId,
+                userId: arg && typeof arg === 'object' ? arg.userId || null : null,
+              },
+            });
+          } else {
+            navigation.navigate(Routes.TabMatches);
+          }
           return;
         case 'datePlanning':
           if (matchId) navigation.navigate(Routes.DatePlanning, { matchId });
           else navigation.navigate(Routes.TabMatches);
+          return;
+        case 'matchVideoDate':
+          if (matchId && arg?.sessionId) {
+            navigation.navigate(Routes.MatchVideoDate, {
+              matchId,
+              sessionId: arg.sessionId,
+              mehramMode: !!arg?.mehramMode,
+            });
+          } else if (matchId) {
+            navigation.navigate(Routes.TabMatches, {
+              screen: Routes.ChatThread,
+              params: { matchId },
+            });
+          } else {
+            navigation.navigate(Routes.TabMatches);
+          }
           return;
         case 'settings':
           navigation.navigate(Routes.TabSettings);
@@ -551,6 +618,11 @@ function useLegacyOnNavigate(navigation) {
         case 'blockedUsers':
           navigation.navigate(Routes.BlockedUsers);
           return;
+        case 'successStories': {
+          const share = arg && typeof arg === 'object' && arg.share;
+          navigation.navigate(Routes.SuccessStories, { share: !!share });
+          return;
+        }
         case 'verification':
           navigation.navigate(Routes.Verification);
           return;
@@ -598,6 +670,9 @@ function useLegacyOnNavigate(navigation) {
             params: typeof arg === 'object' && arg ? arg : undefined,
           });
           return;
+        case 'storeScreenshots':
+          navigation.navigate(Routes.StoreScreenshots);
+          return;
         case 'notifications':
           navigation.navigate(Routes.Notifications);
           return;
@@ -625,6 +700,12 @@ function mainTabScreenOptions() {
     animation: 'fade',
     animationDuration: 220,
   };
+}
+
+function StoreScreenshotOverlayHost() {
+  const navigation = useNavigation();
+  const onNavigate = useLegacyOnNavigate(navigation);
+  return <StoreScreenshotOverlay onNavigate={onNavigate} />;
 }
 
 export function RootNavigator() {
@@ -759,6 +840,7 @@ export function RootNavigator() {
       : undefined;
 
   return (
+    <KeyboardProvider>
     <NavigationContainer
       ref={navRef}
       initialState={rootInitialState}
@@ -807,7 +889,9 @@ export function RootNavigator() {
           )}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.TabMatches} options={mainTabScreenOptions()}>
-          {({ navigation }) => <MatchListScreen onNavigate={useLegacyOnNavigate(navigation)} />}
+          {({ navigation }) => (
+            <MatchesStackNavigator onNavigateRoot={useLegacyOnNavigate(navigation)} />
+          )}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.TabSocial} options={mainTabScreenOptions()}>
           {({ navigation }) => <SocialScreen onNavigate={useLegacyOnNavigate(navigation)} />}
@@ -820,17 +904,23 @@ export function RootNavigator() {
               opponentUid={route?.params?.opponentUid || null}
               opponentName={route?.params?.opponentName || null}
               roomId={route?.params?.roomId || null}
+              matchId={route?.params?.matchId || null}
             />
-          )}
-        </RootStack.Screen>
-        <RootStack.Screen name={Routes.ChatThread}>
-          {({ navigation, route }) => (
-            <ChatScreen onNavigate={useLegacyOnNavigate(navigation)} matchId={route?.params?.matchId || null} />
           )}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.DatePlanning}>
           {({ navigation, route }) => (
             <DatePlanningScreen onNavigate={useLegacyOnNavigate(navigation)} matchId={route?.params?.matchId || null} />
+          )}
+        </RootStack.Screen>
+        <RootStack.Screen name={Routes.MatchVideoDate}>
+          {({ navigation, route }) => (
+            <MatchVideoDateScreen
+              onNavigate={useLegacyOnNavigate(navigation)}
+              matchId={route?.params?.matchId || null}
+              sessionId={route?.params?.sessionId || null}
+              mehramMode={!!route?.params?.mehramMode}
+            />
           )}
         </RootStack.Screen>
         <RootStack.Screen name={Routes.TabProfile}>
@@ -865,6 +955,14 @@ export function RootNavigator() {
         <RootStack.Screen name={Routes.BlockedUsers}>
           {({ navigation }) => <BlockedUsersScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
+        <RootStack.Screen name={Routes.SuccessStories}>
+          {({ navigation, route }) => (
+            <SuccessStoriesScreen
+              onNavigate={useLegacyOnNavigate(navigation)}
+              openShare={!!route?.params?.share}
+            />
+          )}
+        </RootStack.Screen>
         <RootStack.Screen name={Routes.Verification}>
           {({ navigation }) => <VerificationScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
@@ -874,6 +972,9 @@ export function RootNavigator() {
         <RootStack.Screen name={Routes.Staff}>
           {({ navigation }) => <StaffScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
+        <RootStack.Screen name={Routes.StoreScreenshots}>
+          {({ navigation }) => <StoreScreenshotStudio onNavigate={useLegacyOnNavigate(navigation)} />}
+        </RootStack.Screen>
         <RootStack.Screen name={Routes.Notifications} options={{ animation: 'slide_from_right' }}>
           {({ navigation }) => <NotificationsScreen onNavigate={useLegacyOnNavigate(navigation)} />}
         </RootStack.Screen>
@@ -881,6 +982,7 @@ export function RootNavigator() {
           {({ navigation, route }) => (
             <MehramAccessScreen
               session={route?.params?.session || null}
+              onNavigate={useLegacyOnNavigate(navigation)}
               onExit={() => {
                 navigation.dispatch(
                   CommonActions.reset({
@@ -893,7 +995,9 @@ export function RootNavigator() {
           )}
         </RootStack.Screen>
       </RootStack.Navigator>
+      <StoreScreenshotOverlayHost />
     </NavigationContainer>
+    </KeyboardProvider>
   );
 }
 

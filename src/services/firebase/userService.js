@@ -49,7 +49,9 @@ import {
   _generateChatSuggestionsCallable,
   _generateModerationEvidenceCallable,
   _sendModerationNoticeCallable,
+  _adminListUsersCallable,
 } from './callables';
+import { checkUserRoleFromAdminCollection } from './roles';
 
 export const userService = {
   // Get user by ID
@@ -74,10 +76,27 @@ export const userService = {
     }
   },
 
-  // Get all users
+  // Get all users (discovery + admin directory)
   async getUsers(filters = {}) {
     try {
-      const cap = filters.limit || 200;
+      const cap = Math.min(Math.max(Number(filters.limit) || 200, 1), 500);
+      const currentUser = auth.currentUser;
+
+      if (currentUser?.uid) {
+        const role = await checkUserRoleFromAdminCollection(currentUser.uid);
+        if (role.isAdmin && _adminListUsersCallable) {
+          try {
+            const res = await _adminListUsersCallable({ limit: cap });
+            const users = Array.isArray(res?.data?.users) ? res.data.users : [];
+            return { data: users, error: null };
+          } catch (adminErr) {
+            if (__DEV__) {
+              console.warn('[getUsers] adminListUsers callable failed, falling back:', adminErr?.message || adminErr);
+            }
+          }
+        }
+      }
+
       const map = new Map();
 
       const addDocs = (docs) => {

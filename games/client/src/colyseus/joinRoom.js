@@ -19,6 +19,7 @@ export function parseLaunchParams() {
     uid: params.get('uid') || '',
     name: params.get('name') || 'Player',
     opponentName: params.get('opponentName') || '',
+    opponentUid: params.get('opponentUid') || '',
     wsUrl: params.get('wsUrl') || defaultWsUrl(),
     solo: params.get('solo') === '1',
   };
@@ -91,9 +92,12 @@ export function bindRoomHud(room, launch) {
   room.onStateChange(render);
   render();
 
-  room.onLeave(() => {
-    if (statusEl) statusEl.textContent = 'Disconnected from room';
-  });
+  const onLeave = typeof room.onLeave === 'function' ? room.onLeave.bind(room) : room.onDisconnect?.bind(room);
+  if (onLeave) {
+    onLeave(() => {
+      if (statusEl) statusEl.textContent = 'Disconnected from room';
+    });
+  }
 }
 
 export function hideOverlay() {

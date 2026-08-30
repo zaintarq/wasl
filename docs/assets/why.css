@@ -35,7 +35,8 @@ body {
 
 .why-float,
 .oss-float,
-.admin-float {
+.admin-float,
+.stories-float {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -65,6 +66,13 @@ body {
   box-shadow: 0 8px 20px rgba(157, 23, 77, 0.14);
 }
 
+.stories-float {
+  color: #3b0a24;
+  background: linear-gradient(135deg, #ffe4ef, #fff7fb);
+  border-color: rgba(157, 23, 77, 0.35);
+  box-shadow: 0 8px 20px rgba(157, 23, 77, 0.14);
+}
+
 .admin-float {
   color: #fff;
   background: linear-gradient(135deg, #3b0a24, #9d174d 55%, #be185d);
@@ -80,7 +88,8 @@ body {
 
   .why-float,
   .oss-float,
-  .admin-float {
+  .admin-float,
+  .stories-float {
     min-height: 34px;
     padding: 0 9px;
     font-size: 0.68rem;
@@ -91,6 +100,16 @@ body {
   }
   .why-float::before {
     content: "Why?";
+    font-size: 0.68rem;
+    font-family: "DM Sans", system-ui, sans-serif;
+    font-weight: 700;
+  }
+
+  .stories-float {
+    font-size: 0;
+  }
+  .stories-float::before {
+    content: "Stories";
     font-size: 0.68rem;
     font-family: "DM Sans", system-ui, sans-serif;
     font-weight: 700;

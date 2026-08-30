@@ -14,7 +14,7 @@ cd android
 ./gradlew bundleRelease --no-daemon
 
 AAB_SRC="app/build/outputs/bundle/release/app-release.aab"
-AAB_OUT="$ROOT/dist/huzz-release.aab"
+AAB_OUT="$ROOT/dist/wasl-release.aab"
 mkdir -p "$ROOT/dist"
 cp "$AAB_SRC" "$AAB_OUT"
 

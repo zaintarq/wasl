@@ -55,7 +55,7 @@ function MessageBubble({ item, girlUid, guyUid, girlDisplayName }) {
   );
 }
 
-export function MehramAccessScreen({ session: sessionProp, onExit }) {
+export function MehramAccessScreen({ session: sessionProp, onExit, onNavigate }) {
   const [session, setSession] = useState(sessionProp || null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(!sessionProp);
@@ -66,6 +66,7 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
   const [visits, setVisits] = useState([]);
   const [localHistory, setLocalHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [accessDoc, setAccessDoc] = useState(null);
   const listRef = useRef(null);
 
   useEffect(() => {
@@ -112,6 +113,7 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
         setError('Mehram access has ended.');
         return;
       }
+      setAccessDoc(data);
       setPermission(data.permission === 'reply' ? 'reply' : 'view');
     });
     return unsub;
@@ -144,6 +146,7 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
   }, [session?.accessId]);
 
   const canReply = permission === 'reply';
+  const activeVideoSessionId = String(accessDoc?.activeVideoSessionId || '').trim() || null;
 
   const headerLine = useMemo(() => {
     if (!session) return '';
@@ -320,6 +323,28 @@ export function MehramAccessScreen({ session: sessionProp, onExit }) {
             </View>
           ) : null}
         </View>
+
+        {activeVideoSessionId && onNavigate ? (
+          <View style={styles.videoBanner}>
+            <Text style={styles.videoBannerTitle}>Chaperoned video date live</Text>
+            <Text style={styles.videoBannerBody}>
+              Join as a silent supervisor (listen-only). Your camera stays off.
+            </Text>
+            <HuzzPressable
+              style={styles.videoJoinBtn}
+              onPress={() =>
+                onNavigate('matchVideoDate', {
+                  matchId: session.matchId,
+                  sessionId: activeVideoSessionId,
+                  mehramMode: true,
+                })
+              }
+              haptic="medium"
+            >
+              <Text style={styles.videoJoinBtnText}>Join video supervision</Text>
+            </HuzzPressable>
+          </View>
+        ) : null}
 
         <FlatList
           ref={listRef}
@@ -616,5 +641,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
     color: tokens.colors.textOnBrand,
+  },
+  videoBanner: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(14, 165, 233, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.35)',
+  },
+  videoBannerTitle: {
+    fontWeight: '700',
+    color: tokens.colors.text,
+    marginBottom: 4,
+  },
+  videoBannerBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: tokens.colors.textSecondary,
+    marginBottom: 10,
+  },
+  videoJoinBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: tokens.colors.brandPink,
+  },
+  videoJoinBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

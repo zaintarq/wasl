@@ -9,13 +9,14 @@ function getCallable(name) {
 /**
  * Mint a short-lived game launch session (partner token + URL built on server).
  */
-export async function fetchGameLaunchSession({ gameId, opponentUid, roomId } = {}) {
+export async function fetchGameLaunchSession({ gameId, opponentUid, roomId, matchId } = {}) {
   try {
     const fn = getCallable('getGameLaunchSession');
     const res = await fn({
       gameId: String(gameId || ''),
       opponentUid: opponentUid ? String(opponentUid) : null,
       roomId: roomId ? String(roomId) : null,
+      matchId: matchId ? String(matchId) : null,
     });
     return { data: res?.data || null, error: null };
   } catch (error) {

@@ -1,19 +1,41 @@
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 
-// Configure notification handler for in-app notifications (dev / standalone builds)
-if (!isExpoGo) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
+let getCurrentUid = () => null;
+
+/** Lets the app suppress self-targeted or redundant foreground alerts. */
+export function setPushNotificationUidGetter(fn) {
+  getCurrentUid = typeof fn === 'function' ? fn : () => null;
+}
+
+// Show alerts for foreground notifications (standalone / dev builds)
+Notifications.setNotificationHandler({
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data || {};
+    const type = String(data.type || '');
+    const meUid = getCurrentUid();
+    const fromUid = data.fromUid ? String(data.fromUid) : '';
+
+    // Same device often shares one Expo token across test accounts — hide "you are online" alerts.
+    if (meUid && fromUid && fromUid === String(meUid)) {
+      return { shouldShowAlert: false, shouldPlaySound: false, shouldSetBadge: false };
+    }
+
+    // Presence pings are useless while the app is open.
+    if (type === 'match_online' && AppState.currentState === 'active') {
+      return { shouldShowAlert: false, shouldPlaySound: false, shouldSetBadge: true };
+    }
+
+    return {
       shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
-    }),
-  });
-}
+    };
+  },
+});
 
 /**
  * Register for push notifications
@@ -46,12 +68,22 @@ export async function registerForPushNotificationsAsync() {
       return { token: null, status: finalStatus };
     }
 
-    // Set up Android notification channel
+    // Set up Android notification channels
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'HUZZ Notifications',
-        description: 'Notifications for chats, messages, and updates',
-        importance: Notifications.AndroidImportance.MAX,
+        name: 'Wasl Notifications',
+        description: 'General notifications',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+      });
+      await Notifications.setNotificationChannelAsync('messages', {
+        name: 'Messages',
+        description: 'New chat messages',
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',
         sound: 'default',

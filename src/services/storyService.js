@@ -14,8 +14,11 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { verifyUploadedImage } from './imageModerationService';
+import { matchService, messageService } from './firebase/index';
 
 export const STORY_TTL_MS = 24 * 60 * 60 * 1000;
+export const STORY_VIDEO_MAX_MS = 30 * 1000;
+export const STORY_REACTION_EMOJIS = ['❤️', '😂', '🔥', '👍', '😮', '🙏'];
 
 function storiesCol() {
   return collection(db, 'stories');
@@ -56,29 +59,168 @@ export async function uploadStoryImage(uid, imageUri) {
   }
 }
 
-export async function createStory(uid, imageUri) {
+export async function uploadStoryVideo(uid, videoUri, durationMs = 0) {
+  try {
+    const response = await fetch(videoUri);
+    const blob = await response.blob();
+    const path = `stories/${uid}/${Date.now()}.mp4`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, blob, { contentType: 'video/mp4' });
+    const url = await getDownloadURL(storageRef);
+    return { url, path, durationMs, error: null };
+  } catch (error) {
+    return { url: null, durationMs: 0, error: error?.message || String(error) };
+  }
+}
+
+function normalizeStoryMediaInput(mediaInput) {
+  if (typeof mediaInput === 'string') {
+    return { uri: mediaInput, mediaType: 'image' };
+  }
+  return {
+    uri: String(mediaInput?.uri || ''),
+    mediaType: mediaInput?.mediaType === 'video' ? 'video' : 'image',
+    durationMs: Number(mediaInput?.durationMs || 0),
+  };
+}
+
+export async function createStory(uid, mediaInput) {
   try {
     const userId = String(uid || '').trim();
     if (!userId) return { error: 'Not signed in.' };
 
-    const { url, error: uploadError } = await uploadStoryImage(userId, imageUri);
-    if (uploadError || !url) {
-      return { error: uploadError || 'Upload failed.' };
+    const media = normalizeStoryMediaInput(mediaInput);
+    if (!media.uri) return { error: 'Missing media.' };
+
+    let mediaUrl = null;
+    let durationMs = null;
+
+    if (media.mediaType === 'video') {
+      if (media.durationMs > STORY_VIDEO_MAX_MS + 500) {
+        return { error: 'Videos must be 30 seconds or less.' };
+      }
+      const { url, durationMs: uploadedDuration, error: uploadError } = await uploadStoryVideo(
+        userId,
+        media.uri,
+        media.durationMs
+      );
+      if (uploadError || !url) {
+        return { error: uploadError || 'Video upload failed.' };
+      }
+      mediaUrl = url;
+      durationMs = uploadedDuration || media.durationMs || STORY_VIDEO_MAX_MS;
+    } else {
+      const { url, error: uploadError } = await uploadStoryImage(userId, media.uri);
+      if (uploadError || !url) {
+        return { error: uploadError || 'Upload failed.' };
+      }
+      mediaUrl = url;
     }
 
     const expiresAt = Timestamp.fromMillis(Date.now() + STORY_TTL_MS);
-    const storyRef = await addDoc(storiesCol(), {
+    const payload = {
       userId,
-      mediaUrl: url,
-      mediaType: 'image',
+      mediaUrl,
+      mediaType: media.mediaType,
       createdAt: serverTimestamp(),
       expiresAt,
-    });
+    };
+    if (media.mediaType === 'video' && durationMs) {
+      payload.durationMs = durationMs;
+    }
 
+    const storyRef = await addDoc(storiesCol(), payload);
     return { id: storyRef.id, error: null };
   } catch (error) {
     return { id: null, error: error?.message || String(error) };
   }
+}
+
+/** Reply to a story — opens or reuses a DM thread with story context attached. */
+export async function sendStoryReply({
+  fromUid,
+  toUid,
+  storyId,
+  storyMediaUrl,
+  storyMediaType = 'image',
+  authorName = 'User',
+  text,
+}) {
+  try {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return { matchId: null, error: 'Message is empty.' };
+
+    const from = String(fromUid || '').trim();
+    const to = String(toUid || '').trim();
+    if (!from || !to) return { matchId: null, error: 'Missing user.' };
+
+    const { matchId, error: matchErr } = await matchService.startDirectMessage(from, to);
+    if (matchErr || !matchId) {
+      return { matchId: null, error: matchErr || 'Could not start chat.' };
+    }
+
+    const { error: msgErr } = await messageService.sendMessage(matchId, from, trimmed, {
+      replyTo: {
+        kind: 'story',
+        storyId: String(storyId || ''),
+        mediaUrl: String(storyMediaUrl || ''),
+        mediaType: storyMediaType === 'video' ? 'video' : 'image',
+        authorUid: to,
+        authorName: String(authorName || 'User').slice(0, 80),
+      },
+    });
+
+    if (msgErr) return { matchId, error: msgErr };
+    return { matchId, error: null };
+  } catch (error) {
+    return { matchId: null, error: error?.message || String(error) };
+  }
+}
+
+function storyReactionsCol(storyId) {
+  return collection(db, 'stories', String(storyId), 'reactions');
+}
+
+/** Quick emoji reaction on a story (one per viewer; overwrites previous). */
+export async function setStoryReaction(storyId, viewerUid, viewerName, emoji) {
+  try {
+    const sid = String(storyId || '').trim();
+    const vid = String(viewerUid || '').trim();
+    const e = String(emoji || '').trim();
+    if (!sid || !vid || !e) return { error: 'Missing reaction.' };
+    if (!STORY_REACTION_EMOJIS.includes(e)) return { error: 'Invalid emoji.' };
+
+    await setDoc(
+      doc(db, 'stories', sid, 'reactions', vid),
+      {
+        viewerUid: vid,
+        viewerName: String(viewerName || 'User').trim().slice(0, 80),
+        emoji: e,
+        reactedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { error: null };
+  } catch (error) {
+    return { error: error?.message || String(error) };
+  }
+}
+
+/** Live reactions on a story (author insights). */
+export function listenStoryReactions(storyId, callback) {
+  const sid = String(storyId || '').trim();
+  if (!sid) {
+    callback({ data: [], error: null });
+    return () => {};
+  }
+  return onSnapshot(
+    storyReactionsCol(sid),
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      callback({ data: list, error: null });
+    },
+    (error) => callback({ data: [], error: error.message })
+  );
 }
 
 export async function deleteStory(storyId, uid) {
@@ -366,11 +508,14 @@ export function buildStoryRowItems({ storyGroups, usersById, viewerUid, seenMap,
 
   const myGroups = (storyGroups || []).filter((g) => g.userId === myUid);
   const myLatest = myGroups[0]?.latestStoryId || null;
+  const myLatestStory = myGroups[0]?.stories?.[myGroups[0]?.stories?.length - 1];
+  const myStoryPreview =
+    myLatestStory?.mediaType === 'video' ? '' : myGroups[0]?.previewUrl || '';
 
   return {
     items,
     myActiveStoryCount: myGroups[0]?.stories?.length || 0,
     myLatestStoryId: myLatest,
-    myPreviewUrl: myGroups[0]?.previewUrl || '',
+    myPreviewUrl: myStoryPreview || (Array.isArray(me?.images) ? me.images[0] : me?.photoURL || ''),
   };
 }

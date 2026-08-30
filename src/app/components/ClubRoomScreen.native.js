@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Settings, Mic } from 'lucide-react-native';
-import { authService, clubService, userService } from '../../services/firebaseService';
+import { authService, clubService, userService, clubEventService, CLUB_EVENT_TOPICS } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
 import { LIVE_SCREEN_GUTTER, LiveContentWidth } from '../../ui/components/live/LiveContentWidth.native';
@@ -41,6 +41,13 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
   const [usersById, setUsersById] = useState({});
   const [text, setText] = useState('');
   const [inVoice, setInVoice] = useState(false);
+  const [voiceEventId, setVoiceEventId] = useState(null);
+  const [clubEvents, setClubEvents] = useState([]);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDesc, setEventDesc] = useState('');
+  const [eventTopic, setEventTopic] = useState('marriage_prep');
+  const [eventSaving, setEventSaving] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [addUsername, setAddUsername] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -56,11 +63,13 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
     const u2 = clubService.listenMembers(cid, ({ data }) => setMembers(data || []));
     const u3 = clubService.listenMessages(cid, ({ data }) => setMessages(data || []));
     const u4 = clubService.listenMicRequests(cid, ({ data }) => setMicRequests(data || []));
+    const u5 = clubEventService.listenClubEvents(cid, ({ data }) => setClubEvents(data || []));
     return () => {
       u1?.();
       u2?.();
       u3?.();
       u4?.();
+      u5?.();
     };
   }, [meUid, cid]);
 
@@ -152,6 +161,78 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
       /* user dismissed */
     }
   };
+
+  const formatEventTime = (ts) => {
+    const d = ts?.toDate?.() || (ts?.seconds ? new Date(ts.seconds * 1000) : null);
+    if (!d) return 'Soon';
+    return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+
+  const topicMeta = (topicId) => CLUB_EVENT_TOPICS.find((t) => t.id === topicId) || CLUB_EVENT_TOPICS[3];
+
+  const scheduleClubEvent = async (scheduledAtMs) => {
+    const title = eventTitle.trim() || `${topicMeta(eventTopic).label} session`;
+    setEventSaving(true);
+    try {
+      const { eventId, error } = await clubEventService.createEvent(cid, {
+        title,
+        description: eventDesc.trim(),
+        scheduledAtMs,
+        topic: eventTopic,
+        type: 'voice',
+      });
+      if (error) Alert.alert('Could not schedule', error);
+      else {
+        Alert.alert('Scheduled', 'Members can join when the host starts the room.');
+        setScheduleOpen(false);
+        setEventTitle('');
+        setEventDesc('');
+      }
+      return eventId;
+    } finally {
+      setEventSaving(false);
+    }
+  };
+
+  const pickEventTime = () => {
+    const options = clubEventService.buildScheduleOptions();
+    Alert.alert('When is this event?', 'Pick a start time. Admins can open the room 15 minutes early.', [
+      ...options.map((opt) => ({
+        text: opt.label,
+        onPress: () => scheduleClubEvent(opt.ms),
+      })),
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const startEvent = async (eventId) => {
+    const { error } = await clubEventService.startEvent(cid, eventId);
+    if (error) Alert.alert('Could not start', error);
+  };
+
+  const joinEventVoice = (eventId) => {
+    setVoiceEventId(eventId);
+    setInVoice(true);
+  };
+
+  const leaveVoice = () => {
+    setInVoice(false);
+    setVoiceEventId(null);
+  };
+
+  const upcomingEvents = useMemo(() => {
+    const now = Date.now();
+    return (clubEvents || [])
+      .filter((e) => e.status !== 'ended')
+      .sort((a, b) => {
+        const am = a.scheduledAt?.toMillis?.() || 0;
+        const bm = b.scheduledAt?.toMillis?.() || 0;
+        if (a.status === 'live' && b.status !== 'live') return -1;
+        if (b.status === 'live' && a.status !== 'live') return 1;
+        return am - bm;
+      })
+      .slice(0, 6);
+  }, [clubEvents]);
 
   if (!cid) {
     return (
@@ -268,15 +349,76 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
         ))}
       </ScrollView>
 
+      <LiveContentWidth style={styles.eventsWrap}>
+        <View style={styles.eventsHead}>
+          <LiveText style={styles.eventsTitle}>Scheduled rooms</LiveText>
+          {isAdmin ? (
+            <HuzzPressable onPress={() => setScheduleOpen(true)} style={styles.scheduleBtn} haptic="light">
+              <LiveText style={styles.scheduleBtnText}>+ Schedule</LiveText>
+            </HuzzPressable>
+          ) : null}
+        </View>
+        {upcomingEvents.length === 0 ? (
+          <LiveText style={styles.eventsEmpty}>
+            {isAdmin
+              ? 'Host voice rooms for marriage prep, city meetups, and more.'
+              : 'No upcoming events yet.'}
+          </LiveText>
+        ) : (
+          upcomingEvents.map((ev) => {
+            const meta = topicMeta(ev.topic);
+            const live = ev.status === 'live';
+            return (
+              <View key={ev.id} style={[styles.eventCard, live && styles.eventCardLive]}>
+                <LiveText style={styles.eventEmoji}>{meta.emoji}</LiveText>
+                <View style={styles.eventBody}>
+                  <LiveText style={styles.eventTitle} numberOfLines={1}>
+                    {ev.title || meta.label}
+                  </LiveText>
+                  <LiveText style={styles.eventMeta}>
+                    {meta.label} · {formatEventTime(ev.scheduledAt)}
+                    {live ? ' · Live now' : ev.status === 'scheduled' ? '' : ` · ${ev.status}`}
+                  </LiveText>
+                  {ev.description ? (
+                    <LiveText style={styles.eventDesc} numberOfLines={2}>
+                      {ev.description}
+                    </LiveText>
+                  ) : null}
+                </View>
+                <View style={styles.eventActions}>
+                  {live ? (
+                    <HuzzPressable style={styles.eventJoinBtn} onPress={() => joinEventVoice(ev.id)} haptic="medium">
+                      <LiveText style={styles.eventJoinText}>Join</LiveText>
+                    </HuzzPressable>
+                  ) : isAdmin ? (
+                    <HuzzPressable style={styles.eventStartBtn} onPress={() => startEvent(ev.id)} haptic="light">
+                      <LiveText style={styles.eventStartText}>Start</LiveText>
+                    </HuzzPressable>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })
+        )}
+      </LiveContentWidth>
+
       {inVoice ? (
         <View style={styles.voiceWrap}>
-          <ClubAudioRoom clubId={cid} canPublishHint={canSpeak} onLeave={() => setInVoice(false)} />
+          <ClubAudioRoom
+            clubId={cid}
+            eventId={voiceEventId}
+            canPublishHint={canSpeak}
+            onLeave={leaveVoice}
+          />
         </View>
       ) : (
         <View style={styles.voiceBar}>
           <LiveRetroButton
             variant="blue"
-            onPress={() => setInVoice(true)}
+            onPress={() => {
+              setVoiceEventId(null);
+              setInVoice(true);
+            }}
             style={[styles.voiceBtn, welcomeButtonStyles.welcomeBtnShape]}
             textStyle={welcomeButtonStyles.welcomeBtnLabel}
           >
@@ -320,6 +462,63 @@ export function ClubRoomScreen({ onNavigate, clubId }) {
           <LiveText style={styles.sendBtnText}>Send</LiveText>
         </HuzzPressable>
       </View>
+
+      <Modal visible={scheduleOpen} animationType="slide" onRequestClose={() => setScheduleOpen(false)}>
+        <SafeAreaView style={styles.adminModal} edges={['top', 'bottom']}>
+          <View style={styles.adminHeader}>
+            <HuzzPressable onPress={() => setScheduleOpen(false)} style={styles.iconBtn} haptic="light">
+              <ArrowLeft size={22} color={tokens.colors.text} strokeWidth={2.2} />
+            </HuzzPressable>
+            <LiveText style={styles.adminTitle}>Schedule event</LiveText>
+            <View style={styles.headerSide} />
+          </View>
+          <ScrollView contentContainerStyle={styles.adminScroll} keyboardShouldPersistTaps="handled">
+            <LiveContentWidth>
+              <LiveText style={styles.settingsLabel}>Topic</LiveText>
+              <View style={styles.topicRow}>
+                {CLUB_EVENT_TOPICS.map((t) => (
+                  <HuzzPressable
+                    key={t.id}
+                    style={[styles.topicChip, eventTopic === t.id && styles.topicChipOn]}
+                    onPress={() => setEventTopic(t.id)}
+                    haptic="light"
+                  >
+                    <LiveText style={styles.topicChipText}>
+                      {t.emoji} {t.label}
+                    </LiveText>
+                  </HuzzPressable>
+                ))}
+              </View>
+              <LiveText style={styles.settingsLabel}>Title (optional)</LiveText>
+              <LiveTextInput
+                style={styles.codeInput}
+                placeholder="e.g. London sisters meetup"
+                placeholderTextColor={tokens.colors.textMuted}
+                value={eventTitle}
+                onChangeText={setEventTitle}
+              />
+              <LiveText style={styles.settingsLabel}>Description</LiveText>
+              <LiveTextInput
+                style={[styles.codeInput, { minHeight: 80 }]}
+                placeholder="What will you discuss?"
+                placeholderTextColor={tokens.colors.textMuted}
+                value={eventDesc}
+                onChangeText={setEventDesc}
+                multiline
+              />
+              <LiveRetroButton
+                variant="blue"
+                onPress={pickEventTime}
+                disabled={eventSaving}
+                style={[welcomeButtonStyles.welcomeBtnShape, { marginTop: 16 }]}
+                textStyle={welcomeButtonStyles.welcomeBtnLabel}
+              >
+                Pick time & schedule
+              </LiveRetroButton>
+            </LiveContentWidth>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       <Modal visible={adminOpen} animationType="slide" onRequestClose={() => setAdminOpen(false)}>
         <SafeAreaView style={styles.adminModal} edges={['top', 'bottom']}>
@@ -519,6 +718,63 @@ const styles = StyleSheet.create({
   },
   memberChipText: { ...tokens.typography.label, fontSize: 13, color: tokens.colors.text },
   memberRole: { fontSize: 10, fontWeight: '800', color: tokens.colors.blue },
+  eventsWrap: { paddingHorizontal: LIVE_SCREEN_GUTTER, paddingVertical: 10, gap: 8 },
+  eventsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  eventsTitle: { ...tokens.typography.label, color: tokens.colors.text },
+  eventsEmpty: { ...tokens.typography.caption, color: tokens.colors.textMuted, lineHeight: 20 },
+  scheduleBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.filterBgSky,
+  },
+  scheduleBtnText: { fontSize: 12, fontWeight: '800', color: tokens.colors.blue },
+  eventCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.colors.surface,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  eventCardLive: {
+    borderColor: tokens.colors.success,
+    backgroundColor: tokens.colors.filterBgEmerald,
+  },
+  eventEmoji: { fontSize: 22 },
+  eventBody: { flex: 1, minWidth: 0 },
+  eventTitle: { ...tokens.typography.label, color: tokens.colors.text },
+  eventMeta: { ...tokens.typography.caption, color: tokens.colors.textMuted, marginTop: 2 },
+  eventDesc: { ...tokens.typography.caption, color: tokens.colors.textSecondary, marginTop: 4 },
+  eventActions: { flexShrink: 0 },
+  eventJoinBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.success,
+  },
+  eventJoinText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  eventStartBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.blue,
+  },
+  eventStartText: { fontSize: 12, fontWeight: '800', color: tokens.colors.blue },
+  topicRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  topicChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    backgroundColor: tokens.colors.surface,
+  },
+  topicChipOn: { borderColor: tokens.colors.blue, backgroundColor: tokens.colors.filterBgSky },
+  topicChipText: { fontSize: 12, fontWeight: '700', color: tokens.colors.text },
   voiceWrap: { paddingHorizontal: LIVE_SCREEN_GUTTER, marginBottom: 8 },
   voiceBar: {
     flexDirection: 'row',

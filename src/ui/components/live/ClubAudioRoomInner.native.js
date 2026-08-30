@@ -3,11 +3,12 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { LiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/react-native';
 import { Mic, MicOff } from 'lucide-react-native';
 import { clubService } from '../../../services/firebaseService';
+import { clubEventService } from '../../../services/firebase/clubEventService';
 import { tokens } from '../../tokens';
 import { RetroButton } from '../RetroButton.native';
 import { HuzzPressable } from '../HuzzPressable.native';
 
-function ClubVoiceStage({ canPublish }) {
+function ClubVoiceStage({ canPublish, eventRoom }) {
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
   const participants = useParticipants();
   const remoteCount = participants.filter((p) => !p.isLocal).length;
@@ -19,7 +20,7 @@ function ClubVoiceStage({ canPublish }) {
 
   return (
     <View style={styles.stage}>
-      <Text style={styles.stageTitle}>Voice space</Text>
+      <Text style={styles.stageTitle}>{eventRoom ? 'Event room' : 'Voice space'}</Text>
       <Text style={styles.stageMeta}>
         {remoteCount ? `${remoteCount} other${remoteCount === 1 ? '' : 's'} in voice` : 'You’re the first in voice'}
       </Text>
@@ -43,16 +44,19 @@ function ClubVoiceStage({ canPublish }) {
 }
 
 /** Loaded lazily from ClubAudioRoom.native.js — do not import from app entry. */
-export function ClubAudioRoomInner({ clubId, canPublishHint, onLeave, onError }) {
+export function ClubAudioRoomInner({ clubId, eventId, canPublishHint, onLeave, onError }) {
   const [token, setToken] = useState(undefined);
   const [url, setUrl] = useState(undefined);
   const [canPublish, setCanPublish] = useState(!!canPublishHint);
   const [loadErr, setLoadErr] = useState(null);
+  const isEventRoom = !!String(eventId || '').trim();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await clubService.fetchClubLiveKitToken(clubId);
+      const res = isEventRoom
+        ? await clubEventService.fetchEventLiveKitToken(clubId, eventId)
+        : await clubService.fetchClubLiveKitToken(clubId);
       if (cancelled) return;
       if (res.error) {
         setLoadErr(res.error);
@@ -66,7 +70,7 @@ export function ClubAudioRoomInner({ clubId, canPublishHint, onLeave, onError })
     return () => {
       cancelled = true;
     };
-  }, [clubId, onError]);
+  }, [clubId, eventId, isEventRoom, onError]);
 
   if (loadErr) {
     return (
@@ -88,7 +92,7 @@ export function ClubAudioRoomInner({ clubId, canPublishHint, onLeave, onError })
 
   return (
     <LiveKitRoom token={token} serverUrl={url} connect audio video={false} onDisconnected={onLeave}>
-      <ClubVoiceStage canPublish={canPublish} />
+      <ClubVoiceStage canPublish={canPublish} eventRoom={isEventRoom} />
       <RetroButton variant="outline" title="Leave voice" onPress={onLeave} style={{ marginTop: 8 }} />
     </LiveKitRoom>
   );

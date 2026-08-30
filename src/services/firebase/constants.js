@@ -10,6 +10,7 @@ export const COL = {
   bannedDevices: 'bannedDevices',
   liveRandomPool: 'liveRandomPool',
   liveRandomSessions: 'liveRandomSessions',
+  matchVideoSessions: 'matchVideoSessions',
   verifications: 'verifications',
   admin: 'admin',
   vulgarAttempts: 'vulgarAttempts',
@@ -21,6 +22,8 @@ export const COL = {
   crashGroups: 'crashGroups',
   dsarExportLogs: 'dsarExportLogs',
   appeals: 'appeals',
+  successStories: 'successStories',
+  stories: 'stories',
 };
 
 import { collection, doc } from 'firebase/firestore';

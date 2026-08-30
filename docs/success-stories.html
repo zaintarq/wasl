@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>We met on Wasl · Readers</title>
+  <meta name="description" content="Anonymous success stories from couples who met on Wasl — hope, trust, and halal love." />
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/success-stories.css?v=3" />
+</head>
+<body>
+  <div class="float-cluster">
+    <a class="stories-float" href="success-stories.html" aria-current="page">Love stories</a>
+    <a class="why-float" href="why.html">Why? for readers</a>
+    <a class="oss-float" href="index.html">Home</a>
+    <a class="admin-float" href="success-stories.html#admin">Admin login</a>
+  </div>
+
+  <div class="paper">
+    <p class="paper-home"><a href="index.html">Return to Wasl</a></p>
+
+    <header class="masthead">
+      <p class="mast-edition">Readers · Anonymous Edition</p>
+      <h1 class="mast-title">We Met on Wasl</h1>
+      <p class="mast-tag">Hope · Trust · Halal love — names withheld, hearts shared</p>
+    </header>
+
+    <p class="headline">Real couples, filed anonymously</p>
+    <p class="subhead">Every story here was submitted in the app and approved by our team before it went live.</p>
+    <p class="byline">For readers who want proof that intentional matching can work · Updated when new stories publish</p>
+
+    <div class="deck">
+      <p>
+        These are not ads and not influencers. They are short, anonymous accounts from people who connected on Wasl —
+        sometimes through a match, sometimes through a club or Live. Read slowly. Share yours in the app when you are ready.
+      </p>
+    </div>
+
+    <p id="storiesLoading" class="stories-loading">Loading stories…</p>
+    <p id="storiesEmpty" class="stories-empty hidden">Approved stories will appear here soon. Check back after our team reviews submissions.</p>
+    <div id="storyGrid" class="love-columns" aria-live="polite"></div>
+
+    <footer class="paper-end">
+      <p class="end-mark">❧</p>
+      <p>Want to add your story? Submit anonymously in the Wasl app — we review before publishing.</p>
+      <a class="paper-btn" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
+      <p style="margin-top:14px"><a href="why.html">Read why Wasl was built</a></p>
+    </footer>
+
+    <section id="adminLogin" class="stories-admin hidden">
+      <h2>Admin — review stories</h2>
+      <p>Sign in to approve or reject submissions. Approved stories appear here and in the app.</p>
+      <label for="adminEmail">Email</label>
+      <input id="adminEmail" type="email" autocomplete="username" />
+      <label for="adminPass">Password</label>
+      <input id="adminPass" type="password" autocomplete="current-password" />
+      <button type="button" id="adminSignIn" class="paper-btn" style="border:none;cursor:pointer;margin-top:8px">Sign in</button>
+    </section>
+
+    <p class="staff-link">
+      <button type="button" id="showAdminLogin">Staff: moderate stories</button>
+    </p>
+
+    <section id="adminPanel" class="stories-admin hidden">
+      <h2>Admin moderation</h2>
+      <p>Approved = visible on this page and in the app. Pending and rejected stay hidden.</p>
+      <div id="adminList"></div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+    import {
+      getFirestore, collection, query, where, orderBy, limit, getDocs, onSnapshot, doc, getDoc,
+    } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
+    import { initSuccessStoriesPage } from './assets/success-stories.js?v=3';
+
+    initSuccessStoriesPage({
+      initializeApp,
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      getFirestore,
+      collection,
+      query,
+      where,
+      orderBy,
+      limit,
+      getDocs,
+      onSnapshot,
+      doc,
+      getDoc,
+      getFunctions,
+      httpsCallable,
+    });
+
+    document.getElementById('showAdminLogin')?.addEventListener('click', () => {
+      document.getElementById('adminLogin')?.classList.remove('hidden');
+      document.getElementById('showAdminLogin')?.closest('.staff-link')?.classList.add('hidden');
+    });
+
+    if (location.hash === '#admin') {
+      document.getElementById('adminLogin')?.classList.remove('hidden');
+      document.getElementById('showAdminLogin')?.closest('.staff-link')?.classList.add('hidden');
+    }
+  </script>
+</body>
+</html>

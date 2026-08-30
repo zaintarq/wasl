@@ -27,7 +27,7 @@ function buildDemoHtml(gameTitle, opponentName, reason) {
 </style></head><body><div class="card"><h1>${gameTitle}</h1><p>Colyseus + Phaser stack is ready. ${hint}</p>${friend}<span class="badge">Colyseus multiplayer ✓</span></div></body></html>`;
 }
 
-export function GamePlayScreen({ onNavigate, gameId, opponentUid, opponentName, roomId }) {
+export function GamePlayScreen({ onNavigate, gameId, opponentUid, opponentName, roomId, matchId }) {
   const game = useMemo(() => getGameById(gameId) || { title: 'Game', id: gameId }, [gameId]);
   const [launchUrl, setLaunchUrl] = useState(null);
   const [demoHtml, setDemoHtml] = useState(null);
@@ -41,6 +41,7 @@ export function GamePlayScreen({ onNavigate, gameId, opponentUid, opponentName, 
       gameId: game.id,
       opponentUid,
       roomId,
+      matchId,
     });
     if (err) {
       setError(err);
@@ -57,7 +58,7 @@ export function GamePlayScreen({ onNavigate, gameId, opponentUid, opponentName, 
       setError('Could not start game session.');
     }
     setLoading(false);
-  }, [game.id, game.title, opponentName, opponentUid, roomId]);
+  }, [game.id, game.title, opponentName, opponentUid, roomId, matchId]);
 
   useEffect(() => {
     loadSession();
@@ -113,6 +114,16 @@ export function GamePlayScreen({ onNavigate, gameId, opponentUid, opponentName, 
             mediaPlaybackRequiresUserAction={false}
             cacheEnabled
             startInLoadingState
+            onError={(e) => {
+              setError(e?.nativeEvent?.description || 'Could not load game.');
+              setLaunchUrl(null);
+            }}
+            onHttpError={(e) => {
+              if (e?.nativeEvent?.statusCode >= 400) {
+                setError(`Game server error (${e.nativeEvent.statusCode}). Try again.`);
+                setLaunchUrl(null);
+              }
+            }}
             renderLoading={() => (
               <View style={styles.webLoading}>
                 <ActivityIndicator size="large" color={tokens.colors.brandPink} />

@@ -19,6 +19,7 @@ import {
   userService,
 } from '../../services/firebaseService';
 import { tokens } from '../../ui/tokens';
+import { cardShadow } from '../../ui/cardShadow';
 
 function shortId(value) {
   const text = String(value || '').trim();
@@ -50,18 +51,24 @@ function DetailRow({ label, value, mono }) {
   );
 }
 
-export function AdminUserDirectory({ cardShadow = {} }) {
+export function AdminUserDirectory() {
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const [actionUid, setActionUid] = useState('');
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const { data, error } = await userService.getUsers({ limit: 300 });
-      if (error) Alert.alert('Could not load users', error);
+      if (error) {
+        setLoadError(error);
+        setUsers([]);
+        return;
+      }
       setUsers(Array.isArray(data) ? data : []);
     } finally {
       setLoading(false);
@@ -235,6 +242,16 @@ export function AdminUserDirectory({ cardShadow = {} }) {
         autoCorrect={false}
       />
 
+      {loadError ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorTitle}>Could not load users</Text>
+          <Text style={styles.errorText}>{loadError}</Text>
+          <Text style={styles.errorHint}>
+            Deploy updated Firestore rules and the adminListUsers function, then tap Refresh.
+          </Text>
+        </View>
+      ) : null}
+
       {loading && users.length === 0 ? (
         <ActivityIndicator color={tokens.colors.accent} style={{ marginVertical: 20 }} />
       ) : null}
@@ -369,6 +386,33 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   empty: { textAlign: 'center', color: '#64748b', paddingVertical: 16 },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  errorTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#B91C1C',
+    marginBottom: 4,
+  },
+  errorText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#7F1D1D',
+    lineHeight: 18,
+  },
+  errorHint: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#991B1B',
+    lineHeight: 17,
+  },
   rowCard: {
     backgroundColor: '#fff',
     borderRadius: 12,

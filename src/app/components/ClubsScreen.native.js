@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   StyleSheet,
@@ -11,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Users } from 'lucide-react-native';
 import { authService, clubService, userService, checkUserRoleFromAdminCollection } from '../../services/firebaseService';
-import { blockIfAgeNotVerified } from '../../utils/ageCheck.native';
+import { blockIfAgeNotVerifiedAsync } from '../../utils/ageCheck.native';
 import { tokens } from '../../ui/tokens';
 import { shellStyles } from '../../ui/styles/shellStyles.native';
 import { HuzzPressable } from '../../ui/components/HuzzPressable.native';
@@ -47,13 +48,30 @@ export function ClubsScreen({ onNavigate }) {
   const [myProfile, setMyProfile] = useState(null);
   const [roleCheck, setRoleCheck] = useState(null);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!meUid) return;
+      userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
+    }, [meUid])
+  );
+
   useEffect(() => {
     if (!meUid) return;
-    userService.getUserById(meUid).then((res) => setMyProfile(res?.data || null)).catch(() => {});
     checkUserRoleFromAdminCollection(meUid).then(setRoleCheck).catch(() => {});
   }, [meUid]);
 
-  const requireAge = () => blockIfAgeNotVerified(myProfile, onNavigateRef.current, roleCheck);
+  const requireAge = useCallback(async () => {
+    if (!meUid) return true;
+    const { blocked, profile } = await blockIfAgeNotVerifiedAsync(
+      myProfile,
+      onNavigateRef.current,
+      roleCheck,
+      meUid,
+      (id) => userService.getUserById(id)
+    );
+    if (profile) setMyProfile(profile);
+    return blocked;
+  }, [meUid, myProfile, roleCheck]);
 
   useEffect(() => {
     if (!meUid) {
@@ -111,25 +129,25 @@ export function ClubsScreen({ onNavigate }) {
   const myClubs = myClubIds.map((id) => clubById(id)).filter(Boolean);
   const discover = publicClubs.filter((c) => !myClubIds.includes(c.id));
 
-  const goCreateClub = () => {
-    if (requireAge()) return;
+  const goCreateClub = async () => {
+    if (await requireAge()) return;
     onNavigateRef.current('createClub');
   };
 
-  const openClub = (clubId) => {
-    if (requireAge()) return;
+  const openClub = async (clubId) => {
+    if (await requireAge()) return;
     onNavigateRef.current('clubRoom', { clubId });
   };
 
   const handleJoinPublic = async (clubId) => {
-    if (requireAge()) return;
+    if (await requireAge()) return;
     const { error } = await clubService.joinClub(meUid, clubId);
     if (error) Alert.alert('Could not join', error);
     else openClub(clubId);
   };
 
   const handleJoinWithCode = async () => {
-    if (requireAge()) return;
+    if (await requireAge()) return;
     const code = joinCode.trim().toUpperCase();
     const cid = joinClubId.trim();
     if (!code) {

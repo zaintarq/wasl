@@ -72,6 +72,7 @@ service cloud.firestore {
       return exists(path)
         && get(path).data.get('status', '') == 'active'
         && get(path).data.get('isBlocked', false) != true
+        && get(path).data.get('chatFrozen', false) != true
         && (
           (get(path).data.uids is list && get(path).data.uids.hasAny([request.auth.uid]))
           || (get(path).data.get('requestedBy', '') == request.auth.uid || get(path).data.get('requestedTo', '') == request.auth.uid)
@@ -139,9 +140,11 @@ service cloud.firestore {
       // Allow users to create their own document (onboarding)
       allow create: if isSignedIn() && request.auth.uid == uid;
 
-      // Signed-in users can read profiles for discovery (web + app)
-      allow read: if isSignedIn() && (
-        request.auth.uid == uid || !isDisabled()
+      // Discovery: signed-in users read other profiles. Admins can list/read everyone (incl. disabled).
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          request.auth.uid == uid || !isDisabled()
+        )
       );
 
       // Owners can update their profile
@@ -251,9 +254,17 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.mediaUrl is string
         && request.resource.data.mediaUrl.size() > 8
-        && request.resource.data.mediaType == 'image'
+        && request.resource.data.mediaType in ['image', 'video']
         && request.resource.data.expiresAt is timestamp
-        && request.resource.data.expiresAt > request.time;
+        && request.resource.data.expiresAt > request.time
+        && (
+          request.resource.data.mediaType != 'video'
+          || (
+            request.resource.data.durationMs is int
+            && request.resource.data.durationMs > 0
+            && request.resource.data.durationMs <= 30000
+          )
+        );
 
       allow delete: if isSignedIn()
         && !isDisabled()
@@ -272,6 +283,25 @@ service cloud.firestore {
           && request.auth.uid == viewerUid
           && request.resource.data.viewerUid == request.auth.uid
           && request.resource.data.viewerName is string;
+      }
+
+      match /reactions/{viewerUid} {
+        allow read: if isSignedIn()
+          && !isDisabled()
+          && get(/databases/$(database)/documents/stories/$(storyId)).data.userId == request.auth.uid;
+
+        allow create, update: if isSignedIn()
+          && !isDisabled()
+          && request.auth.uid == viewerUid
+          && request.resource.data.viewerUid == request.auth.uid
+          && request.resource.data.viewerName is string
+          && request.resource.data.emoji is string
+          && request.resource.data.emoji.size() > 0
+          && request.resource.data.emoji.size() <= 8;
+
+        allow delete: if isSignedIn()
+          && !isDisabled()
+          && request.auth.uid == viewerUid;
       }
     }
 
@@ -310,7 +340,7 @@ service cloud.firestore {
         );
 
       // List: participant in uids[] (array-contains queries)
-      allow list: if isSignedIn() && !isDisabled() && isMatchParticipant();
+      allow list: if isSignedIn() && !isDisabled() && canListMatch();
       // Allow get when doc doesn't exist (so client can check before create) or when user is participant/admin
       allow get: if !exists(/databases/$(database)/documents/matches/$(matchId))
         || isMatchParticipantOrRequestParty()
@@ -391,6 +421,7 @@ service cloud.firestore {
           )
           && get(/databases/$(database)/documents/matches/$(matchId)).data.get('status', '') == 'active'
           && get(/databases/$(database)/documents/matches/$(matchId)).data.get('isBlocked', false) != true
+          && get(/databases/$(database)/documents/matches/$(matchId)).data.get('chatFrozen', false) != true
           && request.resource.data.fromUid == resource.data.fromUid
           && (
             // sender edits text (only for text messages)
@@ -481,6 +512,16 @@ service cloud.firestore {
 
         allow update, delete: if false;
       }
+    }
+
+    // Scheduled 15-min match video dates (writes via Cloud Functions)
+    match /matchVideoSessions/{sessionId} {
+      allow read: if isSignedIn()
+        && !isDisabled()
+        && resource.data.uids is list
+        && resource.data.uids.hasAny([request.auth.uid]);
+
+      allow create, update, delete: if false;
     }
 
     // Reports
@@ -738,6 +779,18 @@ service cloud.firestore {
         allow delete: if isClubAdmin(clubId) || requestUid == request.auth.uid || isAdmin();
         allow update: if isClubAdmin(clubId) || isAdmin();
       }
+
+      match /events/{eventId} {
+        allow read: if isClubMember(clubId) || isAdmin();
+        allow write: if false;
+      }
+    }
+
+    match /successStories/{storyId} {
+      allow read: if resource.data.status == 'published'
+        || (isSignedIn() && resource.data.submittedBy == request.auth.uid)
+        || isAdmin();
+      allow create, update, delete: if false;
     }
 
     // App-wide update alerts (admin writes via Cloud Function; all signed-in users read)

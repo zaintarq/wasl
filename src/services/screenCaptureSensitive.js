@@ -5,6 +5,7 @@
 import { Platform } from 'react-native';
 import * as ScreenCapture from 'expo-screen-capture';
 import { Routes } from '../app/navigation/routes';
+import { isStoreScreenshotModeActive } from './storeScreenshotMode';
 
 const KEY = 'huzz-sensitive-routes';
 
@@ -13,12 +14,20 @@ let active = false;
 function isSensitiveNavigationState(state) {
   const route = state?.routes?.[state?.index];
   const name = route?.name;
-  return (
-    name === Routes.TabHome ||
-    name === Routes.TabMatches ||
-    name === Routes.ChatThread ||
-    name === Routes.TabLive
-  );
+  if (name === Routes.TabHome || name === Routes.TabMatches || name === Routes.TabLive) {
+    return true;
+  }
+  if (name === Routes.ChatThread) {
+    return true;
+  }
+  const nested = route?.state;
+  if (nested?.routes?.length) {
+    const nestedRoute = nested.routes[nested.index ?? nested.routes.length - 1];
+    if (nestedRoute?.name === Routes.ChatThread) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -26,6 +35,14 @@ function isSensitiveNavigationState(state) {
  */
 export function syncScreenCaptureToNavigationState(state) {
   if (Platform.OS === 'web') return;
+
+  if (isStoreScreenshotModeActive()) {
+    if (active) {
+      active = false;
+      ScreenCapture.allowScreenCaptureAsync(KEY).catch(() => {});
+    }
+    return;
+  }
 
   const shouldProtect = isSensitiveNavigationState(state);
 

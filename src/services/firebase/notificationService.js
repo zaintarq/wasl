@@ -37,7 +37,6 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { sendExpoPushAsync } from '../pushService';
 import { scanMessageText, isMessageToxicLocal } from '../moderationService';
 import { sha256 } from '../../utils/hash.native';
 import { translateChatMessage } from '../translateChatMessage';
@@ -67,34 +66,6 @@ export const notificationService = {
         createdAt: serverTimestamp(),
       };
       const ref = await addDoc(userNotificationsCol(to), base);
-      // Send push notification via Expo Push API
-      // Works in both Expo Go and dev builds
-      try {
-        const snap = await getDoc(doc(db, COL.users, to));
-        const token = snap.exists() ? String(snap.data()?.expoPushToken || '') : '';
-        if (token) {
-          const pushResult = await sendExpoPushAsync({
-            to: token,
-            title: base.title,
-            body: base.body,
-            data: { 
-              type: base.type, 
-              matchId: base.matchId || null,
-              fromUid: base.fromUid || null,
-              notificationId: ref.id,
-            },
-            sound: 'default',
-          });
-          if (pushResult.error) {
-            console.warn('[Notification] Push send failed:', pushResult.error);
-          }
-        } else {
-          console.log('[Notification] No push token for user:', to);
-        }
-      } catch (pushError) {
-        console.error('[Notification] Push error:', pushError);
-        // Don't fail the notification creation if push fails
-      }
       return { data: { id: ref.id, ...base }, error: null };
     } catch (error) {
       return { data: null, error: error.message };

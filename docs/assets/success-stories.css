@@ -1,0 +1,171 @@
+/* Love stories — readers edition (extends Why? dispatch) */
+@import url("why.css?v=33");
+
+.hidden { display: none !important; }
+
+.love-columns {
+  background: rgba(255, 248, 243, 0.96);
+  border: 1px solid rgba(28, 20, 18, 0.12);
+  padding: 22px 18px 10px;
+}
+
+.love-story {
+  break-inside: avoid;
+  margin-bottom: 26px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.love-story:last-child {
+  border-bottom: none;
+  margin-bottom: 8px;
+  padding-bottom: 0;
+}
+
+.story-kicker {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.story-city-line {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: -4px 0 10px;
+}
+
+.love-story .story-body {
+  font-size: 1.02rem;
+  line-height: 1.68;
+  text-align: justify;
+  hyphens: auto;
+  color: var(--ink);
+}
+
+.love-story .dropcap {
+  float: left;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 3.1rem;
+  line-height: 0.82;
+  padding: 2px 8px 0 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.stories-loading,
+.stories-empty {
+  font-family: "DM Sans", system-ui, sans-serif;
+  text-align: center;
+  color: var(--muted);
+  padding: 28px 12px;
+  font-size: 0.95rem;
+}
+
+.stories-admin {
+  margin-top: 28px;
+  padding: 18px;
+  border: 1px solid rgba(28, 20, 18, 0.12);
+  background: rgba(255, 248, 243, 0.96);
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+.stories-admin h2 {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.25rem;
+  margin-bottom: 6px;
+}
+
+.stories-admin p {
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.stories-admin label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.stories-admin input {
+  width: 100%;
+  margin: 6px 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--rule);
+  font-family: inherit;
+  font-size: 0.92rem;
+}
+
+.admin-story {
+  padding: 14px;
+  border: 1px solid rgba(28, 20, 18, 0.1);
+  background: #fffaf7;
+  margin-bottom: 12px;
+}
+
+.admin-story-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.admin-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-badge.pending { background: #FEF3C7; color: #B45309; }
+.admin-badge.published { background: #D1FAE5; color: #047857; }
+.admin-badge.rejected { background: #FFE4E6; color: #BE123C; }
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.admin-actions button {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.78rem;
+}
+
+.btn-approve { background: var(--accent); color: #fff; }
+.btn-reject { background: #BE123C; color: #fff; }
+.btn-unpublish { background: #E5E7EB; color: #111; }
+
+.staff-link {
+  text-align: center;
+  margin-top: 24px;
+}
+
+.staff-link button {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

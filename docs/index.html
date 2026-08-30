@@ -11,14 +11,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="assets/site.css?v=30" />
+  <link rel="stylesheet" href="assets/site.css?v=33" />
 </head>
 <body>
   <div class="aurora" aria-hidden="true"></div>
   <div class="float-cluster">
+    <a class="oss-float" href="success-stories.html">Love stories</a>
     <a class="why-float" href="why.html">Why? for readers</a>
     <a class="oss-float" href="opensource.html">Open source</a>
-    <a class="admin-float" href="app.html?mode=admin">Admin login</a>
+    <a class="admin-float" href="success-stories.html#admin">Admin login</a>
   </div>
 
   <div class="page">
@@ -39,8 +40,18 @@
       <div class="cta-stack">
         <a class="btn btn-primary" href="app.html?mode=signup">Sign up with email</a>
         <a class="btn btn-outline" href="app.html?mode=login">Log in</a>
+        <a class="btn btn-outline" href="success-stories.html">Read love stories</a>
         <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=com.huzz.app">Get the Android app</a>
       </div>
+
+      <section id="homeStoriesPreview" class="home-stories" aria-label="Approved success stories">
+        <p class="section-label">Readers edition</p>
+        <h2 class="home-stories-title">We met on Wasl</h2>
+        <p class="sub home-stories-sub">Anonymous stories — approved by our team, same as the full readers page.</p>
+        <div id="homeStoriesGrid" class="home-stories-grid"></div>
+        <p id="homeStoriesEmpty" class="home-stories-empty hidden">Approved stories will appear here soon.</p>
+        <a class="btn btn-outline" href="success-stories.html" style="margin-top:14px">Open the readers page</a>
+      </section>
 
       <p class="footer-legal">
         By continuing, you agree to our
@@ -71,6 +82,7 @@
       </div>
 
       <nav class="footer-links" aria-label="Policies">
+        <a href="success-stories.html">Love stories</a>
         <a href="trust.html">Trust center</a>
         <a href="community.html">Safety</a>
         <a href="child-safety.html">Child safety</a>
@@ -78,6 +90,24 @@
       </nav>
     </div>
   </div>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+    import {
+      getFirestore, collection, query, where, orderBy, limit, getDocs,
+    } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { initHomeStoriesPreview } from './assets/success-stories.js?v=3';
+
+    initHomeStoriesPreview({
+      initializeApp,
+      getFirestore,
+      collection,
+      query,
+      where,
+      orderBy,
+      limit,
+      getDocs,
+    });
+  </script>
   <script src="assets/logo-tap.js?v=15"></script>
 </body>
 </html>

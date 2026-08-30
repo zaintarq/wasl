@@ -1,10 +1,14 @@
 import { DurableObject } from 'cloudflare:workers';
 import { verifyGameSessionToken, type GameTokenPayload } from './auth';
+import { CHESS_START, moveToAlgebraic, validateChessMove } from './chessLogic';
 import {
+  connectedSessionIds,
   createEmptyLudoState,
   MAX_LUDO_PLAYERS,
+  nextSessionId,
   rollLudo,
   startLudoGame,
+  TURN_MS_CHESS,
   type LudoRoomState,
   type PlayerState,
 } from './ludoLogic';
@@ -21,7 +25,10 @@ interface SocketMeta {
   auth: GameTokenPayload;
 }
 
-type ClientMessage = { type: 'roll' } | { type: 'ping' };
+type ClientMessage =
+  | { type: 'roll' }
+  | { type: 'move'; from?: number; to?: number }
+  | { type: 'ping' };
 
 export class GameRoom extends DurableObject<Env> {
   private gameId = 'ludo';
@@ -38,7 +45,7 @@ export class GameRoom extends DurableObject<Env> {
         gameId: this.gameId,
         roomId: this.roomId,
         phase: this.state.phase,
-        players: Object.keys(this.state.players).length,
+        players: connectedSessionIds(this.state).length,
       });
     }
 
@@ -67,6 +74,9 @@ export class GameRoom extends DurableObject<Env> {
     this.roomId = auth.roomId;
     if (!this.state.inviteRoomId) {
       this.state = createEmptyLudoState(auth.roomId, auth.gameId);
+      if (auth.gameId === 'chess') {
+        this.state.board = CHESS_START;
+      }
     }
 
     const pair = new WebSocketPair();
@@ -117,6 +127,49 @@ export class GameRoom extends DurableObject<Env> {
       this.broadcastState();
       return;
     }
+
+    if (data.type === 'move' && this.gameId === 'chess') {
+      this.handleChessMove(meta.sessionId, data.from, data.to);
+      return;
+    }
+  }
+
+  private handleChessMove(sessionId: string, fromRaw?: number, toRaw?: number) {
+    if (this.state.phase !== 'playing' || this.state.winnerSessionId) return;
+    if (this.state.currentTurnSessionId !== sessionId) return;
+
+    const player = this.state.players[sessionId];
+    if (!player?.connected) return;
+
+    const from = Number(fromRaw);
+    const to = Number(toRaw);
+    const result = validateChessMove(this.state.board, from, to, player.color);
+    if (!result) {
+      this.state.message = 'Illegal move.';
+      this.broadcastState();
+      return;
+    }
+
+    this.state.board = result.board;
+    this.state.lastMoveFrom = from;
+    this.state.lastMoveTo = to;
+    this.state.message = `${player.name} ${moveToAlgebraic(from, to)}`;
+
+    if (result.captured.toLowerCase() === 'k') {
+      this.state.winnerSessionId = sessionId;
+      this.state.phase = 'finished';
+      this.state.message = `${player.name} wins!`;
+      this.state.turnDeadline = 0;
+      this.broadcastState();
+      return;
+    }
+
+    const nextId = nextSessionId(this.state, sessionId);
+    const np = this.state.players[nextId];
+    this.state.currentTurnSessionId = nextId;
+    this.state.message = np ? `${np.name}'s turn` : this.state.message;
+    this.state.turnDeadline = Date.now() + TURN_MS_CHESS;
+    this.broadcastState();
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
@@ -129,12 +182,14 @@ export class GameRoom extends DurableObject<Env> {
       player.connected = false;
     }
 
+    const connected = connectedSessionIds(this.state).length;
     if (this.state.phase === 'playing' && !this.state.winnerSessionId) {
-      const alive = Object.values(this.state.players).filter((p) => p.connected);
-      if (alive.length === 1 && alive[0]) {
-        this.state.winnerSessionId = alive[0].sessionId;
-        this.state.phase = 'finished';
-        this.state.message = `${alive[0].name} wins — opponent left.`;
+      if (connected === 0) {
+        this.state.phase = 'waiting';
+        this.state.message = 'Waiting for players to rejoin…';
+        this.state.currentTurnSessionId = '';
+      } else if (connected === 1) {
+        this.state.message = 'Opponent disconnected — waiting for rejoin…';
       }
     }
 
@@ -146,26 +201,53 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private addPlayer(meta: SocketMeta) {
-    const existing = Object.values(this.state.players).find((p) => p.uid === meta.uid && p.connected);
-    if (existing) {
-      this.state.players[existing.sessionId] = { ...existing, connected: false };
+    const existingEntry = Object.entries(this.state.players).find(([, p]) => p.uid === meta.uid);
+
+    if (existingEntry) {
+      const [oldSessionId, existing] = existingEntry;
+      if (oldSessionId !== meta.sessionId) {
+        delete this.state.players[oldSessionId];
+      }
+      this.state.players[meta.sessionId] = {
+        ...existing,
+        sessionId: meta.sessionId,
+        name: meta.name || existing.name,
+        connected: true,
+      };
+      if (this.state.currentTurnSessionId === oldSessionId) {
+        this.state.currentTurnSessionId = meta.sessionId;
+      }
+      if (this.state.winnerSessionId === oldSessionId) {
+        this.state.winnerSessionId = meta.sessionId;
+      }
+      const connected = connectedSessionIds(this.state).length;
+      if (connected >= MAX_LUDO_PLAYERS && this.state.phase === 'waiting') {
+        this.state = this.gameId === 'chess' ? this.startChessGame() : startLudoGame(this.state);
+      } else if (connected < MAX_LUDO_PLAYERS) {
+        this.state.phase = 'waiting';
+        this.state.message = `Waiting for opponent (${connected}/${MAX_LUDO_PLAYERS})…`;
+      } else {
+        this.state.message = `${meta.name} rejoined`;
+      }
+      return;
     }
 
-    const connectedBefore = Object.values(this.state.players).filter((p) => p.connected).length;
+    const connectedBefore = connectedSessionIds(this.state).length;
     const seat = Math.min(connectedBefore, MAX_LUDO_PLAYERS - 1);
+    const isChess = this.gameId === 'chess';
     const player: PlayerState = {
       uid: meta.uid,
       name: meta.name,
       sessionId: meta.sessionId,
       seat,
-      color: seat === 0 ? 'red' : 'blue',
+      color: isChess ? (seat === 0 ? 'white' : 'black') : seat === 0 ? 'red' : 'blue',
       ludoPos: -1,
       connected: true,
       isBot: false,
     };
     this.state.players[meta.sessionId] = player;
 
-    const connectedCount = Object.values(this.state.players).filter((p) => p.connected).length;
+    const connectedCount = connectedSessionIds(this.state).length;
     if (connectedCount < MAX_LUDO_PLAYERS) {
       this.state.phase = 'waiting';
       this.state.message = `Waiting for opponent (${connectedCount}/${MAX_LUDO_PLAYERS})…`;
@@ -173,8 +255,25 @@ export class GameRoom extends DurableObject<Env> {
     }
 
     if (this.state.phase === 'waiting') {
-      this.state = startLudoGame(this.state);
+      this.state = isChess ? this.startChessGame() : startLudoGame(this.state);
     }
+  }
+
+  private startChessGame(): LudoRoomState {
+    const ids = connectedSessionIds(this.state);
+    const first = ids[0] || '';
+    const p = this.state.players[first];
+    return {
+      ...this.state,
+      phase: 'playing',
+      board: CHESS_START,
+      lastMoveFrom: -1,
+      lastMoveTo: -1,
+      dice: 0,
+      currentTurnSessionId: first,
+      message: `${p?.name || 'White'} to move`,
+      turnDeadline: Date.now() + TURN_MS_CHESS,
+    };
   }
 
   private broadcastState() {

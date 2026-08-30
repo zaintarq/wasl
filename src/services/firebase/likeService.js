@@ -83,51 +83,13 @@ export const likeService = {
             return { matched: false, matchId: null, error: String(data.error) };
           }
 
-          if (matched && matchId) {
-            let senderName = 'Someone';
-            let receiverName = 'Someone';
-            try {
-              const senderSnap = await getDoc(doc(db, COL.users, from));
-              if (senderSnap.exists()) senderName = String(senderSnap.data()?.name || 'Someone');
-            } catch {}
-            try {
-              const receiverSnap = await getDoc(doc(db, COL.users, to));
-              if (receiverSnap.exists()) receiverName = String(receiverSnap.data()?.name || 'Someone');
-            } catch {}
-            try {
-              await notificationService.createNotification(from, {
-                type: 'match_mutual',
-                fromUid: from,
-                matchId,
-                title: "It's a match!",
-                body: `You and ${receiverName} liked each other. Open Matches to chat.`,
-                status: 'unread',
-              });
-              await notificationService.createNotification(to, {
-                type: 'match_mutual',
-                fromUid: from,
-                matchId,
-                title: "It's a match!",
-                body: `${senderName} liked you back. Open Matches to chat.`,
-                status: 'unread',
-              });
-            } catch {}
-            return { matched: true, matchId, status: matchStatus, error: null };
-          }
-
-          try {
-            const senderSnap = await getDoc(doc(db, COL.users, from));
-            const senderName = senderSnap.exists() ? String(senderSnap.data()?.name || 'Someone') : 'Someone';
-            await notificationService.createNotification(to, {
-              type: 'like_received',
-              fromUid: from,
-              matchId: null,
-              title: 'New like!',
-              body: `${senderName} liked you. Like them back to match and chat.`,
-              status: 'unread',
-            });
-          } catch {}
-          return { matched: false, matchId: null, error: null };
+          // Push + in-app notifications are sent server-side in recordLike.
+          return {
+            matched,
+            matchId,
+            status: matchStatus,
+            error: null,
+          };
         } catch (cfError) {
           if (__DEV__) console.warn('[LikeService] recordLike CF error:', cfError?.message || cfError);
         }
@@ -255,8 +217,8 @@ export const likeService = {
             type: 'like_received',
             fromUid: from,
             matchId: null,
-            title: 'New like!',
-            body: `${senderName} liked you. Like them back to match and chat.`,
+            title: 'Someone liked you',
+            body: `${senderName} liked you — swipe to see`,
             status: 'unread',
           });
         } catch (notifError) {

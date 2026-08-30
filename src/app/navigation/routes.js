@@ -22,6 +22,7 @@ export const Routes = {
 
   ChatThread: 'ChatThread',
   DatePlanning: 'DatePlanning',
+  MatchVideoDate: 'MatchVideoDate',
   Admin: 'Admin',
   Contacts: 'Contacts',
   BlockedUsers: 'BlockedUsers',
@@ -33,6 +34,8 @@ export const Routes = {
   Notifications: 'Notifications',
   GamePlay: 'GamePlay',
   MehramAccess: 'MehramAccess',
+  SuccessStories: 'SuccessStories',
+  StoreScreenshots: 'StoreScreenshots',
 };
 
 

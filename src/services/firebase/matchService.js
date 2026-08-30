@@ -268,27 +268,72 @@ export const matchService = {
     }
   },
 
-  /** Real-time listener for match list – updates when match status or messages change */
+  _sortMatchesByRecent(matches) {
+    const toMs = (v) => {
+      if (!v) return 0;
+      if (typeof v === 'number') return v;
+      if (typeof v?.toMillis === 'function') return v.toMillis();
+      return 0;
+    };
+    return [...(matches || [])].sort(
+      (a, b) =>
+        toMs(b?.lastMessageAt || b?.createdAt) - toMs(a?.lastMessageAt || a?.createdAt)
+    );
+  },
+
+  _mergeMatchLists(...lists) {
+    const byId = new Map();
+    lists.flat().forEach((m) => {
+      if (!m?.id) return;
+      byId.set(String(m.id), { ...(byId.get(String(m.id)) || {}), ...m, id: String(m.id) });
+    });
+    return this._sortMatchesByRecent([...byId.values()]);
+  },
+
+  /** Real-time listener for match list — bootstraps via server callable if client query is empty. */
   listenMyMatches(uid, callback) {
     let unsub = () => {};
     let cancelled = false;
+    let lastMatches = [];
+
+    const emit = (matches, error = null) => {
+      lastMatches = matches;
+      callback({ data: matches, error });
+    };
+
+    const bootstrapFromServer = async () => {
+      try {
+        const { data, error } = await this.listMyMatches(uid);
+        if (cancelled || error) return;
+        const serverMatches = Array.isArray(data) ? data : [];
+        if (serverMatches.length === 0) return;
+        emit(this._mergeMatchLists(lastMatches, serverMatches));
+      } catch {
+        /* non-fatal */
+      }
+    };
+
     authService
       .ensureAuthReady()
       .then(() => {
         if (cancelled) return;
+        void bootstrapFromServer();
         const qRef = query(collection(db, COL.matches), where('uids', 'array-contains', String(uid)));
         unsub = onSnapshot(
           qRef,
           (snap) => {
             const matches = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            matches.sort((a, b) => {
-              const at = a?.lastMessageAt?.toMillis?.() || a?.createdAt?.toMillis?.() || 0;
-              const bt = b?.lastMessageAt?.toMillis?.() || b?.createdAt?.toMillis?.() || 0;
-              return bt - at;
-            });
-            callback({ data: matches, error: null });
+            emit(this._sortMatchesByRecent(matches));
+            if (matches.length === 0) void bootstrapFromServer();
           },
-          (error) => callback({ data: [], error: error?.message || String(error) })
+          (error) => {
+            console.warn('[matchService] listenMyMatches error:', error?.message || error);
+            void bootstrapFromServer().finally(() => {
+              if (!cancelled && lastMatches.length === 0) {
+                callback({ data: [], error: error?.message || String(error) });
+              }
+            });
+          }
         );
       })
       .catch((error) => callback({ data: [], error: error?.message || String(error) }));

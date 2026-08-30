@@ -31,7 +31,10 @@ export class GameRoomClient {
     this.sessionId = null;
     this.state = normalizeState({});
     this._listeners = [];
+    this._disconnectListeners = [];
     this._ws = null;
+    this.connected = false;
+    this._pingTimer = null;
   }
 
   onStateChange(listener) {
@@ -39,6 +42,18 @@ export class GameRoomClient {
     return () => {
       this._listeners = this._listeners.filter((l) => l !== listener);
     };
+  }
+
+  onDisconnect(listener) {
+    this._disconnectListeners.push(listener);
+    return () => {
+      this._disconnectListeners = this._disconnectListeners.filter((l) => l !== listener);
+    };
+  }
+
+  /** Colyseus-compatible alias */
+  onLeave(listener) {
+    return this.onDisconnect(listener);
   }
 
   _emitState() {
@@ -51,17 +66,38 @@ export class GameRoomClient {
     }
   }
 
+  _emitDisconnect() {
+    for (const fn of this._disconnectListeners) {
+      try {
+        fn();
+      } catch (e) {
+        console.warn('[GameRoomClient] disconnect listener error', e);
+      }
+    }
+  }
+
   send(type, payload = {}) {
     if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
     this._ws.send(JSON.stringify({ type, ...payload }));
   }
 
   leave() {
+    if (this._pingTimer) {
+      clearInterval(this._pingTimer);
+      this._pingTimer = null;
+    }
     try {
       this._ws?.close();
     } catch {
       /* ignore */
     }
+  }
+
+  _startPing() {
+    if (this._pingTimer) clearInterval(this._pingTimer);
+    this._pingTimer = setInterval(() => {
+      this.send('ping');
+    }, 20000);
   }
 }
 
@@ -102,10 +138,6 @@ export function joinGameRoom(launch) {
 
     const timer = setTimeout(() => fail(new Error('Game server timed out — try again.')), 15000);
 
-    ws.onopen = () => {
-      /* wait for joined */
-    };
-
     ws.onmessage = (event) => {
       let msg;
       try {
@@ -120,7 +152,9 @@ export function joinGameRoom(launch) {
         settled = true;
         room.sessionId = msg.sessionId;
         room.state = normalizeState(msg.state);
+        room.connected = true;
         room._emitState();
+        room._startPing();
         resolve(room);
         return;
       }
@@ -140,7 +174,16 @@ export function joinGameRoom(launch) {
     };
 
     ws.onclose = () => {
-      if (!settled) fail(new Error('Disconnected before joining the room.'));
+      room.connected = false;
+      if (room._pingTimer) {
+        clearInterval(room._pingTimer);
+        room._pingTimer = null;
+      }
+      if (!settled) {
+        fail(new Error('Disconnected before joining the room.'));
+      } else {
+        room._emitDisconnect();
+      }
     };
   });
 }

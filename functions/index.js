@@ -4,8 +4,9 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 try {
   require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+  require('dotenv').config({ path: path.join(__dirname, '.env.huzz-10264') });
 } catch (e) {
-  // Root .env only (no functions/.env).
+  // Local env only; production uses Firebase-injected functions/.env.<projectId>.
 }
 const { AccessToken } = require('livekit-server-sdk');
 const { isMessageToxicLocal } = require('./messageModeration');
@@ -20,6 +21,7 @@ const {
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const { notifyUser } = require('./notifyUser');
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -2422,13 +2424,36 @@ exports.getGameLaunchSession = functions.region('us-central1').https.onCall(asyn
     throw new functions.https.HttpsError('invalid-argument', 'Unknown or missing gameId.');
   }
 
-  const opponentUid = data?.opponentUid ? String(data.opponentUid).trim() : null;
+  const opponentUidInput = data?.opponentUid ? String(data.opponentUid).trim() : null;
+  const matchId = data?.matchId ? String(data.matchId).trim() : null;
   let roomId = data?.roomId ? String(data.roomId).trim() : null;
+  let opponentUid = opponentUidInput;
   let opponentName = null;
 
   const meSnap = await db.collection(COL.users).doc(uid).get();
   const me = meSnap.exists ? meSnap.data() || {} : {};
   const playerName = String(me.name || me.displayName || 'Player').trim() || 'Player';
+
+  if (matchId) {
+    const matchSnap = await db.collection('matches').doc(matchId).get();
+    if (!matchSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Match not found.');
+    }
+    const match = matchSnap.data() || {};
+    const uids = Array.isArray(match.uids) ? match.uids.map(String) : [];
+    if (!uids.includes(uid)) {
+      throw new functions.https.HttpsError('permission-denied', 'Not in this match.');
+    }
+    if (!roomId) roomId = matchId;
+    if (!opponentUid) {
+      const other = uids.find((u) => u !== uid) || null;
+      if (other) {
+        opponentUid = other;
+      }
+    } else if (!uids.includes(opponentUid)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Opponent not in this match.');
+    }
+  }
 
   if (opponentUid) {
     const oppSnap = await db.collection(COL.users).doc(opponentUid).get();
@@ -2440,22 +2465,32 @@ exports.getGameLaunchSession = functions.region('us-central1').https.onCall(asyn
 
   if (!roomId) {
     roomId = crypto.randomBytes(8).toString('hex');
-    await db
-      .collection('gameRooms')
-      .doc(roomId)
-      .set(
-        {
-          gameId,
-          uids: opponentUid ? [uid, opponentUid] : [uid],
-          hostUid: uid,
-          opponentUid: opponentUid || null,
-          status: 'open',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
   }
+
+  const roomRef = db.collection('gameRooms').doc(roomId);
+  const existingRoom = await roomRef.get();
+  const isNewRoom = !existingRoom.exists;
+  const prevJoinedUid = existingRoom.exists ? String(existingRoom.data()?.lastJoinedUid || '') : '';
+
+  await roomRef.set(
+    {
+      gameId,
+      matchId: matchId || null,
+      uids: opponentUid ? [uid, opponentUid].sort() : [uid],
+      hostUid: existingRoom.exists ? existingRoom.data()?.hostUid || uid : uid,
+      opponentUid: opponentUid || null,
+      status: 'open',
+      lastJoinedUid: uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(isNewRoom
+        ? { createdAt: admin.firestore.FieldValue.serverTimestamp() }
+        : {}),
+    },
+    { merge: true }
+  );
+
+  const notifyOpponent =
+    isNewRoom && opponentUid && opponentUid !== uid && MULTIPLAYER_GAME_IDS.has(gameId);
 
   const sessionSecret = String(process.env.GAME_SESSION_SECRET || '').trim();
   const { clientUrl, wsUrl } = getGamesClientConfig();
@@ -2500,6 +2535,23 @@ exports.getGameLaunchSession = functions.region('us-central1').https.onCall(asyn
   if (opponentName) params.set('opponentName', opponentName);
   if (isSolo) params.set('solo', '1');
   else if (!wsUrl && MULTIPLAYER_GAME_IDS.has(gameId)) params.set('solo', '1');
+
+  if (notifyOpponent && opponentUid) {
+    const gameLabel = gameId.charAt(0).toUpperCase() + gameId.slice(1);
+    try {
+      await notifyUser(opponentUid, {
+        fromUid: uid,
+        type: 'game_invite',
+        title: `${playerName} invited you to ${gameLabel}`,
+        body: 'Tap to join the live game',
+        matchId: matchId || roomId,
+        gameId,
+        roomId,
+      });
+    } catch (e) {
+      console.warn('[getGameLaunchSession] notify failed', e?.message || e);
+    }
+  }
 
   return {
     demoMode: false,

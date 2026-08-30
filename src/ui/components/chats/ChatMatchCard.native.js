@@ -40,7 +40,7 @@ export function ChatMatchCard({ other, match, canChat, onPress, onRemove }) {
       ? `${preview.slice(0, 48)}…`
       : preview
     : canChat
-      ? presence?.label || 'Tap to chat'
+      ? 'New match — say hi!'
       : 'Waiting for match';
 
   return (

@@ -57,7 +57,7 @@ async function featureGraphic(outPath) {
   const mascot = await sharp(SRC).resize(w, h, { fit: 'inside' }).png().toBuffer();
   const taglineSvg = Buffer.from(`
     <svg width="560" height="80" xmlns="http://www.w3.org/2000/svg">
-      <text x="0" y="52" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" fill="#be185d">Meet. Match. Go live.</text>
+      <text x="0" y="52" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" fill="#be185d">Halal dating, done right.</text>
     </svg>
   `);
   await sharp({

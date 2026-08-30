@@ -1,6 +1,13 @@
 import Phaser from 'phaser';
 import { HUZZ, PIECE_UNICODE } from '../ui/huzzTheme.js';
 import { bindRoomState, createStatusBar, createWaitingOverlay, createWinOverlay } from '../colyseus/bindState.js';
+import {
+  computeLudoLayout,
+  drawClassicLudoBoard,
+  drawPawnToken,
+  tokenCell,
+  playerColorHex,
+} from './ludoBoard.js';
 
 export class ChessScene extends Phaser.Scene {
   constructor(launch, room) {
@@ -162,10 +169,17 @@ export class LudoScene extends Phaser.Scene {
   }
 
   create() {
-    this.cameras.main.setBackgroundColor('#831843');
+    this.cameras.main.setBackgroundColor('#0f172a');
     this.hud = createStatusBar(this, this.launch);
     this.waiting = createWaitingOverlay(this, this.launch);
-    this.drawTrack();
+    this.layout = null;
+    this.drawBoard();
+
+    this.scale.on('resize', () => {
+      this.drawBoard();
+      if (this.room) this.syncTokens();
+      else if (this.local) this.syncLocalTokens();
+    });
 
     this.diceBtn = this.add.rectangle(this.scale.width / 2, this.scale.height - 72, 140, 52, 0x2b2420, 1)
       .setStrokeStyle(2, 0xf7f1e8)
@@ -283,75 +297,58 @@ export class LudoScene extends Phaser.Scene {
     }
   }
 
-  syncLocalTokens() {
-    if (!this.local?.players || !this.trackCenter) return;
-    const { cx, cy, r } = this.trackCenter;
-    Object.entries(this.local.players).forEach(([id, player]) => {
-      let sprite = this.tokenSprites.get(id);
-      const color = player.color === 'red' ? 0xdb2777 : 0xf7f1e8;
-      const angle =
-        player.ludoPos < 0
-          ? player.seat === 0
-            ? -Math.PI / 2
-            : Math.PI / 2
-          : (player.ludoPos / 27) * Math.PI * 2 - Math.PI / 2;
-      const x = cx + Math.cos(angle) * r;
-      const y = cy + Math.sin(angle) * r;
-      if (!sprite) {
-        sprite = this.add.circle(x, y, 16, color).setStrokeStyle(3, 0x2b2420).setDepth(20);
-        const label = this.add.text(x, y + 22, player.name?.split(' ')[0] || '?', {
-          fontSize: '10px',
-          color: HUZZ.cream,
+  placeToken(id, player, ludoPos) {
+    if (!this.layout) return;
+    const { r, c } = tokenCell(ludoPos, player.seat ?? 0);
+    const pos = {
+      x: this.layout.ox + (c + 0.5) * this.layout.cell,
+      y: this.layout.oy + (r + 0.5) * this.layout.cell,
+    };
+    const size = this.layout.cell * 0.42;
+    let entry = this.tokenSprites.get(id);
+    if (!entry) {
+      const pawn = drawPawnToken(this, pos.x, pos.y, size, playerColorHex(player));
+      const label = this.add
+        .text(pos.x, pos.y + size * 0.95, player.name?.split(' ')[0] || '?', {
+          fontSize: `${Math.max(9, Math.floor(this.layout.cell * 0.22))}px`,
+          color: '#f8fafc',
           fontFamily: 'system-ui, sans-serif',
+          fontStyle: 'bold',
+          stroke: '#0f172a',
+          strokeThickness: 2,
         })
-          .setOrigin(0.5)
-          .setDepth(21);
-        sprite.label = label;
-        this.tokenSprites.set(id, sprite);
-      }
-      sprite.x = x;
-      sprite.y = y;
-      sprite.label.x = x;
-      sprite.label.y = y + 22;
+        .setOrigin(0.5)
+        .setDepth(25);
+      entry = { pawn, label };
+      this.tokenSprites.set(id, entry);
+    }
+    entry.pawn.setPosition(pos.x, pos.y);
+    entry.label.setPosition(pos.x, pos.y + size * 0.95);
+  }
+
+  syncLocalTokens() {
+    if (!this.local?.players || !this.layout) return;
+    Object.entries(this.local.players).forEach(([id, player]) => {
+      this.placeToken(id, player, player.ludoPos ?? -1);
     });
   }
 
-  drawTrack() {
-    this.trackGraphics?.destroy();
-    this.trackGraphics = this.add.graphics();
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 10;
-    const r = Math.min(this.scale.width, this.scale.height) * 0.28;
-    this.trackGraphics.lineStyle(14, HUZZ.track, 1);
-    this.trackGraphics.strokeCircle(cx, cy, r);
-    this.trackGraphics.lineStyle(3, HUZZ.boardDark, 1);
-    this.trackGraphics.strokeCircle(cx, cy, r);
-    this.trackCenter = { cx, cy, r };
+  drawBoard() {
+    this.boardGraphics?.destroy();
+    this.boardGraphics = this.add.graphics().setDepth(0);
+    this.layout = computeLudoLayout(this.scale.width, this.scale.height);
+    drawClassicLudoBoard(this.boardGraphics, this.layout);
+    // Re-layer tokens after redraw
+    this.tokenSprites.forEach((entry) => {
+      entry.pawn?.setDepth(20);
+      entry.label?.setDepth(25);
+    });
   }
 
   syncTokens() {
-    if (!this.room?.state?.players || !this.trackCenter) return;
-    const { cx, cy, r } = this.trackCenter;
+    if (!this.room?.state?.players || !this.layout) return;
     this.room.state.players.forEach((player, sessionId) => {
-      let sprite = this.tokenSprites.get(sessionId);
-      const color = player.color === 'red' ? 0xdb2777 : 0xf7f1e8;
-      const angle = player.ludoPos < 0 ? (player.seat === 0 ? -Math.PI / 2 : Math.PI / 2) : (player.ludoPos / 27) * Math.PI * 2 - Math.PI / 2;
-      const x = cx + Math.cos(angle) * r;
-      const y = cy + Math.sin(angle) * r;
-      if (!sprite) {
-        sprite = this.add.circle(x, y, 16, color).setStrokeStyle(3, 0x2b2420).setDepth(20);
-        const label = this.add.text(x, y + 22, player.name?.split(' ')[0] || '?', {
-          fontSize: '10px',
-          color: HUZZ.cream,
-          fontFamily: 'system-ui, sans-serif',
-        }).setOrigin(0.5).setDepth(21);
-        sprite.label = label;
-        this.tokenSprites.set(sessionId, sprite);
-      }
-      sprite.x = x;
-      sprite.y = y;
-      sprite.label.x = x;
-      sprite.label.y = y + 22;
+      this.placeToken(sessionId, player, player.ludoPos ?? -1);
     });
   }
 

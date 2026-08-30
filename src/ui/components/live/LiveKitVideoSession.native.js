@@ -105,7 +105,14 @@ function OmegleStage({ sessionId, onSkip, onLeave, onModerationBlock }) {
 }
 
 /** Loaded only after polyfill + registerGlobals; do not import from app entry. */
-export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave, onModerationBlock }) {
+export function LiveKitVideoSession({
+  sessionId,
+  onError,
+  onSkip,
+  onLeave,
+  onModerationBlock,
+  fetchToken,
+}) {
   const [token, setToken] = useState(undefined);
   const [url, setUrl] = useState(undefined);
   const [loadErr, setLoadErr] = useState(null);
@@ -123,7 +130,9 @@ export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave, onMod
     setUrl(undefined);
     setLoadErr(null);
     (async () => {
-      const res = await liveRandomService.fetchLiveKitToken(sessionId);
+      const res = fetchToken
+        ? await fetchToken(sessionId)
+        : await liveRandomService.fetchLiveKitToken(sessionId);
       if (cancelled) return;
       if (res.error) {
         setLoadErr(res.error);
@@ -142,7 +151,7 @@ export function LiveKitVideoSession({ sessionId, onError, onSkip, onLeave, onMod
     return () => {
       cancelled = true;
     };
-  }, [sessionId, report]);
+  }, [sessionId, report, fetchToken]);
 
   if (loadErr) {
     return (

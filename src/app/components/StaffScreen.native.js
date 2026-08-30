@@ -225,14 +225,21 @@ export function StaffScreen({ onNavigate }) {
 
         {!showPasswordChange && (
           <View style={styles.box}>
-            <Text style={styles.boxTitle}>Staff Features</Text>
-            <Text style={styles.boxText}>Features coming soon...</Text>
+            <Text style={styles.boxTitle}>Play Store screenshots</Text>
             <Text style={styles.boxText}>
-              Staff functionality will be implemented here.
+              Open any app screen and capture PNGs for the Play Store listing. Staff only.
             </Text>
 
             <HuzzPressable
-              style={[styles.actionBtn, { backgroundColor: '#87ceeb', borderColor: '#4682b4' }]}
+              style={[styles.actionBtn, { backgroundColor: '#FBCFE8', borderColor: '#DB2777' }]}
+              onPress={() => onNavigate('storeScreenshots')}
+              haptic="medium"
+            >
+              <Text style={styles.actionText}>Open screenshot studio</Text>
+            </HuzzPressable>
+
+            <HuzzPressable
+              style={[styles.actionBtn, { backgroundColor: '#87ceeb', borderColor: '#4682b4', marginTop: 10 }]}
               onPress={() => setShowPasswordChange(true)}
               haptic="light"
             >
