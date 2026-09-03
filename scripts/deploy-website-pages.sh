@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-PROJECT="${WASL_PAGES_PROJECT:-wasl-a5n}"
+PROJECT="${WASL_PAGES_PROJECT:-wasl}"
 
 cd "$ROOT/games/worker"
 if ! npx wrangler whoami 2>&1 | grep -q "You are logged in"; then

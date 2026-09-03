@@ -4,9 +4,9 @@
 
 ## A. Pages — main website (Wasl marketing site)
 
-**Project:** `wasl-a5n` → `https://wasl-a5n.pages.dev`
+**Project:** `wasl` → `https://wasl-a5n.pages.dev`
 
-1. Cloudflare Dashboard → **Workers & Pages** → project **wasl-a5n** → **Settings** → **Build**
+1. Cloudflare Dashboard → **Workers & Pages** → project **wasl** → **Settings** → **Build**
 2. **Production branch:** `master`
 3. **Build command:** *(leave empty — static HTML)*
 4. **Build output directory:** `docs`
