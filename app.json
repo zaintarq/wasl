@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wasl",
     "slug": "huzz",
-    "version": "1.0.7",
+    "version": "1.0.14",
     "icon": "./assets/images/icon-1024.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.huzz.app",
-      "versionCode": 10,
+      "versionCode": 14,
       "softwareKeyboardLayoutMode": "resize",
       "intentFilters": [
         {

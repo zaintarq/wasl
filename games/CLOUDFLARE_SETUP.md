@@ -1,18 +1,42 @@
 # Cloudflare setup (Pages + Worker)
 
-## A. Pages — game UI (Phaser)
+> **Important:** The repo must **not** have a root `wrangler.toml`. That file overrides GitHub auto-deploy and will publish the **games client** to your main site (`wasl-a5n.pages.dev`). Keep two separate Pages projects with dashboard settings below.
 
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
-2. Select repo: **zaintarq/wasl**
-3. **Build settings:**
-   - **Production branch:** `master`
-   - **Build command:** `bash scripts/pages-games-build.sh`
-   - **Build output directory:** `games/server/public`
-   - **Root directory:** `/` (repo root)
-4. **Environment variables** (optional for build): none required
-5. Deploy → your site stays at **`https://huzz-games.pages.dev`** (or custom domain)
+## A. Pages — main website (Wasl marketing site)
 
-> If Pages is already connected, open the project → **Deployments** → **Retry deployment** after pushing to GitHub.
+**Project:** `wasl-a5n` → `https://wasl-a5n.pages.dev`
+
+1. Cloudflare Dashboard → **Workers & Pages** → project **wasl-a5n** → **Settings** → **Build**
+2. **Production branch:** `master`
+3. **Build command:** *(leave empty — static HTML)*
+4. **Build output directory:** `docs`
+5. **Root directory:** `/`
+
+Manual deploy (optional):
+
+```bash
+bash scripts/deploy-website-pages.sh
+```
+
+---
+
+## B. Pages — game UI (Phaser)
+
+**Project:** `huzz-games` → `https://huzz-games.pages.dev`
+
+1. Cloudflare Dashboard → **Workers & Pages** → project **huzz-games** → **Settings** → **Build**
+2. **Production branch:** `master`
+3. **Build command:** `bash scripts/pages-games-build.sh`
+4. **Build output directory:** `games/server/public`
+5. **Root directory:** `/`
+
+Manual deploy:
+
+```bash
+bash scripts/deploy-games-pages.sh
+```
+
+Do **not** connect both projects to a root `wrangler.toml`.
 
 ---
 

@@ -1,5 +1,0 @@
-# Cloudflare Pages (static games client only — not the Worker API).
-# Worker lives in games/worker/wrangler.toml (huzz-games-api).
-name = "huzz-games"
-compatibility_date = "2025-03-01"
-pages_build_output_dir = "games/server/public"
